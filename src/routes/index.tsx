@@ -289,17 +289,18 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          simulation.py — full pipeline per frame
+          scheduler.py — distributed step
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`def run_simulation(state, config):
-    for t in range(config.steps):           # config.steps = sub-steps / frame
-        compute_forces(state, config.edges)         # Hooke's law
-        compute_pairwise_forces(state, config.eps)  # short-range interactions
-        compute_potential_forces(state, config.field)
-        step(state, config.dt)              # a = f/m → v, x
-        project_constraints(state, config.constraints)
-    return state`}
+{`class DistributedSimulator:
+    def __init__(self, workers):
+        self.workers = workers
+
+    def step(self, partitions):
+        futures = [w.run_step.remote(p)
+                   for w, p in zip(self.workers, partitions)]
+        results = gather(futures)
+        return self.sync_boundaries(results)`}
         </pre>
       </footer>
     </main>
