@@ -396,6 +396,34 @@ export function PhysicsCanvas({
       ctx.fillStyle = `oklch(0.16 0.02 260 / ${1 - p.trail})`;
       ctx.fillRect(0, 0, w, h);
 
+      // Field visualization (faint isolines / heatmap of Φ)
+      if (p.field !== "none" && p.fieldStrength !== 0) {
+        const cell = 28;
+        const cols = Math.ceil(w / cell);
+        const rows = Math.ceil(h / cell);
+        // Sample to find range
+        let pmin = Infinity, pmax = -Infinity;
+        const samples = new Float32Array(cols * rows);
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const v = fieldPotential(p.field, c * cell + cell / 2, r * cell + cell / 2, w, h);
+            samples[r * cols + c] = v;
+            if (v < pmin) pmin = v;
+            if (v > pmax) pmax = v;
+          }
+        }
+        const range = pmax - pmin || 1;
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const t = (samples[r * cols + c] - pmin) / range;
+            const a = 0.05 + 0.18 * Math.abs(t - 0.5) * 2;
+            const hueDeg = 200 + t * 120;
+            ctx.fillStyle = `oklch(0.55 0.14 ${hueDeg} / ${a})`;
+            ctx.fillRect(c * cell, r * cell, cell, cell);
+          }
+        }
+      }
+
       // Runtime shape & dtype guards — verify x, v, m, f BEFORE the step
       const report = validateState(s);
       if (now - lastValidationRef.current > 250) {
