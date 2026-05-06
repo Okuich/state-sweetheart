@@ -753,9 +753,19 @@ export function PhysicsCanvas({
             s.f[j * 2 + 1] -= fy;
           }
 
-          // 4. step(state, dt) — each worker integrates its own slice
-          for (let q = 0; q < W; q++) {
-            stepStateRange(s, subDt, p.damping, w, h, p.integrator, partStart(q), partEnd(q), p.boundary);
+          // 4. step(state, dt) — each worker integrates its own slice.
+          // For velocity-Verlet, drift already happened above; here we apply
+          // the second half-kick using the NEW forces, then cache f→fPrev.
+          if (p.integrator === "verlet") {
+            for (let q = 0; q < W; q++) {
+              verletKick(s, subDt, p.damping, partStart(q), partEnd(q));
+              // still call stepStateRange for boundary handling (verlet branch is a no-op for motion)
+              stepStateRange(s, subDt, p.damping, w, h, p.integrator, partStart(q), partEnd(q), p.boundary);
+            }
+          } else {
+            for (let q = 0; q < W; q++) {
+              stepStateRange(s, subDt, p.damping, w, h, p.integrator, partStart(q), partEnd(q), p.boundary);
+            }
           }
 
           // 5. sync_boundaries — re-project cross-partition edges so the
