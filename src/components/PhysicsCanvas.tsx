@@ -743,7 +743,40 @@ export function PhysicsCanvas({
 
       if (!p.paused) {
         // run_simulation(state, config): for t in range(config.steps): ...
-        const subSteps = Math.max(1, p.subSteps | 0);
+        // Adaptive sub-stepping: when edges are stretched well past their
+        // rest length OR particles are moving fast enough that one Euler
+        // sub-step would jump > ~half a pairwise radius, increase subSteps
+        // up to maxSubSteps. This keeps spring & contact resolution stable
+        // through transient impacts without paying the cost every frame.
+        let subSteps = Math.max(1, p.subSteps | 0);
+        if (p.adaptiveSubSteps) {
+          // worst-case velocity (pixels / second)
+          let vmax2 = 0;
+          for (let i = 0; i < s.N; i++) {
+            const vx = s.v[i * 2], vy = s.v[i * 2 + 1];
+            const v2 = vx * vx + vy * vy;
+            if (v2 > vmax2) vmax2 = v2;
+          }
+          const vmax = Math.sqrt(vmax2);
+          // worst-case edge stretch ratio (|edge| / rest)
+          let stretchMax = 1;
+          const E = (s.edges.length / 2) | 0;
+          for (let e = 0; e < E; e++) {
+            const i = s.edges[e * 2], j = s.edges[e * 2 + 1];
+            const dx = s.x[j * 2] - s.x[i * 2];
+            const dy = s.x[j * 2 + 1] - s.x[i * 2 + 1];
+            const L = Math.hypot(dx, dy);
+            const rest = s.edgeRest[e] || 1;
+            const r = L / rest;
+            if (r > stretchMax) stretchMax = r;
+          }
+          // Triggers: ≥1 sub-step per (vmax * dt) / (radius/2),
+          // and ≥1 per (stretch - 1) / 0.15 (i.e. 1 extra per 15% over rest).
+          const motionTrigger = (vmax * dt) / Math.max(1, p.pairwiseRadius * 0.5);
+          const stretchTrigger = Math.max(0, stretchMax - 1.0) / 0.15;
+          const need = Math.ceil(Math.max(motionTrigger, stretchTrigger, 1));
+          subSteps = Math.min(Math.max(p.maxSubSteps | 0, subSteps), Math.max(subSteps, need));
+        }
         const subDt = dt / subSteps;
         const k = p.springK;
         const pStr = p.pairwiseStrength;
