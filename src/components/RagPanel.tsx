@@ -1,12 +1,18 @@
 // Retrieval-Augmented Physics Reasoning — UI panel
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Sparkles, AlertTriangle, Loader2 } from "lucide-react";
 import { loadGraph, type Graph } from "@/lib/knowledgeGraph";
 import {
   retrieveAll,
   synthesizeQuery,
   type RagContext,
 } from "@/lib/ragRetrieval";
+import {
+  recommendSimulationParameters,
+  type Recommendation,
+} from "@/server/physicsReasoner.functions";
 
 const PRESETS = [
   "thin-wall bracket high stress aluminum",
@@ -38,6 +44,26 @@ export function RagPanel() {
     });
     return retrieveAll(q, graph, k);
   }, [text, target, proc, k, graph]);
+
+  const [reco, setReco] = useState<Recommendation | null>(null);
+  const [reasoning, setReasoning] = useState(false);
+  const [recoError, setRecoError] = useState<string | null>(null);
+
+  const runReasoner = async () => {
+    setReasoning(true);
+    setRecoError(null);
+    setReco(null);
+    try {
+      const r = await recommendSimulationParameters({
+        data: { contextPrompt: renderPrompt(ctx), query: text },
+      });
+      setReco(r);
+    } catch (e) {
+      setRecoError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setReasoning(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -129,13 +155,85 @@ export function RagPanel() {
 
       {/* synthesized prompt context preview */}
       <div className="rounded-md border border-border bg-card/60 p-3">
-        <div className="text-[9px] uppercase tracking-[0.22em] text-muted-foreground mb-1">
-          context · ready for downstream reasoner
+        <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+          <div className="text-[9px] uppercase tracking-[0.22em] text-muted-foreground">
+            context · ready for downstream reasoner
+          </div>
+          <Button
+            size="sm"
+            onClick={runReasoner}
+            disabled={reasoning}
+            className="uppercase tracking-[0.16em] text-[10px]"
+          >
+            {reasoning
+              ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> reasoning…</>
+              : <><Sparkles className="h-3 w-3 mr-1" /> recommend sim parameters</>}
+          </Button>
         </div>
         <pre className="text-[10px] font-mono text-foreground/80 whitespace-pre-wrap break-words max-h-56 overflow-auto">
 {renderPrompt(ctx)}
         </pre>
       </div>
+
+      {recoError && (
+        <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-[11px] text-destructive flex items-start gap-2">
+          <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+          <span>{recoError}</span>
+        </div>
+      )}
+
+      {reco && (
+        <div className="rounded-md border border-primary/40 bg-primary/[0.04] p-3 space-y-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="text-[10px] uppercase tracking-[0.22em] text-primary">
+              recommended next simulation
+            </div>
+            <Badge variant="outline" className="text-[10px]">
+              confidence · {(reco.confidence * 100).toFixed(0)}%
+            </Badge>
+          </div>
+          <p className="text-[11px] text-foreground/85 leading-relaxed">
+            {reco.rationale}
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {reco.parameters.map((p, i) => (
+              <div key={i} className="rounded border border-border/60 bg-background/40 p-2">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                    {p.name}
+                  </span>
+                  <span className="font-mono text-[12px] text-foreground tabular-nums">
+                    {String(p.value)}{p.unit ? ` ${p.unit}` : ""}
+                  </span>
+                </div>
+                <div className="text-[10px] text-muted-foreground/80 mt-1">
+                  {p.rationale}
+                </div>
+              </div>
+            ))}
+          </div>
+          {reco.warnings.length > 0 && (
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.18em] text-destructive mb-1">
+                warnings
+              </div>
+              <ul className="space-y-0.5 text-[11px] text-destructive/90 font-mono">
+                {reco.warnings.map((w, i) => <li key={i}>· {w}</li>)}
+              </ul>
+            </div>
+          )}
+          {reco.nextActions.length > 0 && (
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground mb-1">
+                next actions
+              </div>
+              <ul className="space-y-0.5 text-[11px] text-foreground/85 font-mono">
+                {reco.nextActions.map((a, i) => <li key={i}>→ {a}</li>)}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
