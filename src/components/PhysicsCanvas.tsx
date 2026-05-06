@@ -85,6 +85,7 @@ export type SimParams = {
   potentialGrad: "analytic" | "finite-diff";
   fieldSampling: "auto" | "clamp" | "wrap" | "none";
   showFieldArrows: boolean;
+  debugForces: boolean;
   adaptiveSubSteps: boolean;
   maxSubSteps: number;
   pairwiseAlgo: "grid" | "all-pairs";
