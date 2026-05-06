@@ -20,7 +20,7 @@ export const Route = createFileRoute("/api/public/telemetry/stream")({
     handlers: {
       OPTIONS: async () => new Response(null, { status: 204, headers: CORS }),
 
-      GET: async ({ request }) => {
+      GET: async ({ request }: { request: Request }) => {
         const stream = new ReadableStream<Uint8Array>({
           start(controller) {
             const enc = new TextEncoder();
@@ -32,7 +32,6 @@ export const Route = createFileRoute("/api/public/telemetry/stream")({
               } catch { /* stream closed */ }
             };
 
-            // Initial hello + recent backfill so late subscribers have context.
             send("hello", { stats: telemetryBus.stats(), at: Date.now() });
             for (const s of telemetryBus.recent(16)) send("sample", s);
 
@@ -40,7 +39,6 @@ export const Route = createFileRoute("/api/public/telemetry/stream")({
               send("sample", s);
             });
 
-            // Keep-alive comment every 15 s — proxies kill idle SSE streams.
             const ping = setInterval(() => {
               try { controller.enqueue(enc.encode(`: ping ${Date.now()}\n\n`)); }
               catch { /* closed */ }
@@ -68,4 +66,4 @@ export const Route = createFileRoute("/api/public/telemetry/stream")({
       },
     },
   },
-});
+} as never);

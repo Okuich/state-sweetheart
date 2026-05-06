@@ -30,7 +30,7 @@ export const Route = createFileRoute("/api/public/telemetry")({
           recent: telemetryBus.recent(32),
         }),
 
-      POST: async ({ request }) => {
+      POST: async ({ request }: { request: Request }) => {
         let raw: unknown;
         try { raw = await request.json(); }
         catch { return json({ error: "invalid JSON body" }, { status: 400 }); }
@@ -51,4 +51,4 @@ export const Route = createFileRoute("/api/public/telemetry")({
       },
     },
   },
-});
+} as never);
