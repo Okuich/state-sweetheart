@@ -6,6 +6,9 @@ import {
 import {
   analyzeGeometry, type FeatureIntelligence, type Severity,
 } from "@/lib/geometryFeatures";
+import { mapGeometryToLearningVector, designBridge } from "@/lib/geometryToLearning";
+import { FEATURE_NAMES } from "@/lib/learningEngine";
+import { Send } from "lucide-react";
 
 const VARIANTS: { label: string; src: string }[] = [
   { label: "cube · canonical", src: SAMPLE_STEP },
@@ -63,7 +66,9 @@ function RiskBar({ label, value }: { label: string; value: number }) {
 export function GeometryFeaturePanel() {
   const [variant, setVariant] = useState(0);
   const [intel, setIntel] = useState<FeatureIntelligence | null>(null);
+  const [desc, setDesc] = useState<ReturnType<typeof describe> | null>(null);
   const [running, setRunning] = useState(false);
+  const [pushed, setPushed] = useState<number | null>(null);
 
   const run = (idx = variant) => {
     setRunning(true);
@@ -71,9 +76,25 @@ export function GeometryFeaturePanel() {
       const r = parseStep(VARIANTS[idx].src);
       const t = buildTopology(r);
       const d = describe(r, t);
+      setDesc(d);
       setIntel(analyzeGeometry(r, t, d));
       setRunning(false);
     });
+  };
+
+  const mapped = useMemo(
+    () => (intel && desc ? mapGeometryToLearningVector(intel, desc) : null),
+    [intel, desc],
+  );
+
+  const sendToLearningEngine = () => {
+    if (!mapped) return;
+    designBridge.publish({
+      ...mapped,
+      ts: Date.now(),
+      variantName: VARIANTS[variant].label,
+    });
+    setPushed(Date.now());
   };
 
   const embView = useMemo(() => {
@@ -235,6 +256,51 @@ export function GeometryFeaturePanel() {
               </div>
             </div>
           </div>
+
+          {/* Mapped → learning-engine vector */}
+          {mapped && (
+            <div className="rounded-md border border-primary/40 bg-primary/[0.04] p-3 space-y-2">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+                    learning-engine vector · 12-d
+                  </div>
+                  <div className="text-[11px] text-foreground/85">
+                    Mapped from this design — push to update model predictions.
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={sendToLearningEngine}
+                  className="uppercase tracking-[0.16em] text-[10px]"
+                >
+                  <Send className="h-3 w-3 mr-1" />
+                  send to learning engine
+                </Button>
+              </div>
+              {pushed && (
+                <div className="text-[10px] text-primary font-mono">
+                  ✓ published @ {new Date(pushed).toLocaleTimeString()}
+                </div>
+              )}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-1 text-[10px] font-mono">
+                {FEATURE_NAMES.map((name, i) => (
+                  <div key={name}
+                    className="rounded border border-border/60 px-1.5 py-1"
+                    title={mapped.rationale[name]}
+                  >
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground truncate">{name}</span>
+                      <span className="text-foreground/90 tabular-nums">{mapped.vector[i].toFixed(2)}</span>
+                    </div>
+                    <div className="h-0.5 bg-muted-foreground/15 mt-0.5 rounded">
+                      <div className="h-full bg-primary rounded" style={{ width: `${mapped.vector[i] * 100}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>
