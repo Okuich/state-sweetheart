@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { compileFieldExpr } from "@/lib/exprCompile";
 import { WorldMemoryPanel } from "@/components/WorldMemoryPanel";
 import { AgentsPanel } from "@/components/AgentsPanel";
+import { EconomicsPanel } from "@/components/EconomicsPanel";
 import { saveSnapshot } from "@/lib/worldMemory";
 
 export const Route = createFileRoute("/")({
@@ -728,6 +729,14 @@ function Index() {
           onApplyPatch={(patch) => setParams((p) => ({ ...p, ...patch }))}
           onReset={() => setResetKey((k) => k + 1)}
           onSnapshot={(label) => saveSnapshot(label, params, loss)}
+        />
+      </section>
+
+      {/* Simulation Economics Engine — runtime cost / energy / scheduler */}
+      <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
+        <EconomicsPanel
+          params={params}
+          onApplyPatch={(patch) => setParams((p) => ({ ...p, ...patch }))}
         />
       </section>
 
