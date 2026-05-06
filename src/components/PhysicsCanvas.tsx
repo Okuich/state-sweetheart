@@ -1003,6 +1003,13 @@ export function PhysicsCanvas({
         const partEnd   = (q: number) => Math.floor(((q + 1) * s.N) / W);
 
         for (let t = 0; t < subSteps; t++) {
+          // Re-prime fPrev whenever we (re)enter verlet from another integrator.
+          // s.fPrev still holds whatever was there before — could be zeros
+          // (fresh state) or stale euler-era forces — neither is valid as a₀.
+          if (p.integrator === "verlet" && prevIntegratorRef.current !== "verlet") {
+            s.verletPrimed = false;
+          }
+          prevIntegratorRef.current = p.integrator;
           // Velocity-Verlet drift uses the PREVIOUS step's forces (s.fPrev)
           // for the first half-kick, then advances positions. This must run
           // BEFORE we recompute forces for the new positions.
