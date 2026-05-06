@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { StepTopologyGraph } from "@/components/StepTopologyGraph";
 import {
   parseStep, buildTopology, describe, validate, repair,
   SAMPLE_STEP,
