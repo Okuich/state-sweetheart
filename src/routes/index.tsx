@@ -250,20 +250,19 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          state.py — PhysicsState.to(device, dtype)
+          constraints.py — PBD distance solver
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`def to(self, device: str, dtype=torch.float32) -> "PhysicsState":
-    """Cast every tensor to the target device + dtype.
-    f is reinitialized to zeros so stale forces never cross devices."""
-    if self.device == device and self.dtype == dtype:
-        return self
-    self.x = self.x.to(device=device, dtype=dtype)
-    self.v = self.v.to(device=device, dtype=dtype)
-    self.m = self.m.to(device=device, dtype=dtype)
-    self.f = torch.zeros_like(self.x)        # same device, same dtype
-    self.device, self.dtype = device, dtype
-    return self`}
+{`def project_constraints(state, constraints, iterations=10):
+    for _ in range(iterations):
+        for c in constraints:                      # Gauss-Seidel sweep
+            i, j = c.nodes
+            diff = state.x[i] - state.x[j]
+            dist = norm(diff) + 1e-8
+            wi, wj = 1 / state.m[i], 1 / state.m[j]
+            corr = (dist - c.rest_length) / dist / (wi + wj) * diff
+            state.x[i] -= wi * corr                # split by inverse mass
+            state.x[j] += wj * corr`}
         </pre>
       </footer>
     </main>
