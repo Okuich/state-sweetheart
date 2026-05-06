@@ -109,7 +109,7 @@ describe("FaultTolerantOrchestrator", () => {
     expect(evt.restoredFromStep).toBeLessThanOrEqual(5);
     expect(evt.restoredFromStep % 2).toBe(0); // cpEvery=2 → checkpoints at even steps
     // Shrink map: rank 2 → -1, others renumbered contiguously.
-    expect(Array.from(evt.shrinkMap)).toEqual([0, -1, 1, 2]);
+    expect(Array.from(evt.shrinkMap)).toEqual([0, 1, -1, 2]);
     // Still completed the requested step count.
     expect(res.steps).toBe(10);
     // Final digest is non-empty + well-formed.
