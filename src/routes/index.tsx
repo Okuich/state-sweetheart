@@ -8,6 +8,7 @@ import { WorldMemoryPanel } from "@/components/WorldMemoryPanel";
 import { AgentsPanel } from "@/components/AgentsPanel";
 import { EconomicsPanel } from "@/components/EconomicsPanel";
 import { GatewayPanel } from "@/components/GatewayPanel";
+import { TemplatesPanel } from "@/components/TemplatesPanel";
 import { saveSnapshot } from "@/lib/worldMemory";
 
 export const Route = createFileRoute("/")({
