@@ -206,12 +206,11 @@ function hasCleared(v: number, rule: AlertRule): boolean {
 
 function normalizeRule(r: AlertRule): AlertRule {
   return {
+    ...r,
     enabled: r.enabled ?? true,
     consecutive: Math.max(1, Math.floor(r.consecutive ?? 1)),
     clearMargin: r.clearMargin ?? 0.1,
-    ...r,
-    consecutive_resolved: undefined,
-  } as AlertRule & { consecutive_resolved?: undefined };
+  };
 }
 
 // ---------- preset rules ----------
