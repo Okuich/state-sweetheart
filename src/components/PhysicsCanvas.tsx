@@ -832,7 +832,9 @@ export function PhysicsCanvas({
         return;
       }
 
-      if (!p.paused) {
+      const stepRequested = (p.stepOnce ?? 0) > stepOnceRef.current;
+      if (stepRequested) stepOnceRef.current = p.stepOnce ?? 0;
+      if (!p.paused || stepRequested) {
         // run_simulation(state, config): for t in range(config.steps): ...
         // Adaptive sub-stepping: when edges are stretched well past their
         // rest length OR particles are moving fast enough that one Euler
