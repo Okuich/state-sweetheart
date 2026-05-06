@@ -83,6 +83,7 @@ function Index() {
     pairwiseMode: "lj",
     boundary: "walls",
     forceViz: "off",
+    potentialGrad: "analytic",
   });
   const [resetKey, setResetKey] = useState(0);
   const [validation, setValidation] = useState<ValidationReport | null>(null);
