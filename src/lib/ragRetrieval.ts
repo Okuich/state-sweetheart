@@ -161,8 +161,20 @@ export function optimMemory(q: RagQuery, g: Graph, k = 5): Retrieved<OptimRecord
 }
 
 // ─── compose context for downstream reasoner ────────────────
+export type RetrievalWeights = {
+  geometry: number;
+  topology: number;
+  failure: number;
+  optim: number;
+};
+
+export const DEFAULT_WEIGHTS: RetrievalWeights = {
+  geometry: 1, topology: 1, failure: 1, optim: 1,
+};
+
 export type RagContext = {
   query: RagQuery;
+  weights: RetrievalWeights;
   geometry: Retrieved<GraphNode>[];
   topology: Retrieved<GraphNode>[];
   failures: Retrieved<GraphNode>[];
@@ -170,11 +182,26 @@ export type RagContext = {
   summary: string;
 };
 
-export function retrieveAll(q: RagQuery, g: Graph = loadGraph(), k = 5): RagContext {
-  const geometry      = geometryKNN(q, g, k);
-  const topology      = topologyMatch(q, g, k);
-  const failures      = failureLookup(q, g, k);
-  const optimizations = optimMemory(q, g, k);
+function reweight<T>(items: Retrieved<T>[], w: number, k: number): Retrieved<T>[] {
+  if (w <= 0) return [];
+  return items
+    .map((r) => ({ ...r, score: r.score * w }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, k);
+}
+
+export function retrieveAll(
+  q: RagQuery,
+  g: Graph = loadGraph(),
+  k = 5,
+  weights: RetrievalWeights = DEFAULT_WEIGHTS,
+): RagContext {
+  // pull a wider pool, then re-rank with weights and trim to k
+  const pool = Math.max(k * 2, 10);
+  const geometry      = reweight(geometryKNN(q, g, pool),   weights.geometry, k);
+  const topology      = reweight(topologyMatch(q, g, pool), weights.topology, k);
+  const failures      = reweight(failureLookup(q, g, pool), weights.failure,  k);
+  const optimizations = reweight(optimMemory(q, g, pool),   weights.optim,    k);
 
   const summary = [
     `K=${k} retrievals over graph(${g.nodes.length} nodes, ${g.edges.length} edges)`,
