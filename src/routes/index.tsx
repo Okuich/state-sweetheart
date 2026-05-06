@@ -72,6 +72,7 @@ function Index() {
     integrator: "euler",
     dtype: "float32",
     device: "cpu",
+    constraintIters: 0,
   });
   const [resetKey, setResetKey] = useState(0);
   const [validation, setValidation] = useState<ValidationReport | null>(null);

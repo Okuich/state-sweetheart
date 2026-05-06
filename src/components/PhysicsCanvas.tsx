@@ -408,6 +408,8 @@ export function PhysicsCanvas({
         }
         // Integrate — PhysicsState.step(dt): a = f/m, advance v and x
         stepState(s, dt, p.damping, w, h, p.integrator);
+        // project_constraints — PBD distance solver on edges
+        projectConstraints(s, p.constraintIters, dt);
       }
 
       // Render edges
