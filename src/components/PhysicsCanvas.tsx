@@ -958,7 +958,7 @@ export function PhysicsCanvas({
       }
       let PE_field = 0;
       if (p.field !== "none" && p.fieldStrength !== 0) {
-        const sc = p.fieldStrength * 1500;
+        const sc = p.fieldStrength * 1500 * (Math.max(w, h) / 800) ** 2 * 1.2;
         for (let i = 0; i < s.N; i++) {
           PE_field += sc * fieldPotential(p.field, s.x[i * 2], s.x[i * 2 + 1], w, h);
         }
