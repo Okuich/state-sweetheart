@@ -318,7 +318,6 @@ loss = loss_fn(state)
 loss.backward()                          # ∂L/∂x  flows back through every step
 optimizer.step()                         # x ← x - lr · ∂L/∂x`}
         </pre>
-        </pre>
       </footer>
     </main>
   );
