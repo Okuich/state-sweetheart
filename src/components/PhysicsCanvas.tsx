@@ -216,6 +216,46 @@ function verletKick(
  */
 type FieldName = "none" | "swirl" | "wells" | "ripple";
 export type PotentialGrad = "analytic" | "finite-diff";
+export type FieldSampling = "auto" | "clamp" | "wrap" | "none";
+
+/**
+ * sampleCoords — map a particle's world position into the coordinate the
+ * field is sampled at. This is what makes Φ behave correctly at canvas
+ * edges, especially for "wrap"/"periodic" boundaries where a particle
+ * that just teleported across the seam would otherwise see a wildly
+ * different ∇Φ from one frame to the next.
+ *
+ *   "auto"  — follow the simulation boundary mode (the right answer 95%
+ *             of the time): walls→clamp, wrap/periodic→wrap.
+ *   "clamp" — clip x∈[0,w], y∈[0,h]. Useful for Gaussian wells/ripples
+ *             where Φ has a meaningful "outside" but you don't want the
+ *             field to run away if a particle briefly leaks past a wall.
+ *   "wrap"  — modulo into [0,w)×[0,h), i.e. treat Φ as a torus. Required
+ *             for periodic boundaries to keep ∇Φ continuous across the seam.
+ *   "none"  — pass coords through untouched (legacy behavior; lets Φ be
+ *             evaluated arbitrarily far outside the canvas).
+ *
+ * Returns [x, y] in the same units as the input.
+ */
+function resolveSampling(mode: FieldSampling, b: Boundary): "clamp" | "wrap" | "none" {
+  if (mode !== "auto") return mode;
+  return b === "walls" ? "clamp" : "wrap";
+}
+
+function sampleCoords(mode: "clamp" | "wrap" | "none", x: number, y: number, w: number, h: number): [number, number] {
+  if (mode === "none") return [x, y];
+  if (mode === "clamp") {
+    return [
+      x < 0 ? 0 : x > w ? w : x,
+      y < 0 ? 0 : y > h ? h : y,
+    ];
+  }
+  // wrap: positive-modulo so negative coords land back inside the box
+  const xm = ((x % w) + w) % w;
+  const ym = ((y % h) + h) % h;
+  return [xm, ym];
+}
+
 
 function fieldPotential(name: FieldName, x: number, y: number, w: number, h: number): number {
   const cx = w * 0.5, cy = h * 0.5;
