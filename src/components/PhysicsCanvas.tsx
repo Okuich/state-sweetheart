@@ -642,6 +642,7 @@ export function PhysicsCanvas({
           }
 
 
+          // 3. springs on ALL edges — interior edges are local to one
           // worker; boundary edges (i,j in different partitions) are the
           // sync points exchanged between workers.
           for (let e = 0; e < s.E; e++) {
