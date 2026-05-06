@@ -477,6 +477,25 @@ function Index() {
         </div>
 
         <div className="space-y-2">
+          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Pairwise algo</div>
+          <div className="grid grid-cols-2 gap-1.5">
+            {(["grid", "all-pairs"] as const).map((opt) => (
+              <Button
+                key={opt}
+                variant={params.pairwiseAlgo === opt ? "default" : "outline"}
+                className={`uppercase tracking-[0.14em] text-[9px] px-1 ${
+                  params.pairwiseAlgo === opt ? "bg-accent text-accent-foreground" : ""
+                }`}
+                onClick={() => update("pairwiseAlgo", opt)}
+                title={opt === "grid" ? "Uniform spatial grid: O(N), 5-20x faster" : "All-pairs O(N^2): reference baseline"}
+              >
+                {opt}
+              </Button>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-2">
           <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Boundary</div>
           <div className="grid grid-cols-3 gap-1.5">
             {(["walls", "wrap", "periodic"] as const).map((opt) => (
