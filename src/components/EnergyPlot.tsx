@@ -177,28 +177,6 @@ function Stat({ label, value, accent }: { label: string; value: string; accent: 
   );
 }
 
-function useTick(intervalMs = 100) {
-  const ref = useRef(0);
-  // re-render at intervalMs
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      ref.current = (ref.current + 1) >>> 0;
-      // trigger re-render via state setter substitute
-      setRerender((x) => x + 1);
-    }, intervalMs);
-    return () => window.clearInterval(id);
-  }, [intervalMs]);
-  const [, setRerender] = useStateRef();
-  return [ref.current, setRerender] as const;
-}
-
-function useStateRef() {
-  // tiny useState shim avoiding a separate import line
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const useStateImpl = require("react").useState as <T>(v: T) => [T, (v: T | ((p: T) => T)) => void];
-  return useStateImpl(0);
-}
-
 function drawSeries(
   ctx: CanvasRenderingContext2D,
   s: Series,
