@@ -601,7 +601,7 @@ function stepStateRange(
  * with the mean of its neighbors on the *other* side of the seam — that
  * is exactly what the all-reduce mean would settle to after one round.
  */
-function syncBoundaries(s: State, partOf: (i: number) => number) {
+function syncBoundaries(s: State, partOf: (i: number) => number, idx?: BoundaryIndex | null) {
   if (s.E === 0) return;
   // Per-node accumulators for the "other-side" neighborhood mean.
   const sumX = new Float64Array(s.N * 2);
