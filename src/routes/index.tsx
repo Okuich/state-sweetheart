@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PhysicsCanvas, type SimParams, type ValidationReport } from "@/components/PhysicsCanvas";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
@@ -88,9 +88,37 @@ function Index() {
   const [validation, setValidation] = useState<ValidationReport | null>(null);
   const [loss, setLoss] = useState<number | null>(null);
   const pointerRef = useRef({ x: 0, y: 0, active: false, mode: 1 as 1 | -1 });
+  const [webgpuStatus, setWebgpuStatus] = useState<"checking" | "available" | "unavailable">("checking");
 
   const update = <K extends keyof SimParams>(k: K, v: SimParams[K]) =>
     setParams((p) => ({ ...p, [k]: v }));
+
+  // Detect WebGPU support; auto-fall back to CPU if user picked webgpu on an unsupported browser.
+  useEffect(() => {
+    let cancelled = false;
+    const detect = async () => {
+      const gpu = (typeof navigator !== "undefined" ? (navigator as Navigator & { gpu?: { requestAdapter: () => Promise<unknown> } }).gpu : undefined);
+      if (!gpu) {
+        if (!cancelled) setWebgpuStatus("unavailable");
+        return;
+      }
+      try {
+        const adapter = await gpu.requestAdapter();
+        if (cancelled) return;
+        setWebgpuStatus(adapter ? "available" : "unavailable");
+      } catch {
+        if (!cancelled) setWebgpuStatus("unavailable");
+      }
+    };
+    detect();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (webgpuStatus === "unavailable" && params.device === "webgpu") {
+      setParams((p) => ({ ...p, device: "cpu" }));
+    }
+  }, [webgpuStatus, params.device]);
 
   return (
     <main className="relative min-h-screen overflow-hidden">
@@ -110,6 +138,30 @@ function Index() {
           <span>device · {params.device}</span>
           <span className="text-muted-foreground/50">/</span>
           <span>dtype · {params.dtype}</span>
+          <span className="text-muted-foreground/50">/</span>
+          <span
+            className={
+              webgpuStatus === "available"
+                ? "text-accent"
+                : webgpuStatus === "unavailable"
+                ? "text-destructive"
+                : "text-muted-foreground/70"
+            }
+            title={
+              webgpuStatus === "available"
+                ? "navigator.gpu detected — WebGPU adapter available"
+                : webgpuStatus === "unavailable"
+                ? "navigator.gpu unavailable — falling back to CPU"
+                : "Probing navigator.gpu…"
+            }
+          >
+            webgpu ·{" "}
+            {webgpuStatus === "available"
+              ? "ready"
+              : webgpuStatus === "unavailable"
+              ? "unsupported → cpu fallback"
+              : "checking…"}
+          </span>
         </div>
       </header>
 
