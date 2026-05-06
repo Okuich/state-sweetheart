@@ -44,6 +44,21 @@ export function LearningEnginePanel() {
     new Array(D).fill(0.5)
   );
 
+  // Live design from GeometryFeaturePanel (via designBridge).
+  const [liveDesign, setLiveDesign] = useState<PublishedDesign | null>(
+    () => designBridge.current(),
+  );
+  const [autoApply, setAutoApply] = useState(true);
+
+  useEffect(() => designBridge.subscribe((d) => {
+    setLiveDesign(d);
+    if (d && autoApply) setCandidate(d.vector.slice());
+  }), [autoApply]);
+
+  const applyLiveDesign = () => {
+    if (liveDesign) setCandidate(liveDesign.vector.slice());
+  };
+
   const fit = async () => {
     setRunning(true);
     cancelRef.current = false;
