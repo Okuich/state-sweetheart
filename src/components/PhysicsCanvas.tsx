@@ -1347,6 +1347,9 @@ export function PhysicsCanvas({
         `MC K      ${s.K}`,
         `σ̄ (px)    ${s.K > 0 ? sigMean.toFixed(2) : "—"}`,
         `P(c≤${(p.constraintTol*100).toFixed(1)}%)  ${s.K > 0 ? (pConstraint*100).toFixed(1)+"%" : "—"}`,
+        `twin M    ${p.twinEnabled ? twinSensorsRef.current.length : 0}`,
+        `res EMA   ${p.twinEnabled ? twinResidualEmaRef.current.toFixed(1)+"px" : "—"}`,
+        `anomalies ${p.twinEnabled ? twinAnomalyCountRef.current : "—"}`,
       ];
       const padX = 10, padY = 8, lineH = 14;
       const panelW = 188;
