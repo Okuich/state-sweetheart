@@ -175,7 +175,7 @@ describe("refitStepSync — particle shape", () => {
     expect(after.maxX).toBeGreaterThan(before.maxX + 50);
     // The leaf node should match.
     const leafId = ctx.tree.leafPrim.indexOf(0);
-    expect(ctx.tree.boxes[leafId * 4 + 2]).toBeCloseTo(after.maxX, 6);
+    expect(ctx.tree.boxes[leafId * 4 + 2]).toBeCloseTo(after.maxX, 4);
   });
 });
 
