@@ -1553,7 +1553,59 @@ export function PhysicsCanvas({
           PE_field += sc * fieldPotential(p.field, px, py, w, h, customFnRef.current, (now - tStartRef.current) / 1000);
         }
       }
-      const PE_total = PE_grav + PE_spring + PE_field;
+
+      // ── PE_pairwise: exact integral of the kernel's pairwise force ─
+      // Each mode below sets U(r) such that  F_i = −∇_i U  matches the
+      // force model used in the simulation kernel (search "Pairwise force
+      // model" above). We anchor U(r_cut)=0 so contributions vanish at the
+      // interaction cutoff and the sum is finite.
+      //
+      //   repel:    fmag =  pStr·σ²/r²            →  U =  pStr·σ²·(1/r − 1/r_cut)
+      //   attract:  fmag = −pStr·(1 − r/rad)      →  U =  pStr·(r − r²/(2·rad)) + const
+      //   lj-ish:   fmag =  pStr·(σ²/r² − σ/r)    →  U =  pStr·(σ·ln(r/r_cut)
+      //                                                + σ²·(1/r − 1/r_cut))
+      // where σ = norm = pRad·0.5 and r_cut = pRad. Boundary handling
+      // (periodic minimum-image) mirrors the force loop exactly so PE is
+      // consistent with whatever the kernel actually computed.
+      let PE_pair = 0;
+      const pStrE = p.pairwiseStrength;
+      const pRadE = p.pairwiseRadius;
+      if (pStrE !== 0 && pRadE > 0 && s.N > 1) {
+        const r2maxE = pRadE * pRadE;
+        const sigE   = pRadE * 0.5;
+        const rc     = pRadE;
+        const invRc  = 1 / rc;
+        const periodic = p.boundary === "periodic";
+        for (let i = 0; i < s.N; i++) {
+          const xi = s.x[i * 2], yi = s.x[i * 2 + 1];
+          for (let j = i + 1; j < s.N; j++) {
+            let dx = xi - s.x[j * 2];
+            let dy = yi - s.x[j * 2 + 1];
+            if (periodic) {
+              if (dx >  w * 0.5) dx -= w; else if (dx < -w * 0.5) dx += w;
+              if (dy >  h * 0.5) dy -= h; else if (dy < -h * 0.5) dy += h;
+            }
+            const r2 = dx * dx + dy * dy;
+            if (r2 > r2maxE || r2 < 1e-4) continue;
+            const r = Math.sqrt(r2);
+            let u: number;
+            if (p.pairwiseMode === "repel") {
+              u = pStrE * sigE * sigE * (1 / r - invRc);
+            } else if (p.pairwiseMode === "attract") {
+              // U(r) = pStr·(r − r²/(2·rad)) anchored at U(rc)=0
+              const Ur  = pStrE * (r  - (r  * r ) / (2 * pRadE));
+              const Urc = pStrE * (rc - (rc * rc) / (2 * pRadE));
+              u = Ur - Urc;
+            } else {
+              // lj-ish
+              u = pStrE * (sigE * Math.log(r / rc) + sigE * sigE * (1 / r - invRc));
+            }
+            PE_pair += u;
+          }
+        }
+      }
+
+      const PE_total = PE_grav + PE_spring + PE_field + PE_pair;
       const E_total  = KE + PE_total;
 
       // Rebase baseline when N changes OR integrator changes — comparing
@@ -1648,6 +1700,7 @@ export function PhysicsCanvas({
         `PE grav   ${fmt(PE_grav)}`,
         `PE spring ${fmt(PE_spring)}`,
         `PE field  ${fmt(PE_field)}`,
+        `PE pair   ${fmt(PE_pair)}`,
         `── total  ${fmt(E_total)}`,
         `Δ since   ${drift >= 0 ? "+" : ""}${fmt(drift)}`,
         `Δ/E₀      ${(relDrift >= 0 ? "+" : "")}${(relDrift * 100).toFixed(3)}%`,
@@ -1700,15 +1753,15 @@ export function PhysicsCanvas({
         absRel < 0.05 ? "oklch(0.84 0.16 85)"  : "oklch(0.78 0.20 35)";
       for (let li = 0; li < lines.length; li++) {
         if (li === 0)       ctx.fillStyle = "oklch(0.78 0.14 230)";
-        else if (li === 5)  ctx.fillStyle = "oklch(0.94 0.04 230)";
-        else if (li === 6)  ctx.fillStyle = drift >= 0 ? "oklch(0.78 0.18 35)" : "oklch(0.78 0.18 150)";
-        else if (li === 7)  ctx.fillStyle = stabColor;
-        else if (li === 8)  ctx.fillStyle = "oklch(0.84 0.10 230 / 0.9)";
+        else if (li === 6)  ctx.fillStyle = "oklch(0.94 0.04 230)";
+        else if (li === 7)  ctx.fillStyle = drift >= 0 ? "oklch(0.78 0.18 35)" : "oklch(0.78 0.18 150)";
+        else if (li === 8)  ctx.fillStyle = stabColor;
         else if (li === 9)  ctx.fillStyle = "oklch(0.84 0.10 230 / 0.9)";
-        else if (li === 10) ctx.fillStyle = stabColor;
-        else if (li === 11) ctx.fillStyle = cColor(cMax);
-        else if (li === 12) ctx.fillStyle = cColor(cRms);
-        else if (li === 15) ctx.fillStyle = fpsColor;
+        else if (li === 10) ctx.fillStyle = "oklch(0.84 0.10 230 / 0.9)";
+        else if (li === 11) ctx.fillStyle = stabColor;
+        else if (li === 12) ctx.fillStyle = cColor(cMax);
+        else if (li === 13) ctx.fillStyle = cColor(cRms);
+        else if (li === 16) ctx.fillStyle = fpsColor;
         else                ctx.fillStyle = "oklch(0.78 0.04 230 / 0.85)";
         ctx.fillText(lines[li], panelX + padX, panelY + padY + li * lineH);
       }
