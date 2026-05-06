@@ -15,6 +15,7 @@ import {
   type Channel,
   type Observation,
 } from "@/lib/fabFeedback";
+import { scanImportBridge } from "@/lib/scanImportStore";
 
 export function FabFeedbackPanel() {
   const [state, setState] = useState<CalibrationState>(() => initState());
@@ -44,6 +45,14 @@ export function FabFeedbackPanel() {
       tickRef.current = null;
     };
   }, [streaming, seed]);
+
+  // ingest observations imported from external scan/quality reports
+  useEffect(() => {
+    return scanImportBridge.subscribe((batch) => {
+      setObs((prev) => [...prev.slice(-1500), ...batch]);
+      setState((prev) => ingestBatch(prev, batch));
+    });
+  }, []);
 
   const ingest = () => {
     const b = generateBatch(batchSize, seed + obs.length);
