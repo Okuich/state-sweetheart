@@ -131,6 +131,7 @@ function Index() {
     gravityMode: "uniform",
     gravityAngle: 90,
     damping: 0.4,
+    dragMode: "explicit",
     attractor: 1.2,
     particleCount: 400,
     trail: 0.22,
