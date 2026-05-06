@@ -97,6 +97,19 @@ export type SimParams = {
   confidenceZ: number;
   constraintTol: number;
   showConfidence: boolean;
+  // ── Digital Twin synchronization ──────────────────────────────────
+  // M synthetic sensors stream Lissajous "ground-truth" positions with
+  // Gaussian noise. Each frame the nearest particle is nudged toward
+  // its assigned reading (Kalman-lite blend with gain assimGain).
+  // anomalyZ: residual / sensorNoise; flags when the sim & telemetry
+  // diverge. forecastSteps: ballistic lookahead drawn as a fade trail.
+  twinEnabled: boolean;
+  twinSensorCount: number;
+  twinAssimGain: number;
+  twinSensorNoise: number;
+  twinAnomalyZ: number;
+  twinForecastSteps: number;
+  showTwin: boolean;
 };
 
 type FloatArr = Float32Array | Float64Array;
