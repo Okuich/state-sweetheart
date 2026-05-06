@@ -318,17 +318,9 @@ function stepStateRange(
   boundary: Boundary = "walls",
 ) {
   if (integrator === "verlet") {
-    for (let i = a; i < b; i++) {
-      const invM = 1 / s.m[i];
-      const ax = s.f[i * 2]     * invM;
-      const ay = s.f[i * 2 + 1] * invM;
-      s.x[i * 2]     += s.v[i * 2]     * dt + 0.5 * ax * dt * dt;
-      s.x[i * 2 + 1] += s.v[i * 2 + 1] * dt + 0.5 * ay * dt * dt;
-      s.fPrev[i * 2]     = s.f[i * 2];
-      s.fPrev[i * 2 + 1] = s.f[i * 2 + 1];
-      s.v[i * 2]     = (s.v[i * 2]     + 0.5 * ax * dt) * (1 - damping * dt);
-      s.v[i * 2 + 1] = (s.v[i * 2 + 1] + 0.5 * ay * dt) * (1 - damping * dt);
-    }
+    // Verlet's drift+kick are split around the force evaluation; the
+    // caller invokes verletDrift() BEFORE recomputing forces and
+    // verletKick() AFTER. This branch is now position-only damping wrap-up.
   } else if (integrator === "semi-euler") {
     for (let i = a; i < b; i++) {
       const invM = 1 / s.m[i];
