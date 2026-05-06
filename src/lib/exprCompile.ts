@@ -179,7 +179,7 @@ class Parser {
         return { k: "call", n: name as keyof typeof FNS, args };
       }
       if (!VARS.has(name)) this.err(`unknown identifier '${name}'`);
-      return { k: "var", n: name as Node & { k: "var" }["n"] };
+      return { k: "var", n: name as (keyof FieldEnv | "pi" | "e") };
     }
     this.err(c ? `unexpected '${c}'` : "unexpected end of expression");
   }
