@@ -386,7 +386,29 @@ function Index() {
         {params.gravityMode === "directional" && (
           <Field label="Gravity Angle (°)" value={params.gravityAngle} min={0} max={360} step={1} onChange={(v) => update("gravityAngle", v)} />
         )}
-        <Field label="Damping"   value={params.damping}   min={0}    max={1}   step={0.01} onChange={(v) => update("damping", v)} />
+        <Field label={params.dragMode === "force" ? "Drag k" : "Damping k"} value={params.damping} min={0} max={params.dragMode === "explicit" ? 1 : 8} step={0.01} onChange={(v) => update("damping", v)} />
+        <div className="space-y-2">
+          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Drag Mode</div>
+          <div className="grid grid-cols-3 gap-1.5">
+            {(["explicit", "exponential", "force"] as const).map((opt) => (
+              <Button
+                key={opt}
+                variant={params.dragMode === opt ? "default" : "outline"}
+                className={`uppercase tracking-[0.14em] text-[9px] px-1 ${
+                  params.dragMode === opt ? "bg-primary text-primary-foreground glow-mint" : ""
+                }`}
+                onClick={() => update("dragMode", opt)}
+                title={
+                  opt === "explicit"    ? "v *= (1 − k·dt)   — fast, may explode if k·dt > 1" :
+                  opt === "exponential" ? "v *= exp(−k·dt)   — unconditionally stable, exact" :
+                                          "F += −k·m·v        — drag enters as a real body force"
+                }
+              >
+                {opt}
+              </Button>
+            ))}
+          </div>
+        </div>
         <Field label="Restitution" value={params.restitution} min={0}  max={1}   step={0.01} onChange={(v) => update("restitution", v)} />
         <Field label="Attractor" value={params.attractor} min={0}    max={5}   step={0.1}  onChange={(v) => update("attractor", v)} />
         <Field label="Particles · N" value={params.particleCount} min={50} max={8000} step={50} onChange={(v) => update("particleCount", v)} />
