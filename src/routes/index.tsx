@@ -128,6 +128,8 @@ function CustomFieldEditor({
 function Index() {
   const [params, setParams] = useState<SimParams>({
     gravity: 60,
+    gravityMode: "uniform",
+    gravityAngle: 90,
     damping: 0.4,
     attractor: 1.2,
     particleCount: 400,
@@ -357,6 +359,31 @@ function Index() {
       <section className="relative z-10 mx-4 lg:mx-10 mb-10 grid gap-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm md:grid-cols-2 lg:grid-cols-3">
         <Field label="dt scale"  value={params.dtScale}   min={0.05} max={3}   step={0.05} onChange={(v) => update("dtScale", v)} />
         <Field label="Gravity"   value={params.gravity}   min={-200} max={400} step={1}    onChange={(v) => update("gravity", v)} />
+        <div className="space-y-2">
+          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Gravity Mode</div>
+          <div className="flex gap-2">
+            {(["uniform", "directional", "zero"] as const).map((opt) => (
+              <Button
+                key={opt}
+                variant={params.gravityMode === opt ? "default" : "outline"}
+                className={`flex-1 uppercase tracking-[0.18em] text-[10px] ${
+                  params.gravityMode === opt ? "bg-primary text-primary-foreground glow-mint" : ""
+                }`}
+                onClick={() => update("gravityMode", opt)}
+                title={
+                  opt === "uniform" ? "Classic +y body force" :
+                  opt === "directional" ? "Vector force along angle" :
+                  "No gravitational force"
+                }
+              >
+                {opt}
+              </Button>
+            ))}
+          </div>
+        </div>
+        {params.gravityMode === "directional" && (
+          <Field label="Gravity Angle (°)" value={params.gravityAngle} min={0} max={360} step={1} onChange={(v) => update("gravityAngle", v)} />
+        )}
         <Field label="Damping"   value={params.damping}   min={0}    max={1}   step={0.01} onChange={(v) => update("damping", v)} />
         <Field label="Restitution" value={params.restitution} min={0}  max={1}   step={0.01} onChange={(v) => update("restitution", v)} />
         <Field label="Attractor" value={params.attractor} min={0}    max={5}   step={0.1}  onChange={(v) => update("attractor", v)} />
