@@ -145,8 +145,59 @@ function toDevice(s: State, device: Device, dtype: Dtype): State {
  * Walls: elastic-ish reflection with restitution 0.7.
  */
 /**
- * project_constraints — Position-Based Dynamics (Gauss-Seidel) distance solver.
+ * Differentiable scalar potential fields Φ(x, y) and helpers.
  *
+ * In PyTorch you'd do:
+ *     potential = field_fn(state.x).sum()
+ *     forces    = -autograd.grad(potential, state.x)[0]
+ *
+ * Here we mimic the same contract with a small finite-difference gradient,
+ * which is the same operation autograd performs analytically. Closed-form
+ * gradients would be faster — finite differences keep the field plug-and-play.
+ */
+type FieldName = "none" | "swirl" | "wells" | "ripple";
+
+function fieldPotential(name: FieldName, x: number, y: number, w: number, h: number): number {
+  const cx = w * 0.5, cy = h * 0.5;
+  const nx = (x - cx) / Math.max(w, h);
+  const ny = (y - cy) / Math.max(w, h);
+  switch (name) {
+    case "swirl":
+      // Spiral well: radial sink + angular twist
+      return 0.5 * (nx * nx + ny * ny) + 0.25 * Math.sin(6 * Math.atan2(ny, nx));
+    case "wells": {
+      // Two Gaussian wells
+      const d1 = (nx + 0.18) ** 2 + (ny - 0.0) ** 2;
+      const d2 = (nx - 0.18) ** 2 + (ny + 0.0) ** 2;
+      return -Math.exp(-d1 * 18) - Math.exp(-d2 * 18);
+    }
+    case "ripple": {
+      const r = Math.sqrt(nx * nx + ny * ny);
+      return Math.cos(r * 28) * Math.exp(-r * 2.5) * 0.4;
+    }
+    default:
+      return 0;
+  }
+}
+
+/**
+ * compute_potential_forces — adds  -∇Φ · strength  to state.f for every node.
+ * Uses central finite differences (≈ autograd.grad on a scalar field).
+ */
+function computePotentialForces(s: State, name: FieldName, strength: number, w: number, h: number) {
+  if (name === "none" || strength === 0) return;
+  const eps = 0.5; // pixels — small enough to be local, large enough for f32
+  const scale = strength * 1500; // calibrate visible motion
+  for (let i = 0; i < s.N; i++) {
+    const x = s.x[i * 2], y = s.x[i * 2 + 1];
+    const dphidx = (fieldPotential(name, x + eps, y, w, h) - fieldPotential(name, x - eps, y, w, h)) / (2 * eps);
+    const dphidy = (fieldPotential(name, x, y + eps, w, h) - fieldPotential(name, x, y - eps, w, h)) / (2 * eps);
+    s.f[i * 2]     += -dphidx * scale;
+    s.f[i * 2 + 1] += -dphidy * scale;
+  }
+}
+
+
  * For each iteration, every edge constraint pulls its two endpoints back to
  * `rest_length`, splitting the correction by inverse-mass. Velocities are
  * implicitly updated next integrator step (positions changed under them).
