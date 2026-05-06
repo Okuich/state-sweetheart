@@ -182,6 +182,7 @@ export function StepIngestionPanel() {
                 ))}
               </div>
             </div>
+            </>
           )}
 
           {tab === "issues" && (
