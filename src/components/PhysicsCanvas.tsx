@@ -135,6 +135,11 @@ type State = {
   edges: Int32Array;
   edgeRest: FloatArr;
   E: number;
+  // Velocity-Verlet needs a valid f(x₀) the first time verletDrift runs
+  // (the half-kick is v += ½·(fPrev/m)·dt). If we leave fPrev = 0 the
+  // first sub-step silently drops gravity & every other body force from
+  // the kick. `verletPrimed` flips true after we seed fPrev = f(x₀).
+  verletPrimed: boolean;
   // ── Probabilistic ensemble ────────────────────────────────────────
   // dx/dy hold K Monte Carlo position OFFSETS per particle (relative to
   // the deterministic mean x). Layout: [k * N*2 + i*2 + d]. Velocities
