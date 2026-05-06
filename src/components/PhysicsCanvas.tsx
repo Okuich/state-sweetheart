@@ -56,6 +56,8 @@ export type SimParams = {
   particleCount: number;
   trail: number;
   paused: boolean;
+  dtScale: number;
+  stepOnce: number;
   springK: number;
   restLength: number;
   edgesPerNode: number;
