@@ -1141,6 +1141,7 @@ export function PhysicsCanvas({
                 const m = s.m[i];
                 s.f[i * 2]     -= kDrag * m * s.v[i * 2];
                 s.f[i * 2 + 1] -= kDrag * m * s.v[i * 2 + 1];
+              }
             }
 
             // quadratic air drag: F_air = −c_air · m · |v| · v
@@ -1158,7 +1159,6 @@ export function PhysicsCanvas({
                   s.f[i * 2 + 1] -= k * vy;
                 }
               }
-            }
             }
 
             // pointer attractor (local)
