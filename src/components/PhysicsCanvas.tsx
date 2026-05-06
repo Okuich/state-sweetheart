@@ -189,6 +189,8 @@ function toDevice(s: State, device: Device, dtype: Dtype): State {
     // f reinitialized to zeros on the new device/dtype — never reuse stale forces
     f: emptyLike(s.N * s.D, dtype),
     fPrev: emptyLike(s.N * s.D, dtype),
+    // device/dtype changed → forces zeroed → must re-prime fPrev next frame
+    verletPrimed: false,
     edgeRest: castArray(s.edgeRest, dtype),
   };
 }
