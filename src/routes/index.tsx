@@ -20,6 +20,7 @@ import { LearningEnginePanel } from "@/components/LearningEnginePanel";
 import { KnowledgeGraphPanel } from "@/components/KnowledgeGraphPanel";
 import { RagPanel } from "@/components/RagPanel";
 import { FabFeedbackPanel } from "@/components/FabFeedbackPanel";
+import { FederatedPanel } from "@/components/FederatedPanel";
 import { saveSnapshot } from "@/lib/worldMemory";
 
 export const Route = createFileRoute("/")({
@@ -794,6 +795,11 @@ function Index() {
       {/* Fabrication Feedback Calibration — online ridge LSQ over measured outcomes */}
       <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
         <FabFeedbackPanel />
+      </section>
+
+      {/* Federated Industrial Learning — DP-noised secret-shared FedAvg across companies */}
+      <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
+        <FederatedPanel />
       </section>
 
       {/* Autonomous Physics Agents — agentic reasoning over current world */}
