@@ -69,6 +69,7 @@ function Index() {
     showEdges: true,
     pairwiseStrength: 200,
     pairwiseRadius: 50,
+    integrator: "euler",
   });
   const [resetKey, setResetKey] = useState(0);
   const [validation, setValidation] = useState<ValidationReport | null>(null);
@@ -167,6 +168,24 @@ function Index() {
         <Field label="Pairwise · ε"  value={params.pairwiseStrength} min={-500} max={1000} step={10} onChange={(v) => update("pairwiseStrength", v)} />
         <Field label="Pairwise radius" value={params.pairwiseRadius} unit="px" min={0} max={200} step={1} onChange={(v) => update("pairwiseRadius", v)} />
 
+        <div className="space-y-2">
+          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Integrator</div>
+          <div className="flex gap-2">
+            {(["euler", "verlet"] as const).map((opt) => (
+              <Button
+                key={opt}
+                variant={params.integrator === opt ? "default" : "outline"}
+                className={`flex-1 uppercase tracking-[0.18em] text-[10px] ${
+                  params.integrator === opt ? "bg-accent text-accent-foreground" : ""
+                }`}
+                onClick={() => update("integrator", opt)}
+              >
+                {opt === "euler" ? "Semi-impl. Euler" : "Velocity Verlet"}
+              </Button>
+            ))}
+          </div>
+        </div>
+
         <div className="flex items-end gap-3 md:col-span-2 lg:col-span-1">
           <Button
             variant="default"
@@ -188,19 +207,23 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          forces.py — pairwise interactions
+          state.py — PhysicsState.step(dt)
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`def compute_pairwise_forces(state, eps, radius):
-    # Iterate (i, j) pairs from positions, accumulate into self.f
-    diff = state.x[:, None, :] - state.x[None, :, :]   # [N, N, D]
-    dist = norm(diff, dim=-1).clamp(min=1e-3)          # [N, N]
-    mask = (dist < radius) & ~eye(state.N, dtype=bool)
-    norm_r = radius * 0.5
-    fmag = eps * (norm_r**2 / dist**2 - norm_r / dist)
-    direction = diff / dist.unsqueeze(-1)
-    forces = (direction * (fmag * mask).unsqueeze(-1)).sum(dim=1)
-    state.f += forces   # stays on the GPU device`}
+{`def step(self, dt: float):
+    """Advance positions & velocities by dt using a = f / m."""
+    a = self.f / self.m.unsqueeze(-1)        # [N, D]
+    if self.integrator == "verlet":
+        # velocity-Verlet (2nd order, energy-conserving)
+        self.x += self.v * dt + 0.5 * a * dt * dt
+        a_new   = self.f / self.m.unsqueeze(-1)   # recompute next frame
+        self.v += 0.5 * (a + a_new) * dt
+    else:
+        # semi-implicit (symplectic) Euler
+        self.v += a * dt
+        self.x += self.v * dt
+    self.v *= (1.0 - self.damping * dt)
+    self.f.zero_()`}
         </pre>
       </footer>
     </main>
