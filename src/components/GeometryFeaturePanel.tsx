@@ -6,6 +6,9 @@ import {
 import {
   analyzeGeometry, type FeatureIntelligence, type Severity,
 } from "@/lib/geometryFeatures";
+import { mapGeometryToLearningVector, designBridge } from "@/lib/geometryToLearning";
+import { FEATURE_NAMES } from "@/lib/learningEngine";
+import { Send } from "lucide-react";
 
 const VARIANTS: { label: string; src: string }[] = [
   { label: "cube · canonical", src: SAMPLE_STEP },
