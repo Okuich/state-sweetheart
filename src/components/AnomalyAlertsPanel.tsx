@@ -253,3 +253,23 @@ function AlertCard({ a, compact }: { a: Alert; compact?: boolean }) {
     </div>
   );
 }
+
+function StreamBadge({ status, count }: { status: StreamStatus; count: number }) {
+  const map: Record<StreamStatus, string> = {
+    idle:       "bg-muted text-muted-foreground",
+    connecting: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+    open:       "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+    closed:     "bg-muted text-muted-foreground",
+    error:      "bg-amber-500/15 text-amber-300 border-amber-500/30",
+  };
+  const label =
+    status === "open" ? `live · ${count}` :
+    status === "connecting" ? "connecting" :
+    status === "error" ? "synthetic (no stream)" :
+    status;
+  return (
+    <span className={`rounded border border-transparent px-1.5 py-0.5 text-[9px] tracking-[0.14em] ${map[status]}`}>
+      {label}
+    </span>
+  );
+}
