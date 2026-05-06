@@ -18,6 +18,7 @@ import { StepIngestionPanel } from "@/components/StepIngestionPanel";
 import { GeometryFeaturePanel } from "@/components/GeometryFeaturePanel";
 import { LearningEnginePanel } from "@/components/LearningEnginePanel";
 import { KnowledgeGraphPanel } from "@/components/KnowledgeGraphPanel";
+import { RagPanel } from "@/components/RagPanel";
 import { saveSnapshot } from "@/lib/worldMemory";
 
 export const Route = createFileRoute("/")({
@@ -782,6 +783,11 @@ function Index() {
       {/* Geometry-Physics Knowledge Graph — persistent industrial reasoning graph */}
       <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
         <KnowledgeGraphPanel />
+      </section>
+
+      {/* Retrieval-Augmented Physics Reasoning — kNN over knowledge graph */}
+      <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
+        <RagPanel />
       </section>
 
       {/* Autonomous Physics Agents — agentic reasoning over current world */}
