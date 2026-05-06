@@ -65,6 +65,8 @@ export type SimParams = {
   dtype: Dtype;
   device: Device;
   constraintIters: number;
+  field: "none" | "swirl" | "wells" | "ripple";
+  fieldStrength: number;
 };
 
 type FloatArr = Float32Array | Float64Array;
@@ -142,6 +144,60 @@ function toDevice(s: State, device: Device, dtype: Dtype): State {
  *
  * Walls: elastic-ish reflection with restitution 0.7.
  */
+/**
+ * Differentiable scalar potential fields Φ(x, y) and helpers.
+ *
+ * In PyTorch you'd do:
+ *     potential = field_fn(state.x).sum()
+ *     forces    = -autograd.grad(potential, state.x)[0]
+ *
+ * Here we mimic the same contract with a small finite-difference gradient,
+ * which is the same operation autograd performs analytically. Closed-form
+ * gradients would be faster — finite differences keep the field plug-and-play.
+ */
+type FieldName = "none" | "swirl" | "wells" | "ripple";
+
+function fieldPotential(name: FieldName, x: number, y: number, w: number, h: number): number {
+  const cx = w * 0.5, cy = h * 0.5;
+  const nx = (x - cx) / Math.max(w, h);
+  const ny = (y - cy) / Math.max(w, h);
+  switch (name) {
+    case "swirl":
+      // Spiral well: radial sink + angular twist
+      return 0.5 * (nx * nx + ny * ny) + 0.25 * Math.sin(6 * Math.atan2(ny, nx));
+    case "wells": {
+      // Two Gaussian wells
+      const d1 = (nx + 0.18) ** 2 + (ny - 0.0) ** 2;
+      const d2 = (nx - 0.18) ** 2 + (ny + 0.0) ** 2;
+      return -Math.exp(-d1 * 18) - Math.exp(-d2 * 18);
+    }
+    case "ripple": {
+      const r = Math.sqrt(nx * nx + ny * ny);
+      return Math.cos(r * 28) * Math.exp(-r * 2.5) * 0.4;
+    }
+    default:
+      return 0;
+  }
+}
+
+/**
+ * compute_potential_forces — adds  -∇Φ · strength  to state.f for every node.
+ * Uses central finite differences (≈ autograd.grad on a scalar field).
+ */
+function computePotentialForces(s: State, name: FieldName, strength: number, w: number, h: number) {
+  if (name === "none" || strength === 0) return;
+  const eps = 0.5; // pixels — small enough to be local, large enough for f32
+  const scale = strength * 1500; // calibrate visible motion
+  for (let i = 0; i < s.N; i++) {
+    const x = s.x[i * 2], y = s.x[i * 2 + 1];
+    const dphidx = (fieldPotential(name, x + eps, y, w, h) - fieldPotential(name, x - eps, y, w, h)) / (2 * eps);
+    const dphidy = (fieldPotential(name, x, y + eps, w, h) - fieldPotential(name, x, y - eps, w, h)) / (2 * eps);
+    s.f[i * 2]     += -dphidx * scale;
+    s.f[i * 2 + 1] += -dphidy * scale;
+  }
+}
+
+
 /**
  * project_constraints — Position-Based Dynamics (Gauss-Seidel) distance solver.
  *
@@ -340,6 +396,34 @@ export function PhysicsCanvas({
       ctx.fillStyle = `oklch(0.16 0.02 260 / ${1 - p.trail})`;
       ctx.fillRect(0, 0, w, h);
 
+      // Field visualization (faint isolines / heatmap of Φ)
+      if (p.field !== "none" && p.fieldStrength !== 0) {
+        const cell = 28;
+        const cols = Math.ceil(w / cell);
+        const rows = Math.ceil(h / cell);
+        // Sample to find range
+        let pmin = Infinity, pmax = -Infinity;
+        const samples = new Float32Array(cols * rows);
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const v = fieldPotential(p.field, c * cell + cell / 2, r * cell + cell / 2, w, h);
+            samples[r * cols + c] = v;
+            if (v < pmin) pmin = v;
+            if (v > pmax) pmax = v;
+          }
+        }
+        const range = pmax - pmin || 1;
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const t = (samples[r * cols + c] - pmin) / range;
+            const a = 0.05 + 0.18 * Math.abs(t - 0.5) * 2;
+            const hueDeg = 200 + t * 120;
+            ctx.fillStyle = `oklch(0.55 0.14 ${hueDeg} / ${a})`;
+            ctx.fillRect(c * cell, r * cell, cell, cell);
+          }
+        }
+      }
+
       // Runtime shape & dtype guards — verify x, v, m, f BEFORE the step
       const report = validateState(s);
       if (now - lastValidationRef.current > 250) {
@@ -421,6 +505,9 @@ export function PhysicsCanvas({
             }
           }
         }
+
+        // compute_potential_forces(state, field_fn) — adds -∇Φ to f
+        computePotentialForces(s, p.field, p.fieldStrength, w, h);
         // Integrate — PhysicsState.step(dt): a = f/m, advance v and x
         stepState(s, dt, p.damping, w, h, p.integrator);
         // project_constraints — PBD distance solver on edges

@@ -73,6 +73,8 @@ function Index() {
     dtype: "float32",
     device: "cpu",
     constraintIters: 0,
+    field: "none",
+    fieldStrength: 0.6,
   });
   const [resetKey, setResetKey] = useState(0);
   const [validation, setValidation] = useState<ValidationReport | null>(null);
@@ -173,6 +175,25 @@ function Index() {
         <Field label="Pairwise · ε"  value={params.pairwiseStrength} min={-500} max={1000} step={10} onChange={(v) => update("pairwiseStrength", v)} />
         <Field label="Pairwise radius" value={params.pairwiseRadius} unit="px" min={0} max={200} step={1} onChange={(v) => update("pairwiseRadius", v)} />
         <Field label="Constraint iters" value={params.constraintIters} min={0} max={20} step={1} onChange={(v) => update("constraintIters", v)} />
+        <Field label="Field · strength" value={params.fieldStrength} min={-2} max={2} step={0.05} onChange={(v) => update("fieldStrength", v)} />
+
+        <div className="space-y-2">
+          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Potential field</div>
+          <div className="grid grid-cols-4 gap-1.5">
+            {(["none", "swirl", "wells", "ripple"] as const).map((opt) => (
+              <Button
+                key={opt}
+                variant={params.field === opt ? "default" : "outline"}
+                className={`uppercase tracking-[0.14em] text-[9px] px-1 ${
+                  params.field === opt ? "bg-accent text-accent-foreground" : ""
+                }`}
+                onClick={() => update("field", opt)}
+              >
+                {opt}
+              </Button>
+            ))}
+          </div>
+        </div>
 
         <div className="space-y-2 md:col-span-2 lg:col-span-1">
           <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Integrator</div>
@@ -250,16 +271,15 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          integrators.py — explicit Euler step
+          field_engine.py — autograd potential field
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`def step(state, dt):
-    # v_{t+1} = v_t + (F/m) dt
-    state.v += (state.f / state.m.unsqueeze(-1)) * dt
-    # x_{t+1} = x_t + v_{t+1} dt
-    state.x += state.v * dt
-    # reset forces
-    state.f.zero_()`}
+{`def compute_potential_forces(state, field_fn):
+    # field_fn: differentiable scalar field  Φ : ℝᴺˣᴰ → ℝ
+    state.x.requires_grad_(True)
+    potential = field_fn(state.x).sum()
+    forces    = -grad(potential, state.x)[0]   # F = -∇Φ
+    state.f  += forces`}
         </pre>
       </footer>
     </main>
