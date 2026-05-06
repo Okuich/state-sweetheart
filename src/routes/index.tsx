@@ -22,6 +22,7 @@ import { KnowledgeGraphPanel } from "@/components/KnowledgeGraphPanel";
 import { RagPanel } from "@/components/RagPanel";
 import { FabFeedbackPanel } from "@/components/FabFeedbackPanel";
 import { MaterialEditorPanel } from "@/components/MaterialEditorPanel";
+import { MaterialRegionPanel } from "@/components/MaterialRegionPanel";
 import { FederatedPanel } from "@/components/FederatedPanel";
 import { saveSnapshot } from "@/lib/worldMemory";
 
@@ -861,6 +862,11 @@ function Index() {
       {/* Material Editor — pick constitutive model + tune differentiable params */}
       <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
         <MaterialEditorPanel />
+      </section>
+
+      {/* Material Regions — per-tetrahedron MatID painting + visualization */}
+      <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
+        <MaterialRegionPanel />
       </section>
 
       {/* STEP File Ingestion — parse & normalize ISO-10303-21 into canonical geometry */}
