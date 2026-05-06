@@ -1224,8 +1224,18 @@ export function PhysicsCanvas({
 
           // 5. sync_boundaries — re-project cross-partition edges so the
           // independently-stepped slices stay consistent at the seams.
+          // Rebuild boundary_indices when N, W, or edge topology changes.
           projectConstraints(s, p.constraintIters, subDt);
-          syncBoundaries(s, partOf);
+          {
+            const eSig = s.E === 0
+              ? 0
+              : (s.E * 1_000_003) ^ (s.edges[0] | 0) ^ ((s.edges[s.E * 2 - 1] | 0) << 13);
+            const cur = boundaryIdxRef.current;
+            if (!cur || cur.W !== W || cur.N !== s.N || cur.edgeSig !== eSig) {
+              boundaryIdxRef.current = buildBoundaryIndices(s, W);
+            }
+          }
+          syncBoundaries(s, partOf, boundaryIdxRef.current);
 
           // ── probabilistic_runtime.py ────────────────────────────
           // Monte Carlo uncertainty propagation. Each of K replicas
