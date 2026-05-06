@@ -1071,15 +1071,22 @@ export function PhysicsCanvas({
         }
       }
       let PE_spring = 0;
-      if (s.E > 0 && p.springK > 0) {
+      let cMax = 0;        // max |stretch / rest|  — peak constraint error
+      let cRms = 0;        // RMS relative stretch  — overall constraint error
+      if (s.E > 0) {
         for (let e = 0; e < s.E; e++) {
           const i2 = s.edges[e * 2], j2 = s.edges[e * 2 + 1];
           const ddx = s.x[i2 * 2]     - s.x[j2 * 2];
           const ddy = s.x[i2 * 2 + 1] - s.x[j2 * 2 + 1];
           const d = Math.sqrt(ddx * ddx + ddy * ddy);
-          const stretch = d - s.edgeRest[e];
-          PE_spring += 0.5 * p.springK * stretch * stretch;
+          const rest = s.edgeRest[e] || 1;
+          const stretch = d - rest;
+          if (p.springK > 0) PE_spring += 0.5 * p.springK * stretch * stretch;
+          const rel = Math.abs(stretch) / rest;
+          if (rel > cMax) cMax = rel;
+          cRms += rel * rel;
         }
+        cRms = Math.sqrt(cRms / s.E);
       }
       let PE_field = 0;
       if (p.field !== "none" && p.fieldStrength !== 0) {
