@@ -791,6 +791,11 @@ function Index() {
         <RagPanel />
       </section>
 
+      {/* Fabrication Feedback Calibration — online ridge LSQ over measured outcomes */}
+      <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
+        <FabFeedbackPanel />
+      </section>
+
       {/* Autonomous Physics Agents — agentic reasoning over current world */}
       <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
         <AgentsPanel
