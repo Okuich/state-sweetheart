@@ -271,16 +271,16 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          integrators.py — explicit Euler step
+          field_engine.py — autograd potential field
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`def step(state, dt):
-    # v_{t+1} = v_t + (F/m) dt
-    state.v += (state.f / state.m.unsqueeze(-1)) * dt
-    # x_{t+1} = x_t + v_{t+1} dt
-    state.x += state.v * dt
-    # reset forces
-    state.f.zero_()`}
+{`def compute_potential_forces(state, field_fn):
+    # field_fn: differentiable scalar field  Φ : ℝᴺˣᴰ → ℝ
+    state.x.requires_grad_(True)
+    potential = field_fn(state.x).sum()
+    forces    = -grad(potential, state.x)[0]   # F = -∇Φ
+    state.f  += forces`}
+        </pre>
         </pre>
       </footer>
     </main>
