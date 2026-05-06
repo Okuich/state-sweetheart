@@ -648,6 +648,14 @@ export function PhysicsCanvas({
   const energyBaselineRef = useRef<number | null>(null);
   const energyBaselineNRef = useRef(0);
 
+  // Compile the user-provided Φ exactly when the source string changes.
+  // useMemo gives us a stable reference per source (cheap, parse is < 1 ms),
+  // and a ref keeps it readable from the rAF loop without re-subscribing.
+  const compiled = useMemo(() => compileFieldExpr(params.customFieldSrc || "0"), [params.customFieldSrc]);
+  const customFnRef = useRef<((env: import("@/lib/exprCompile").FieldEnv) => number) | null>(null);
+  customFnRef.current = compiled.ok ? compiled.fn : null;
+  const tStartRef = useRef(performance.now());
+
   useEffect(() => {
     const canvas = canvasRef.current!;
     const ctx = canvas.getContext("2d")!;
