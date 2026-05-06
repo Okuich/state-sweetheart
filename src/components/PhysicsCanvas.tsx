@@ -621,7 +621,51 @@ export function PhysicsCanvas({
         }
       }
 
-      // Render edges
+      // ── differentiable_loop.py ────────────────────────────────────
+      //   loss = objective(final_state); loss.backward()
+      // Objective: drive every node toward the canvas center.
+      //   L = ½ * mean(||x - target||²)
+      //   ∂L/∂x_i = (x_i - target) / N    (the autograd "gradient")
+      // We then descend along that gradient with learning rate `objectiveLR`,
+      // which is what `optimizer.step()` would do after .backward().
+      const tx = w * 0.5, ty = h * 0.5;
+      let loss = 0;
+      for (let i = 0; i < s.N; i++) {
+        const dx = s.x[i * 2] - tx;
+        const dy = s.x[i * 2 + 1] - ty;
+        loss += 0.5 * (dx * dx + dy * dy);
+      }
+      loss /= Math.max(1, s.N);
+      // Normalize to a more interpretable scale (canvas-diagonal²)
+      const lossNorm = loss / ((w * w + h * h) * 0.25);
+      lossEmaRef.current = lossEmaRef.current * 0.9 + lossNorm * 0.1;
+      if (now - lastValidationRef.current < 50 || (now | 0) % 4 === 0) {
+        onLossRef.current?.(lossEmaRef.current);
+      }
+
+      if (p.optimize && !p.paused && p.objectiveLR > 0) {
+        // loss.backward() → grad on positions; descend
+        const lr = p.objectiveLR;
+        const invN = 1 / Math.max(1, s.N);
+        for (let i = 0; i < s.N; i++) {
+          const gx = (s.x[i * 2]     - tx) * invN;
+          const gy = (s.x[i * 2 + 1] - ty) * invN;
+          s.x[i * 2]     -= lr * gx;
+          s.x[i * 2 + 1] -= lr * gy;
+        }
+      }
+
+      // Target marker for the objective
+      if (p.optimize) {
+        ctx.strokeStyle = "oklch(0.85 0.18 85 / 0.7)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(tx, ty, 6, 0, Math.PI * 2);
+        ctx.moveTo(tx - 12, ty); ctx.lineTo(tx + 12, ty);
+        ctx.moveTo(tx, ty - 12); ctx.lineTo(tx, ty + 12);
+        ctx.stroke();
+      }
+
       if (p.showEdges && s.E > 0) {
         ctx.lineWidth = 0.6;
         ctx.beginPath();
