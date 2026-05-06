@@ -430,6 +430,9 @@ export function PhysicsCanvas({
   const lastValidationRef = useRef(0);
   const onValidationRef = useRef(onValidation);
   onValidationRef.current = onValidation;
+  const onLossRef = useRef(onLoss);
+  onLossRef.current = onLoss;
+  const lossEmaRef = useRef(0);
 
   useEffect(() => {
     const canvas = canvasRef.current!;
