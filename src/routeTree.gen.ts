@@ -10,33 +10,57 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiPublicTelemetryRouteImport } from './routes/api/public/telemetry'
+import { Route as ApiPublicTelemetryStreamRouteImport } from './routes/api/public/telemetry.stream'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicTelemetryRoute = ApiPublicTelemetryRouteImport.update({
+  id: '/api/public/telemetry',
+  path: '/api/public/telemetry',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicTelemetryStreamRoute =
+  ApiPublicTelemetryStreamRouteImport.update({
+    id: '/stream',
+    path: '/stream',
+    getParentRoute: () => ApiPublicTelemetryRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/public/telemetry': typeof ApiPublicTelemetryRouteWithChildren
+  '/api/public/telemetry/stream': typeof ApiPublicTelemetryStreamRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/public/telemetry': typeof ApiPublicTelemetryRouteWithChildren
+  '/api/public/telemetry/stream': typeof ApiPublicTelemetryStreamRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/public/telemetry': typeof ApiPublicTelemetryRouteWithChildren
+  '/api/public/telemetry/stream': typeof ApiPublicTelemetryStreamRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/api/public/telemetry' | '/api/public/telemetry/stream'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/api/public/telemetry' | '/api/public/telemetry/stream'
+  id:
+    | '__root__'
+    | '/'
+    | '/api/public/telemetry'
+    | '/api/public/telemetry/stream'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiPublicTelemetryRoute: typeof ApiPublicTelemetryRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +72,37 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/telemetry': {
+      id: '/api/public/telemetry'
+      path: '/api/public/telemetry'
+      fullPath: '/api/public/telemetry'
+      preLoaderRoute: typeof ApiPublicTelemetryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/telemetry/stream': {
+      id: '/api/public/telemetry/stream'
+      path: '/stream'
+      fullPath: '/api/public/telemetry/stream'
+      preLoaderRoute: typeof ApiPublicTelemetryStreamRouteImport
+      parentRoute: typeof ApiPublicTelemetryRoute
+    }
   }
 }
 
+interface ApiPublicTelemetryRouteChildren {
+  ApiPublicTelemetryStreamRoute: typeof ApiPublicTelemetryStreamRoute
+}
+
+const ApiPublicTelemetryRouteChildren: ApiPublicTelemetryRouteChildren = {
+  ApiPublicTelemetryStreamRoute: ApiPublicTelemetryStreamRoute,
+}
+
+const ApiPublicTelemetryRouteWithChildren =
+  ApiPublicTelemetryRoute._addFileChildren(ApiPublicTelemetryRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiPublicTelemetryRoute: ApiPublicTelemetryRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
