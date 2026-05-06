@@ -422,7 +422,6 @@ function Index() {
 //   s.v[i*2]   += s.f[i*2]   / s.m[i] * dt;
 //   s.x[i*2]   += s.v[i*2] * dt;`}
         </pre>
-        </pre>
       </footer>
     </main>
   );
