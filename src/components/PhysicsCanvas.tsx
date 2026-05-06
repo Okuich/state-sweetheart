@@ -649,6 +649,8 @@ export function PhysicsCanvas({
   const lossEmaRef = useRef(0);
   const energyBaselineRef = useRef<number | null>(null);
   const energyBaselineNRef = useRef(0);
+  const lastSubStepsRef = useRef(1);
+  const fpsEmaRef = useRef(60);
 
   // Compile the user-provided Φ exactly when the source string changes.
   // useMemo gives us a stable reference per source (cheap, parse is < 1 ms),
@@ -777,6 +779,7 @@ export function PhysicsCanvas({
           subSteps = Math.min(Math.max(p.maxSubSteps | 0, subSteps), Math.max(subSteps, need));
         }
         const subDt = dt / subSteps;
+        lastSubStepsRef.current = subSteps;
         const k = p.springK;
         const pStr = p.pairwiseStrength;
         const pRad = p.pairwiseRadius;
@@ -1068,15 +1071,22 @@ export function PhysicsCanvas({
         }
       }
       let PE_spring = 0;
-      if (s.E > 0 && p.springK > 0) {
+      let cMax = 0;        // max |stretch / rest|  — peak constraint error
+      let cRms = 0;        // RMS relative stretch  — overall constraint error
+      if (s.E > 0) {
         for (let e = 0; e < s.E; e++) {
           const i2 = s.edges[e * 2], j2 = s.edges[e * 2 + 1];
           const ddx = s.x[i2 * 2]     - s.x[j2 * 2];
           const ddy = s.x[i2 * 2 + 1] - s.x[j2 * 2 + 1];
           const d = Math.sqrt(ddx * ddx + ddy * ddy);
-          const stretch = d - s.edgeRest[e];
-          PE_spring += 0.5 * p.springK * stretch * stretch;
+          const rest = s.edgeRest[e] || 1;
+          const stretch = d - rest;
+          if (p.springK > 0) PE_spring += 0.5 * p.springK * stretch * stretch;
+          const rel = Math.abs(stretch) / rest;
+          if (rel > cMax) cMax = rel;
+          cRms += rel * rel;
         }
+        cRms = Math.sqrt(cRms / s.E);
       }
       let PE_field = 0;
       if (p.field !== "none" && p.fieldStrength !== 0) {
@@ -1103,17 +1113,30 @@ export function PhysicsCanvas({
         if (a >= 1)   return n.toFixed(2);
         return n.toExponential(1);
       };
+      // FPS — exponential moving average so the readout is stable enough
+      // to read at a glance while still tracking real frame-time changes.
+      const instFps = dt > 1e-6 ? 1 / dt : 60;
+      fpsEmaRef.current = fpsEmaRef.current * 0.92 + instFps * 0.08;
+      const fps = fpsEmaRef.current;
+      const subStepsEff = lastSubStepsRef.current;
+
+      const fmtPct = (n: number) => (n * 100).toFixed(2) + "%";
       const lines = [
-        `energy · ${p.integrator}`,
+        `diagnostics · ${p.integrator}`,
         `KE        ${fmt(KE)}`,
         `PE grav   ${fmt(PE_grav)}`,
         `PE spring ${fmt(PE_spring)}`,
         `PE field  ${fmt(PE_field)}`,
         `── total  ${fmt(E_total)}`,
         `Δ since   ${drift >= 0 ? "+" : ""}${fmt(drift)}`,
+        `c·err max ${fmtPct(cMax)}`,
+        `c·err rms ${fmtPct(cRms)}`,
+        `subSteps  ${subStepsEff}${p.adaptiveSubSteps ? " (auto)" : ""}`,
+        `cIters    ${p.constraintIters | 0}`,
+        `fps       ${fps.toFixed(1)}`,
       ];
       const padX = 10, padY = 8, lineH = 14;
-      const panelW = 172;
+      const panelW = 188;
       const panelH = padY * 2 + lineH * lines.length;
       const panelX = w - panelW - 12;
       const panelY = 12;
@@ -1124,10 +1147,19 @@ export function PhysicsCanvas({
       ctx.strokeRect(panelX + 0.5, panelY + 0.5, panelW - 1, panelH - 1);
       ctx.font = "11px ui-monospace, SFMono-Regular, Menlo, monospace";
       ctx.textBaseline = "top";
+      // Color thresholds:
+      //   constraint error:  green  < 1%, amber 1-5%, red > 5%
+      //   fps:               green ≥ 50, amber 30-50, red < 30
+      const cColor = (v: number) =>
+        v < 0.01 ? "oklch(0.82 0.18 150)" : v < 0.05 ? "oklch(0.84 0.16 85)" : "oklch(0.78 0.20 35)";
+      const fpsColor = fps >= 50 ? "oklch(0.82 0.18 150)" : fps >= 30 ? "oklch(0.84 0.16 85)" : "oklch(0.78 0.20 35)";
       for (let li = 0; li < lines.length; li++) {
         if (li === 0)      ctx.fillStyle = "oklch(0.78 0.14 230)";
         else if (li === 5) ctx.fillStyle = "oklch(0.94 0.04 230)";
         else if (li === 6) ctx.fillStyle = drift >= 0 ? "oklch(0.78 0.18 35)" : "oklch(0.78 0.18 150)";
+        else if (li === 7) ctx.fillStyle = cColor(cMax);
+        else if (li === 8) ctx.fillStyle = cColor(cRms);
+        else if (li === 11) ctx.fillStyle = fpsColor;
         else               ctx.fillStyle = "oklch(0.78 0.04 230 / 0.85)";
         ctx.fillText(lines[li], panelX + padX, panelY + padY + li * lineH);
       }
