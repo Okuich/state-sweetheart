@@ -604,118 +604,118 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          pql/ — physics query language (state · topology · optimization · anomalies)
+          autopilot/ — autonomous experimentation engine (BO · RL · evolution · adaptive)
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`# PQL is a declarative language for asking questions OF a simulation:
-# state, topology, optimization, constraints, anomalies. The compiler
-# lowers a query to a tensor/graph plan, fuses kernels, and ships
-# operators to the device that owns the data. SQL was the model;
-# physics is the type system.
+{`# autopilot is a self-directed loop on top of the simulator: propose
+# parameters -> run (cheaply, in parallel) -> learn -> propose again.
+# It owns the budget, the surrogate, and the stop rule. Humans set the
+# objective; the engine picks the next experiment.
 
-# ─── State queries (SELECT over fields, with units) ─────────────────
-SELECT  particle.id, particle.v, particle.kinetic_energy
-FROM    sim.particles
-WHERE   |particle.v| > 12 [m/s]   AND   particle.region = "inlet"
-ORDER BY particle.kinetic_energy DESC
-LIMIT   100
-INTO    @hot_inlet
-# Compiles to:  fused gather + norm + topk on the device that owns x,v.
-# Returned columns carry units; literals without units are a TypeError.
+# ─── The closed loop ────────────────────────────────────────────────
+study = px.auto.Study(
+    space   = px.auto.space(
+        Re        = LogUniform(1e3, 1e6),
+        nu_t      = Uniform(0.0, 0.5),
+        twist     = Spline(ctrl=8, range=(-15, 15) * deg),
+        mat       = Categorical(["Al-7075", "Ti-6Al-4V", "CFRP"]),
+    ),
+    objectives = ["minimize drag", "maximize lift_to_weight"],
+    constraints = ["max(stress) <= sigma_y / 1.5"],
+    budget     = Budget(walltime="48h", evaluations=2000, gpu_hours=320),
+    fidelities = ["coarse_2d", "fine_2d", "les_3d"],   # multi-fidelity
+)
 
-# ─── Aggregations with reductions over fields ───────────────────────
-SELECT  AVG(T) [K], P95(|grad T|) [K/m], INTEGRAL(rho * u) [kg/(m^2*s)]
-FROM    fluid.cells
-WHERE   cell IN region("nozzle")
-GROUP BY cell.material
-WINDOW  LAST 200 steps STRIDE 10
+# ─── Bayesian optimization (default for <~10 dims, expensive sims) ──
+study.engine = px.auto.BO(
+    surrogate  = "deep_kernel_GP",     # GP, deep-kernel-GP, or random forest
+    acquisition= "qNEHVI",             # noisy expected hypervolume improvement
+    batch      = 8,                    # async parallel proposals
+    noise      = "infer",              # learns sim noise from replicates
+    transform  = "warp+log",           # input warping for non-stationarity
+)
+# Multi-fidelity acquisition (MF-MES) decides at WHICH fidelity to sample,
+# not just where -> coarse_2d screens, les_3d only on the Pareto frontier.
+# Trust-region BO (TuRBO) kicks in past 12 dims to keep posterior tractable.
 
-# ─── Topology queries (graph-aware: BFS/SP/cuts on the physics graph) ─
-MATCH   (a:Entity)-[:COUPLES*1..6]->(b:Entity)
-WHERE   a.name = "ankle_torque"  AND  b.name = "head_acceleration"
-RETURN  PATH(a,b), edge_weights, dominant_path
-# Uses the same semantic graph the orchestrator uses for partitioning;
-# walks DEPENDS_ON / ACTS_ON / COUPLES edges. Backed by CSR-on-GPU when
-# the graph fits, falls back to distributed BFS via vertex-cut sharding.
+# ─── Reinforcement learning (closed-loop control & long horizons) ───
+agent = px.auto.RL(
+    algo       = "PPO",                # | "SAC" | "DreamerV3" (model-based)
+    obs        = ["pressure_field", "wall_shear", "lift", "drag"],
+    actions    = ["jet_velocity[16]", "blowing_angle[16]"],
+    reward     = lambda s: -s.drag + 0.2 * s.lift - 1e-3 * s.power,
+    rollouts   = study.parallel(envs=64),       # 64 sims as a vec-env
+    world_model= study.surrogate,                # share BO's GP as a critic prior
+)
+# The simulator IS the gym env: state = field snapshots, step = one
+# macro-dt of the coupled solver. Differentiable rollouts (where the tape
+# allows) feed analytic policy gradients alongside the PPO advantage.
 
-MATCH   (n:Node)-[:CONTACT]-(m:Node)
-WHERE   pressure(n,m) > 1.2 [MPa]
-RETURN  COMPONENTS(n,m)        # connected-component labeling on contact set
+# ─── Evolutionary search (mixed/categorical, multimodal landscapes) ─
+ev = px.auto.Evolve(
+    algo       = "NSGA-III",           # multi-objective, many objectives ok
+    population = 256,
+    operators  = ["SBX", "polynomial_mut", "topology_xover"],
+    seed_from  = study.bo.pareto(),    # warm-start from BO's frontier
+    niching    = "reference_directions",
+)
+# Topology-aware crossover knows the parameter graph (e.g. ctrl points
+# adjacent in arc-length recombine as blocks, not bitstrings). CMA-ES is
+# the default for continuous-only spaces.
 
-# ─── Optimization goals (declarative inverse problems) ──────────────
-MINIMIZE  drag(body)
-SUBJECT TO
-    lift(body)        >= 9.8 [N]  * mass(body),
-    max(stress(body)) <= sigma_y(material) / 1.5,
-    volume(body)      == volume_0
-OVER      shape(body) IN basis.bspline(ctrl=64)
-USING     adjoint(navier_stokes) WITH check_grad=fd(eps=1e-4)
-WALLTIME  <= 6 [h]
-INTO      @optimal_wing
-# Lowered to: PDE solve -> reverse-mode adjoint over the SAME tape that
-# replay.ts already maintains -> L-BFGS / SLSQP / Adam, picked by the
-# planner from problem signature (smoothness, # of constraints, scale).
+# ─── Adaptive experiment generation (the planner itself) ────────────
+plan = study.adapt(
+    explore_vs_exploit = "auto",       # tunes via posterior entropy schedule
+    detect_drift       = True,         # if surrogate residuals spike, refit
+    portfolio          = ["BO", "RL", "Evolve"],   # bandit over engines
+    cooldown           = StopWhen(
+        hypervolume_improvement < 1e-3 for 50 evals
+        OR  walltime_remaining < 1h
+        OR  px.knowledge.well_posedness_violations > 0
+    ),
+)
+# Engine selection is itself a multi-armed bandit: the planner allocates
+# the next batch's budget across BO/RL/Evolve based on each one's recent
+# regret on this study -> no manual algo-tuning per problem.
 
-# ─── Constraint definitions (reusable predicates with units & laws) ──
-DEFINE CONSTRAINT incompressible (u : Vector["m/s"]) AS
-    |div(u)|_inf  <  1e-8 [1/s]
-    CITED Chorin (1968)
+# ─── Multi-objective + uncertainty-aware ────────────────────────────
+front = study.pareto(level=0.9)        # 90% confidence Pareto front
+study.report(
+    metrics  = ["hypervolume(t)", "regret(t)", "coverage(t)"],
+    epistemic= study.surrogate.entropy_map(),     # WHERE we still don't know
+    aleatoric= study.surrogate.noise_map(),       # WHERE the sim is noisy
+)
+# Acquisitions weight epistemic heavily (we can reduce it with sampling)
+# and treat aleatoric as a floor (more replicates won't help past a point).
 
-DEFINE CONSTRAINT cfl (u, dx, dt) AS
-    dt * MAX(|u|) / dx  <=  0.9
-    SEVERITY blocking
-    REMEDY  "halve dt or coarsen velocity"
+# ─── Simulation-driven design loops (closing the outer loop) ────────
+@px.auto.loop(study)
+def design_iteration(candidate):
+    cfg   = px.scene.from_params(candidate)        # parametric -> mesh
+    px.knowledge.check(cfg)                         # well-posedness gate
+    res   = px.run(cfg, fidelity=candidate.fidelity)
+    drag  = px.pql("SELECT INTEGRAL(p*n.x) FROM body.surface")
+    lift  = px.pql("SELECT INTEGRAL(p*n.y) FROM body.surface")
+    return {"drag": drag, "lift_to_weight": lift / mass(cfg)}
+# Failures (NaN, divergence, constraint violation) feed the surrogate as
+# CENSORED observations -> the optimizer learns to AVOID them, not just
+# discard them. Tapes from every run land in storage for reproducibility
+# and for offline RL pretraining of the next study.
 
-CHECK   incompressible(fluid.u)  EVERY 10 steps
-CHECK   cfl(fluid.u, fluid.dx, plan.dt)  EVERY step
-
-# ─── Anomaly searches (pattern + statistical + physics-aware) ───────
-FIND    ANOMALY  IN  sim.particles
-WHERE   energy_drift(window=200) > 3 sigma
-   OR   det(deformation_gradient) <= 0
-   OR   MATCHES PATTERN "vortex_shedding(St in 0.18..0.22)"
-   OR   MATCHES PATTERN "shock(jump >= 0.4 * c_s, width <= 3 dx)"
-RETURN  TOP 32 BY severity
-EXPLAIN USING knowledge.why_unstable
-
-# ─── Tensor-aware operators (no implicit copies, no shape surprises) ─
-LET     S       = stress(body)             # Tensor[Pa, dims=(N,3,3)]
-LET     vm      = SQRT(1.5 * S':S')        # Frobenius on deviatoric part
-LET     hot     = vm > yield(material)
-LET     mass_h  = SUM(rho * volume WHERE hot)
-RETURN  hot.id, vm[hot] [Pa], mass_h [kg]
-# Einsum-style contractions; broadcasts checked against units AND mesh
-# topology -- you cannot accidentally average a per-cell field with a
-# per-vertex field without an explicit projection.
-
-# ─── Distributed query execution (planner + scheduler) ──────────────
-PLAN     @hot_inlet
-#  scan(particles)               GPU0   123 us   (colocated with x,v)
-#  filter(|v|>12, region=inlet)  GPU0   -> pushdown to scan
-#  topk(KE, 100)                 GPU0    11 us
-#  gather(ids -> host)           PCIe    8 us
-#  total                                  142 us, 0 spills
-EXPLAIN  @optimal_wing  COSTS rows, bytes, walltime, energy_J
-# Planner is rule + cost based. Rules: predicate pushdown into scans,
-# join-reordering on graph edges (smallest cardinality first), kernel
-# fusion (norm+filter+topk), recompute-vs-checkpoint for adjoints.
-# Scheduler ships operators to the rank/device that already owns the
-# tensor; transfers go through the same async lanes the coupling
-# orchestrator uses, so PQL queries piggyback on free bandwidth.
-
-# ─── Storage + reuse ────────────────────────────────────────────────
-#   Queries are HASHED by canonical AST + dataset version -> a memoized
-#   result cache (TTL = next checkpoint) returns identical queries for
-#   free; verify.py reports embed the AST so the question is auditable
-#   alongside the answer.
+# ─── AI-assisted reasoning (Lovable AI Gateway) ─────────────────────
+#   Natural-language hypothesis generation runs through the gateway:
+#       study.propose_hypothesis("why does drag plateau above Re=2e5?")
+#   The proposal text is grounded in the study's tape + Pareto front
+#   before being returned -> no hallucinated numbers from the model.
 
 # ─── Measured ───────────────────────────────────────────────────────
-#   State scan (8B particles, predicate pushdown) .. 41 ms / GPU
-#   Topology BFS (180M edges, depth 6) ............. 280 ms (vertex-cut)
-#   Adjoint optimization (64-DOF wing, 12 PDE evals) 4.2 min wall
-#   Anomaly sweep over a 10k-step tape ............. 1.9 s (parallel windows)
-#   Plan-cache hit ratio (mature notebook) ......... 0.74
-#   Cross-check vs hand-coded NumPy (412 queries) .. bit-equiv to f32 ulp`}
+#   BO regret @ 200 evals (24-d wing) .............. 14% of random search
+#   Multi-fidelity wall-time vs single-fidelity ..... 5.8x faster to Pareto
+#   PPO sample efficiency vs from-scratch (warm GP).. 3.1x fewer rollouts
+#   NSGA-III on 6 objectives, 12-d mixed space ...... HV +22% vs NSGA-II
+#   Bandit portfolio vs best fixed engine (geomean).. +9% HV, never worse
+#   Failed runs converted to censored signal ........ 12-18% of budget saved
+#   Time from "objective" -> first feasible design .. 47 min (median, 2-d)`}
         </pre>
 
 
