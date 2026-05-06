@@ -575,16 +575,14 @@ function stepStateRange(
   restitution: number = 0.7,
   dragMode: "explicit" | "exponential" | "force" = "explicit",
 ) {
-  // Linear-drag decay factor applied to velocity each sub-step:
-  //   "explicit"    → (1 − k·dt)        — cheap, classical, blows up if k·dt > 1
-  //   "exponential" → exp(−k·dt)        — unconditionally stable, exact for the
-  //                                        ODE  dv/dt = −k·v
-  //   "force"       → drag is already in s.f as −k·m·v (added in the force
-  //                   pipeline), so DO NOT decay velocity here (factor = 1)
-  const decay =
-    dragMode === "force"        ? 1 :
-    dragMode === "exponential"  ? Math.exp(-damping * dt) :
-                                  Math.max(0, 1 - damping * dt);
+  // Frame-rate independent linear-drag decay applied each sub-step:
+  //   dv/dt = −k·v   →   v(t+dt) = v(t) · exp(−k·dt)
+  // This is the exact analytic solution, so doubling the frame rate (halving
+  // dt and stepping twice) produces the same trajectory: exp(−k·dt) =
+  // exp(−k·dt/2)². Old (1 − k·dt) was first-order and blew up when k·dt > 1.
+  //   "force" → drag is added as −k·m·v in the force pipeline; do NOT decay
+  //              velocity here (factor = 1) to avoid double-counting.
+  const decay = dragMode === "force" ? 1 : Math.exp(-damping * dt);
   if (integrator === "verlet") {
     // Verlet drift+kick are split across the force evaluation; see
     // verletKick() AFTER. This branch is now position-only damping wrap-up.
