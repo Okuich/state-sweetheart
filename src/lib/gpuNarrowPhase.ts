@@ -104,6 +104,23 @@ export interface SolveResult {
   mode: "gpu" | "cpu";
   /** Wall time for the solve (ms). */
   ms: number;
+  /** Dedup pipeline diagnostics (present when dedup ran). */
+  dedup?: {
+    /** Raw input pair count before dedup. */
+    inputCount: number;
+    /** Canonical unique pair count fed to the narrow-phase. */
+    uniqueCount: number;
+    /** Pairs dropped as duplicates of an already-seen pair. */
+    duplicates: number;
+    /** Pairs dropped because i = j or i,j ∉ [0, N). */
+    invalid: number;
+    /** Pairs dropped because uniqueCount would exceed maxPairs. */
+    dropped: number;
+    /** True iff dropped > 0 (saturated). */
+    saturated: boolean;
+    /** Wall time spent in dedup (ms). */
+    ms: number;
+  };
 }
 
 // ── WGSL kernel ──────────────────────────────────────────────────────────
