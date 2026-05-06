@@ -68,6 +68,8 @@ export type SimParams = {
   field: "none" | "swirl" | "wells" | "ripple";
   fieldStrength: number;
   subSteps: number;
+  workers: number;
+  showPartitions: boolean;
 };
 
 type FloatArr = Float32Array | Float64Array;
