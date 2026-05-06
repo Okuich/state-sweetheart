@@ -13,6 +13,7 @@ import { GoalOptPanel } from "@/components/GoalOptPanel";
 import { StreamRuntimePanel } from "@/components/StreamRuntimePanel";
 import { BenchmarkPanel } from "@/components/BenchmarkPanel";
 import { GuardrailsPanel } from "@/components/GuardrailsPanel";
+import { CalibrationPanel } from "@/components/CalibrationPanel";
 import { saveSnapshot } from "@/lib/worldMemory";
 
 export const Route = createFileRoute("/")({
@@ -752,6 +753,11 @@ function Index() {
       {/* Runtime Stability Guardrails — autonomous numerical safety layer */}
       <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
         <GuardrailsPanel />
+      </section>
+
+      {/* Real-World Calibration Framework — fit model to measured sensor data */}
+      <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
+        <CalibrationPanel />
       </section>
 
       {/* Autonomous Physics Agents — agentic reasoning over current world */}
