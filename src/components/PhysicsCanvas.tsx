@@ -308,13 +308,31 @@ function computePotentialForces(s: State, name: FieldName, strength: number, w: 
 
 function computePotentialForces_range(s: State, name: FieldName, strength: number, w: number, h: number, a: number, b: number, mode: PotentialGrad = "analytic") {
   if (name === "none" || strength === 0) return;
-  const scale = strength * 1500;
+  // ── Resolution-invariant scale ─────────────────────────────────────
+  // Φ is defined in NORMALIZED coords (x/s, y/s) with s = max(w,h).
+  // The chain rule bakes a 1/s into the world-space gradient, so a raw
+  // `strength · k` would give acceleration ∝ 1/s — particles barely move
+  // on a 1600 px canvas and fly off a 400 px one. We want the same
+  // *visual* trajectory at any size: displacement should be a fixed
+  // fraction of the canvas, i.e. acceleration ∝ s. That requires
+  // multiplying by s², which then cancels the 1/s in ∇Φ_world and
+  // leaves one factor of s. We anchor at a reference 800 px canvas so
+  // strength=1 means the same thing it always did at the default size.
+  //
+  // Mass normalization: per-particle mass is uniform-random in [0.6, 1.8]
+  // (mean ≈ 1.2). a = F/m already cancels N (no global mass coupling),
+  // so consistency across particle counts comes "for free" — we just
+  // factor out the mean so `strength` reads as an acceleration target
+  // rather than a force on a unit mass.
+  const REF = 800;
+  const sizeFactor = (Math.max(w, h) / REF) ** 2;
+  const meanMass = 1.2; // matches initState distribution
+  const scale = strength * 1500 * sizeFactor * meanMass;
   if (mode === "analytic") {
     for (let i = a; i < b; i++) {
       const x = s.x[i * 2], y = s.x[i * 2 + 1];
       const g = fieldGradAnalytic(name, x, y, w, h);
       if (g === null) {
-        // Fallback: this Φ doesn't ship a closed form — central differences.
         const eps = 0.5;
         const dphidx = (fieldPotential(name, x + eps, y, w, h) - fieldPotential(name, x - eps, y, w, h)) / (2 * eps);
         const dphidy = (fieldPotential(name, x, y + eps, w, h) - fieldPotential(name, x, y - eps, w, h)) / (2 * eps);
@@ -327,8 +345,10 @@ function computePotentialForces_range(s: State, name: FieldName, strength: numbe
     }
     return;
   }
-  // finite-diff
-  const eps = 0.5;
+  // finite-diff: scale eps with canvas so the FD step keeps the same
+  // fractional resolution (and therefore the same truncation error)
+  // regardless of size.
+  const eps = 0.5 * (Math.max(w, h) / REF);
   for (let i = a; i < b; i++) {
     const x = s.x[i * 2], y = s.x[i * 2 + 1];
     const dphidx = (fieldPotential(name, x + eps, y, w, h) - fieldPotential(name, x - eps, y, w, h)) / (2 * eps);
