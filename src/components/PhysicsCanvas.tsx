@@ -627,7 +627,20 @@ export function PhysicsCanvas({
                         const r2 = dx * dx + dy * dy;
                         if (r2 > r2max || r2 < 1e-4) continue;
                         const dist = Math.sqrt(r2);
-                        const fmag = pStr * (norm * norm / r2 - norm / dist);
+                        // Pairwise force model — sign convention: +fmag pushes apart.
+                        //   "lj":      Lennard-Jones-like  (σ/r)¹² − (σ/r)⁶
+                        //              short-range repulsion + medium-range attraction
+                        //   "repel":   pure (σ/r)² soft-core repulsion
+                        //   "attract": (1 − r/rad) linear well, attractive only
+                        let fmag: number;
+                        if (p.pairwiseMode === "repel") {
+                          fmag = pStr * (norm * norm) / r2;
+                        } else if (p.pairwiseMode === "attract") {
+                          fmag = -pStr * (1 - dist / pRad);
+                        } else {
+                          // lj-like (current behavior, kept as default)
+                          fmag = pStr * (norm * norm / r2 - norm / dist);
+                        }
                         const fx = (dx / dist) * fmag;
                         const fy = (dy / dist) * fmag;
                         s.f[i * 2]     += fx;
