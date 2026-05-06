@@ -698,7 +698,7 @@ export function PhysicsCanvas({
 
           // 4. step(state, dt) — each worker integrates its own slice
           for (let q = 0; q < W; q++) {
-            stepStateRange(s, subDt, p.damping, w, h, p.integrator, partStart(q), partEnd(q));
+            stepStateRange(s, subDt, p.damping, w, h, p.integrator, partStart(q), partEnd(q), p.boundary);
           }
 
           // 5. sync_boundaries — re-project cross-partition edges so the
