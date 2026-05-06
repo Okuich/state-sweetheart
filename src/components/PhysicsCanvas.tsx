@@ -248,10 +248,21 @@ function stepState(
   h: number,
   integrator: "euler" | "semi-euler" | "verlet",
 ) {
-  const N = s.N;
+  stepStateRange(s, dt, damping, w, h, integrator, 0, s.N);
+}
+
+function stepStateRange(
+  s: State,
+  dt: number,
+  damping: number,
+  w: number,
+  h: number,
+  integrator: "euler" | "semi-euler" | "verlet",
+  a: number,
+  b: number,
+) {
   if (integrator === "verlet") {
-    // velocity-Verlet (2nd order, energy-stable)
-    for (let i = 0; i < N; i++) {
+    for (let i = a; i < b; i++) {
       const invM = 1 / s.m[i];
       const ax = s.f[i * 2]     * invM;
       const ay = s.f[i * 2 + 1] * invM;
@@ -263,8 +274,7 @@ function stepState(
       s.v[i * 2 + 1] = (s.v[i * 2 + 1] + 0.5 * ay * dt) * (1 - damping * dt);
     }
   } else if (integrator === "semi-euler") {
-    // Semi-implicit (symplectic) Euler — v first, then x
-    for (let i = 0; i < N; i++) {
+    for (let i = a; i < b; i++) {
       const invM = 1 / s.m[i];
       const ax = s.f[i * 2]     * invM;
       const ay = s.f[i * 2 + 1] * invM;
@@ -274,30 +284,61 @@ function stepState(
       s.x[i * 2 + 1] += s.v[i * 2 + 1] * dt;
     }
   } else {
-    // Explicit Euler (forward) — integrators.py
-    //   v_{t+1} = v_t + (F/m) dt
-    //   x_{t+1} = x_t + v_{t+1} dt   (note: uses old v in textbook form)
-    // We then zero forces, matching state.f.zero_().
-    for (let i = 0; i < N; i++) {
+    for (let i = a; i < b; i++) {
       const invM = 1 / s.m[i];
       const ax = s.f[i * 2]     * invM;
       const ay = s.f[i * 2 + 1] * invM;
       const vx0 = s.v[i * 2], vy0 = s.v[i * 2 + 1];
       s.v[i * 2]     = (vx0 + ax * dt) * (1 - damping * dt);
       s.v[i * 2 + 1] = (vy0 + ay * dt) * (1 - damping * dt);
-      s.x[i * 2]     += vx0 * dt;          // forward: x uses v_t, not v_{t+1}
+      s.x[i * 2]     += vx0 * dt;
       s.x[i * 2 + 1] += vy0 * dt;
     }
-    s.f.fill(0);                            // state.f.zero_()
+    // forces zeroed at top of next sub-step
   }
   // Wall collisions
-  for (let i = 0; i < N; i++) {
+  for (let i = a; i < b; i++) {
     if (s.x[i * 2] < 0)        { s.x[i * 2] = 0; s.v[i * 2] *= -0.7; }
     else if (s.x[i * 2] > w)   { s.x[i * 2] = w; s.v[i * 2] *= -0.7; }
     if (s.x[i * 2 + 1] < 0)    { s.x[i * 2 + 1] = 0; s.v[i * 2 + 1] *= -0.7; }
     else if (s.x[i * 2 + 1] > h){ s.x[i * 2 + 1] = h; s.v[i * 2 + 1] *= -0.7; }
   }
 }
+
+/**
+ * scheduler.py — DistributedSimulator.sync_boundaries
+ *
+ * After each worker integrates its own slice, edges that cross partition
+ * borders may be slightly stretched. Apply one extra Gauss-Seidel pass
+ * over ONLY those cross-partition edges to keep the seams consistent —
+ * this is the "boundary halo exchange" step in distributed N-body codes.
+ */
+function syncBoundaries(s: State, partOf: (i: number) => number, dt: number) {
+  if (s.E === 0) return;
+  const invDt = dt > 0 ? 1 / dt : 0;
+  for (let e = 0; e < s.E; e++) {
+    const i = s.edges[e * 2];
+    const j = s.edges[e * 2 + 1];
+    if (partOf(i) === partOf(j)) continue;
+    const dx = s.x[i * 2]     - s.x[j * 2];
+    const dy = s.x[i * 2 + 1] - s.x[j * 2 + 1];
+    const dist = Math.sqrt(dx * dx + dy * dy) + 1e-8;
+    const rest = s.edgeRest[e];
+    const wi = 1 / s.m[i], wj = 1 / s.m[j];
+    const wsum = wi + wj;
+    const c = (dist - rest) / dist / wsum;
+    const cx = c * dx, cy = c * dy;
+    s.x[i * 2]     -= wi * cx;
+    s.x[i * 2 + 1] -= wi * cy;
+    s.x[j * 2]     += wj * cx;
+    s.x[j * 2 + 1] += wj * cy;
+    s.v[i * 2]     -= wi * cx * invDt * 0.5;
+    s.v[i * 2 + 1] -= wi * cy * invDt * 0.5;
+    s.v[j * 2]     += wj * cx * invDt * 0.5;
+    s.v[j * 2 + 1] += wj * cy * invDt * 0.5;
+  }
+}
+
 
 function buildEdges(N: number, perNode: number) {
   // Random sparse graph: each node connects to `perNode` neighbors
