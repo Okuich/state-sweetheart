@@ -67,6 +67,7 @@ export type SimParams = {
   constraintIters: number;
   field: "none" | "swirl" | "wells" | "ripple";
   fieldStrength: number;
+  subSteps: number;
 };
 
 type FloatArr = Float32Array | Float64Array;
@@ -437,81 +438,87 @@ export function PhysicsCanvas({
       }
 
       if (!p.paused) {
-        s.f.fill(0);
-
-        // Gravity
-        for (let i = 0; i < s.N; i++) {
-          s.f[i * 2 + 1] += p.gravity * s.m[i];
-        }
-
-        // Pointer attractor
-        if (pointerRef.current.active) {
-          const px = pointerRef.current.x, py = pointerRef.current.y;
-          const sign = pointerRef.current.mode;
-          const G = p.attractor * sign;
-          for (let i = 0; i < s.N; i++) {
-            const dx = px - s.x[i * 2];
-            const dy = py - s.x[i * 2 + 1];
-            const r2 = dx * dx + dy * dy + 400;
-            const inv = 1 / Math.sqrt(r2);
-            const a = (G * s.m[i]) / r2;
-            s.f[i * 2]     += dx * inv * a * 1000;
-            s.f[i * 2 + 1] += dy * inv * a * 1000;
-          }
-        }
-
-        // Spring forces (Hooke's law) — forces.py
+        // run_simulation(state, config): for t in range(config.steps): ...
+        const subSteps = Math.max(1, p.subSteps | 0);
+        const subDt = dt / subSteps;
         const k = p.springK;
-        for (let e = 0; e < s.E; e++) {
-          const i = s.edges[e * 2];
-          const j = s.edges[e * 2 + 1];
-          const dx = s.x[i * 2]     - s.x[j * 2];
-          const dy = s.x[i * 2 + 1] - s.x[j * 2 + 1];
-          const dist = Math.sqrt(dx * dx + dy * dy) + 1e-8;
-          const dirx = dx / dist;
-          const diry = dy / dist;
-          const mag = -k * (dist - s.edgeRest[e]);
-          const fx = dirx * mag;
-          const fy = diry * mag;
-          s.f[i * 2]     += fx;
-          s.f[i * 2 + 1] += fy;
-          s.f[j * 2]     -= fx;
-          s.f[j * 2 + 1] -= fy;
-        }
-
-        // Pairwise interactions (Lennard-Jones-like) — compute_pairwise_forces
-        // Iterates all (i,j) pairs from positions and accumulates into self.f
         const pStr = p.pairwiseStrength;
         const pRad = p.pairwiseRadius;
-        if (pStr !== 0 && pRad > 0) {
-          const r2max = pRad * pRad;
+        const r2max = pRad * pRad;
+        const norm = pRad * 0.5;
+
+        for (let t = 0; t < subSteps; t++) {
+          // 1. zero forces — state.f.zero_()
+          s.f.fill(0);
+
+          // 2. external + interaction forces
+          // gravity
           for (let i = 0; i < s.N; i++) {
-            const xi = s.x[i * 2], yi = s.x[i * 2 + 1];
-            for (let j = i + 1; j < s.N; j++) {
-              const dx = xi - s.x[j * 2];
-              const dy = yi - s.x[j * 2 + 1];
-              const r2 = dx * dx + dy * dy;
-              if (r2 > r2max || r2 < 1e-4) continue;
-              const dist = Math.sqrt(r2);
-              // Repulsive short-range, attractive mid-range (sign flips at rad/2)
-              const norm = pRad * 0.5;
-              const fmag = pStr * (norm * norm / r2 - norm / dist);
-              const fx = (dx / dist) * fmag;
-              const fy = (dy / dist) * fmag;
-              s.f[i * 2]     += fx;
-              s.f[i * 2 + 1] += fy;
-              s.f[j * 2]     -= fx;
-              s.f[j * 2 + 1] -= fy;
+            s.f[i * 2 + 1] += p.gravity * s.m[i];
+          }
+
+          // pointer attractor
+          if (pointerRef.current.active) {
+            const px = pointerRef.current.x, py = pointerRef.current.y;
+            const sign = pointerRef.current.mode;
+            const G = p.attractor * sign;
+            for (let i = 0; i < s.N; i++) {
+              const dx = px - s.x[i * 2];
+              const dy = py - s.x[i * 2 + 1];
+              const r2 = dx * dx + dy * dy + 400;
+              const inv = 1 / Math.sqrt(r2);
+              const a = (G * s.m[i]) / r2;
+              s.f[i * 2]     += dx * inv * a * 1000;
+              s.f[i * 2 + 1] += dy * inv * a * 1000;
             }
           }
-        }
 
-        // compute_potential_forces(state, field_fn) — adds -∇Φ to f
-        computePotentialForces(s, p.field, p.fieldStrength, w, h);
-        // Integrate — PhysicsState.step(dt): a = f/m, advance v and x
-        stepState(s, dt, p.damping, w, h, p.integrator);
-        // project_constraints — PBD distance solver on edges
-        projectConstraints(s, p.constraintIters, dt);
+          // compute_forces — Hooke's law on edges
+          for (let e = 0; e < s.E; e++) {
+            const i = s.edges[e * 2];
+            const j = s.edges[e * 2 + 1];
+            const dx = s.x[i * 2]     - s.x[j * 2];
+            const dy = s.x[i * 2 + 1] - s.x[j * 2 + 1];
+            const dist = Math.sqrt(dx * dx + dy * dy) + 1e-8;
+            const mag = -k * (dist - s.edgeRest[e]);
+            const fx = (dx / dist) * mag;
+            const fy = (dy / dist) * mag;
+            s.f[i * 2]     += fx;
+            s.f[i * 2 + 1] += fy;
+            s.f[j * 2]     -= fx;
+            s.f[j * 2 + 1] -= fy;
+          }
+
+          // compute_pairwise_forces (skip in sub-steps when expensive)
+          if (pStr !== 0 && pRad > 0) {
+            for (let i = 0; i < s.N; i++) {
+              const xi = s.x[i * 2], yi = s.x[i * 2 + 1];
+              for (let j = i + 1; j < s.N; j++) {
+                const dx = xi - s.x[j * 2];
+                const dy = yi - s.x[j * 2 + 1];
+                const r2 = dx * dx + dy * dy;
+                if (r2 > r2max || r2 < 1e-4) continue;
+                const dist = Math.sqrt(r2);
+                const fmag = pStr * (norm * norm / r2 - norm / dist);
+                const fx = (dx / dist) * fmag;
+                const fy = (dy / dist) * fmag;
+                s.f[i * 2]     += fx;
+                s.f[i * 2 + 1] += fy;
+                s.f[j * 2]     -= fx;
+                s.f[j * 2 + 1] -= fy;
+              }
+            }
+          }
+
+          // 3. compute_potential_forces — F += -∇Φ
+          computePotentialForces(s, p.field, p.fieldStrength, w, h);
+
+          // 4. step(state, dt) — advance positions & velocities
+          stepState(s, subDt, p.damping, w, h, p.integrator);
+
+          // 5. project_constraints — PBD distance solver
+          projectConstraints(s, p.constraintIters, subDt);
+        }
       }
 
       // Render edges

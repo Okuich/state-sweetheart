@@ -75,6 +75,7 @@ function Index() {
     constraintIters: 0,
     field: "none",
     fieldStrength: 0.6,
+    subSteps: 1,
   });
   const [resetKey, setResetKey] = useState(0);
   const [validation, setValidation] = useState<ValidationReport | null>(null);
