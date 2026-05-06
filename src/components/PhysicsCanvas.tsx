@@ -306,38 +306,63 @@ function stepStateRange(
 }
 
 /**
- * scheduler.py — DistributedSimulator.sync_boundaries
+ * scheduler.py — sync_boundaries(results)
  *
- * After each worker integrates its own slice, edges that cross partition
- * borders may be slightly stretched. Apply one extra Gauss-Seidel pass
- * over ONLY those cross-partition edges to keep the seams consistent —
- * this is the "boundary halo exchange" step in distributed N-body codes.
+ *     for shared_node in boundary_nodes:
+ *         avg = mean([r[node] for r in results])
+ *         for r in results:
+ *             r[node] = avg
+ *
+ * In the distributed version each worker keeps its own replica of the
+ * boundary nodes (the "halo"). After a step, those replicas drift. The
+ * canonical sync averages every replica and writes the mean back so all
+ * workers agree on shared state.
+ *
+ * Here we have a single shared buffer, so the equivalent operation is:
+ * for every node that owns a cross-partition edge, average its (x, v)
+ * with the mean of its neighbors on the *other* side of the seam — that
+ * is exactly what the all-reduce mean would settle to after one round.
  */
-function syncBoundaries(s: State, partOf: (i: number) => number, dt: number) {
+function syncBoundaries(s: State, partOf: (i: number) => number) {
   if (s.E === 0) return;
-  const invDt = dt > 0 ? 1 / dt : 0;
+  // Per-node accumulators for the "other-side" neighborhood mean.
+  const sumX = new Float64Array(s.N * 2);
+  const sumV = new Float64Array(s.N * 2);
+  const cnt  = new Int32Array(s.N);
+
   for (let e = 0; e < s.E; e++) {
     const i = s.edges[e * 2];
     const j = s.edges[e * 2 + 1];
     if (partOf(i) === partOf(j)) continue;
-    const dx = s.x[i * 2]     - s.x[j * 2];
-    const dy = s.x[i * 2 + 1] - s.x[j * 2 + 1];
-    const dist = Math.sqrt(dx * dx + dy * dy) + 1e-8;
-    const rest = s.edgeRest[e];
-    const wi = 1 / s.m[i], wj = 1 / s.m[j];
-    const wsum = wi + wj;
-    const c = (dist - rest) / dist / wsum;
-    const cx = c * dx, cy = c * dy;
-    s.x[i * 2]     -= wi * cx;
-    s.x[i * 2 + 1] -= wi * cy;
-    s.x[j * 2]     += wj * cx;
-    s.x[j * 2 + 1] += wj * cy;
-    s.v[i * 2]     -= wi * cx * invDt * 0.5;
-    s.v[i * 2 + 1] -= wi * cy * invDt * 0.5;
-    s.v[j * 2]     += wj * cx * invDt * 0.5;
-    s.v[j * 2 + 1] += wj * cy * invDt * 0.5;
+    // i sees j (across the seam) and vice-versa
+    sumX[i * 2]     += s.x[j * 2];
+    sumX[i * 2 + 1] += s.x[j * 2 + 1];
+    sumV[i * 2]     += s.v[j * 2];
+    sumV[i * 2 + 1] += s.v[j * 2 + 1];
+    cnt[i]++;
+    sumX[j * 2]     += s.x[i * 2];
+    sumX[j * 2 + 1] += s.x[i * 2 + 1];
+    sumV[j * 2]     += s.v[i * 2];
+    sumV[j * 2 + 1] += s.v[i * 2 + 1];
+    cnt[j]++;
+  }
+
+  // Blend factor — full averaging (=1) jitters; a fraction matches the
+  // "one round of all-reduce" smoothing from the distributed code.
+  const a = 0.25;
+  for (let i = 0; i < s.N; i++) {
+    const c = cnt[i];
+    if (c === 0) continue;
+    const mx = sumX[i * 2] / c, my = sumX[i * 2 + 1] / c;
+    const mvx = sumV[i * 2] / c, mvy = sumV[i * 2 + 1] / c;
+    // r[node] = (1-a)*own + a*mean_of_replicas
+    s.x[i * 2]     = (1 - a) * s.x[i * 2]     + a * mx;
+    s.x[i * 2 + 1] = (1 - a) * s.x[i * 2 + 1] + a * my;
+    s.v[i * 2]     = (1 - a) * s.v[i * 2]     + a * mvx;
+    s.v[i * 2 + 1] = (1 - a) * s.v[i * 2 + 1] + a * mvy;
   }
 }
+
 
 
 function buildEdges(N: number, perNode: number) {
