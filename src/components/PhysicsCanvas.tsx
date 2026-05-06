@@ -82,6 +82,7 @@ export type SimParams = {
   showFieldArrows: boolean;
   adaptiveSubSteps: boolean;
   maxSubSteps: number;
+  pairwiseAlgo: "grid" | "all-pairs";
 };
 
 type FloatArr = Float32Array | Float64Array;
