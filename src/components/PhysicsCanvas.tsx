@@ -769,7 +769,9 @@ export function PhysicsCanvas({
     ro.observe(canvas);
 
     const step = (now: number) => {
-      const dt = Math.min(0.033, (now - last) / 1000);
+      const rawDt = Math.min(0.033, (now - last) / 1000);
+      const p0 = paramsRef.current;
+      const dt = rawDt * (p0.dtScale ?? 1);
       last = now;
       const p = paramsRef.current;
       const r = canvas.getBoundingClientRect();
