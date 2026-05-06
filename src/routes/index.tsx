@@ -67,6 +67,8 @@ function Index() {
     restLength: 40,
     edgesPerNode: 2,
     showEdges: true,
+    pairwiseStrength: 200,
+    pairwiseRadius: 50,
   });
   const [resetKey, setResetKey] = useState(0);
   const pointerRef = useRef({ x: 0, y: 0, active: false, mode: 1 as 1 | -1 });
@@ -135,6 +137,8 @@ function Index() {
         <Field label="Spring k"  value={params.springK}   min={0}    max={400} step={5}    onChange={(v) => update("springK", v)} />
         <Field label="Rest length" value={params.restLength} unit="px" min={5} max={200} step={1} onChange={(v) => update("restLength", v)} />
         <Field label="Edges / node" value={params.edgesPerNode} min={0} max={6} step={1} onChange={(v) => { update("edgesPerNode", v); setResetKey((k) => k + 1); }} />
+        <Field label="Pairwise · ε"  value={params.pairwiseStrength} min={-500} max={1000} step={10} onChange={(v) => update("pairwiseStrength", v)} />
+        <Field label="Pairwise radius" value={params.pairwiseRadius} unit="px" min={0} max={200} step={1} onChange={(v) => update("pairwiseRadius", v)} />
 
         <div className="flex items-end gap-3 md:col-span-2 lg:col-span-1">
           <Button
@@ -157,17 +161,19 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          forces.py — Hooke's law on edges
+          forces.py — pairwise interactions
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`def compute_forces(state, edges):
-    i, j = edges[:,0], edges[:,1]
-    diff = state.x[i] - state.x[j]
-    dist = norm(diff, dim=1, keepdim=True)
-    direction = diff / (dist + 1e-8)
-    force = direction * -k * (dist - rest_length)
-    scatter_add(state.f, i,  force)
-    scatter_add(state.f, j, -force)`}
+{`def compute_pairwise_forces(state, eps, radius):
+    # Iterate (i, j) pairs from positions, accumulate into self.f
+    diff = state.x[:, None, :] - state.x[None, :, :]   # [N, N, D]
+    dist = norm(diff, dim=-1).clamp(min=1e-3)          # [N, N]
+    mask = (dist < radius) & ~eye(state.N, dtype=bool)
+    norm_r = radius * 0.5
+    fmag = eps * (norm_r**2 / dist**2 - norm_r / dist)
+    direction = diff / dist.unsqueeze(-1)
+    forces = (direction * (fmag * mask).unsqueeze(-1)).sum(dim=1)
+    state.f += forces   # stays on the GPU device`}
         </pre>
       </footer>
     </main>
