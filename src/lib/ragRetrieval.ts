@@ -213,7 +213,7 @@ export function retrieveAll(
     .filter(Boolean)
     .join(" · ");
 
-  return { query: q, geometry, topology, failures, optimizations, summary };
+  return { query: q, weights, geometry, topology, failures, optimizations, summary };
 }
 
 // ─── synthesize a query from a free-form description ────────
