@@ -1544,6 +1544,58 @@ export function PhysicsCanvas({
         }
       }
 
+      // ── Twin overlay: sensor crosses, residual lines, forecast trails ──
+      if (p.showTwin && p.twinEnabled && twinSensorsRef.current.length > 0) {
+        const sensors = twinSensorsRef.current;
+        // 1) residual line (sim → sensor) — color = anomaly state
+        ctx.lineWidth = 0.8;
+        for (let i = 0; i < sensors.length; i++) {
+          const sn = sensors[i];
+          if (sn.bound >= s.N) continue;
+          const x0 = s.x[sn.bound * 2], y0 = s.x[sn.bound * 2 + 1];
+          const ok = sn.z <= p.twinAnomalyZ;
+          ctx.strokeStyle = ok ? "oklch(0.78 0.12 200 / 0.55)" : "oklch(0.72 0.22 30 / 0.85)";
+          ctx.beginPath();
+          ctx.moveTo(x0, y0);
+          ctx.lineTo(sn.px, sn.py);
+          ctx.stroke();
+          // 2) sensor cross-hair
+          ctx.strokeStyle = ok ? "oklch(0.86 0.16 200 / 0.9)" : "oklch(0.78 0.22 30)";
+          ctx.lineWidth = 1.1;
+          ctx.beginPath();
+          ctx.moveTo(sn.px - 5, sn.py); ctx.lineTo(sn.px + 5, sn.py);
+          ctx.moveTo(sn.px, sn.py - 5); ctx.lineTo(sn.px, sn.py + 5);
+          ctx.stroke();
+          // 3) noise circle (1σ)
+          ctx.strokeStyle = "oklch(0.72 0.10 200 / 0.35)";
+          ctx.lineWidth = 0.5;
+          ctx.beginPath();
+          ctx.arc(sn.px, sn.py, p.twinSensorNoise, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        // 4) ballistic forecast for each bound particle (linear: x + v·dt·k)
+        const F = Math.max(0, Math.min(60, p.twinForecastSteps | 0));
+        if (F > 0) {
+          const fdt = dt > 1e-6 ? dt : 1 / 60;
+          ctx.lineWidth = 0.6;
+          for (let i = 0; i < sensors.length; i++) {
+            const sn = sensors[i];
+            if (sn.bound >= s.N) continue;
+            const i2 = sn.bound * 2;
+            const x0 = s.x[i2], y0 = s.x[i2 + 1];
+            const vx = s.v[i2], vy = s.v[i2 + 1];
+            for (let k = 1; k <= F; k++) {
+              const a = 0.5 * (1 - k / F);
+              ctx.strokeStyle = `oklch(0.82 0.14 95 / ${a.toFixed(3)})`;
+              ctx.beginPath();
+              ctx.moveTo(x0 + vx * fdt * (k - 1), y0 + vy * fdt * (k - 1));
+              ctx.lineTo(x0 + vx * fdt * k, y0 + vy * fdt * k);
+              ctx.stroke();
+            }
+          }
+        }
+      }
+
 
       if (pointerRef.current.active) {
         const sign = pointerRef.current.mode;
