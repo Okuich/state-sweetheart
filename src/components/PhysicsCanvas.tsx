@@ -97,6 +97,19 @@ export type SimParams = {
   confidenceZ: number;
   constraintTol: number;
   showConfidence: boolean;
+  // ── Digital Twin synchronization ──────────────────────────────────
+  // M synthetic sensors stream Lissajous "ground-truth" positions with
+  // Gaussian noise. Each frame the nearest particle is nudged toward
+  // its assigned reading (Kalman-lite blend with gain assimGain).
+  // anomalyZ: residual / sensorNoise; flags when the sim & telemetry
+  // diverge. forecastSteps: ballistic lookahead drawn as a fade trail.
+  twinEnabled: boolean;
+  twinSensorCount: number;
+  twinAssimGain: number;
+  twinSensorNoise: number;
+  twinAnomalyZ: number;
+  twinForecastSteps: number;
+  showTwin: boolean;
 };
 
 type FloatArr = Float32Array | Float64Array;
@@ -705,6 +718,20 @@ export function PhysicsCanvas({
   const energyBaselineNRef = useRef(0);
   const lastSubStepsRef = useRef(1);
   const fpsEmaRef = useRef(60);
+  // ── Digital Twin telemetry (synthetic IoT/sensor stream) ─────────
+  // Each sensor has: a Lissajous phase pair, an assigned particle id
+  // (re-bound on count change), the latest reading (px,py) with noise,
+  // and the residual = ||sensor − particle|| in σ-units (anomaly score).
+  const twinSensorsRef = useRef<{
+    px: number; py: number;       // latest noisy reading
+    bound: number;                // particle index it's tracking
+    ax: number; ay: number;       // Lissajous frequencies
+    phx: number; phy: number;     // phase offsets
+    residual: number;             // |reading − sim| in pixels
+    z: number;                    // residual / sensorNoise (z-score)
+  }[]>([]);
+  const twinAnomalyCountRef = useRef(0);
+  const twinResidualEmaRef = useRef(0);
 
   // Compile the user-provided Φ exactly when the source string changes.
   // useMemo gives us a stable reference per source (cheap, parse is < 1 ms),
@@ -1088,7 +1115,77 @@ export function PhysicsCanvas({
         }
       }
 
-      // ── differentiable_loop.py ────────────────────────────────────
+      // ── digital_twin.py ───────────────────────────────────────────
+      // Telemetry intake + state assimilation. Synthetic Lissajous
+      // "ground-truth" sensors stream noisy positions; for each sensor
+      // we (a) advance its trajectory, (b) draw a noisy reading, and
+      // (c) blend the bound particle's position toward it with gain g
+      // (Kalman-lite: x ← (1−g)·x + g·z, v gets a corrective impulse).
+      // Anomalies are flagged when |residual|/σ_sensor exceeds twinAnomalyZ.
+      if (p.twinEnabled && !p.paused && s.N > 0) {
+        const M = Math.max(0, Math.min(64, p.twinSensorCount | 0));
+        const sensors = twinSensorsRef.current;
+        // Re-allocate sensors when count or particle pool changes
+        if (sensors.length !== M) {
+          sensors.length = 0;
+          for (let i = 0; i < M; i++) {
+            sensors.push({
+              px: 0, py: 0,
+              bound: i % Math.max(1, s.N),
+              ax: 0.3 + Math.random() * 0.6,
+              ay: 0.3 + Math.random() * 0.6,
+              phx: Math.random() * Math.PI * 2,
+              phy: Math.random() * Math.PI * 2,
+              residual: 0, z: 0,
+            });
+          }
+        }
+        for (let i = 0; i < sensors.length; i++) {
+          const sn = sensors[i];
+          if (sn.bound >= s.N) sn.bound = i % s.N;
+        }
+        const tNow = (now - tStartRef.current) / 1000;
+        const cx = w * 0.5, cy = h * 0.5;
+        const rx = w * 0.38, ry = h * 0.38;
+        const sigS = Math.max(0.1, p.twinSensorNoise);
+        const g = Math.max(0, Math.min(1, p.twinAssimGain));
+        let anomalyN = 0;
+        let resAcc = 0;
+        const tmp: [number, number] = [0, 0];
+        for (let i = 0; i < sensors.length; i++) {
+          const sn = sensors[i];
+          // Synthetic ground truth = Lissajous around canvas center
+          const gx = cx + rx * Math.sin(sn.ax * tNow + sn.phx);
+          const gy = cy + ry * Math.sin(sn.ay * tNow + sn.phy);
+          // Add Gaussian sensor noise
+          randn2(tmp);
+          sn.px = gx + sigS * tmp[0];
+          sn.py = gy + sigS * tmp[1];
+          // Residual vs bound particle (innovation)
+          const i2 = sn.bound * 2;
+          const rxi = sn.px - s.x[i2];
+          const ryi = sn.py - s.x[i2 + 1];
+          const r = Math.hypot(rxi, ryi);
+          sn.residual = r;
+          sn.z = r / sigS;
+          if (sn.z > p.twinAnomalyZ) anomalyN++;
+          resAcc += r;
+          // Assimilate: nudge position by g·innovation, add velocity impulse
+          s.x[i2]     += g * rxi;
+          s.x[i2 + 1] += g * ryi;
+          if (dt > 1e-6) {
+            s.v[i2]     += (g * rxi) / dt * 0.25;
+            s.v[i2 + 1] += (g * ryi) / dt * 0.25;
+          }
+        }
+        twinAnomalyCountRef.current = anomalyN;
+        const meanRes = sensors.length > 0 ? resAcc / sensors.length : 0;
+        twinResidualEmaRef.current = twinResidualEmaRef.current * 0.85 + meanRes * 0.15;
+      } else if (twinSensorsRef.current.length > 0 && !p.twinEnabled) {
+        twinSensorsRef.current.length = 0;
+        twinAnomalyCountRef.current = 0;
+      }
+
       //   loss = objective(final_state); loss.backward()
       // Objective: drive every node toward the canvas center.
       //   L = ½ * mean(||x - target||²)
@@ -1250,6 +1347,9 @@ export function PhysicsCanvas({
         `MC K      ${s.K}`,
         `σ̄ (px)    ${s.K > 0 ? sigMean.toFixed(2) : "—"}`,
         `P(c≤${(p.constraintTol*100).toFixed(1)}%)  ${s.K > 0 ? (pConstraint*100).toFixed(1)+"%" : "—"}`,
+        `twin M    ${p.twinEnabled ? twinSensorsRef.current.length : 0}`,
+        `res EMA   ${p.twinEnabled ? twinResidualEmaRef.current.toFixed(1)+"px" : "—"}`,
+        `anomalies ${p.twinEnabled ? twinAnomalyCountRef.current : "—"}`,
       ];
       const padX = 10, padY = 8, lineH = 14;
       const panelW = 188;
@@ -1441,6 +1541,58 @@ export function PhysicsCanvas({
           ctx.beginPath();
           ctx.ellipse(s.x[i * 2], s.x[i * 2 + 1], a, b, ang, 0, Math.PI * 2);
           ctx.stroke();
+        }
+      }
+
+      // ── Twin overlay: sensor crosses, residual lines, forecast trails ──
+      if (p.showTwin && p.twinEnabled && twinSensorsRef.current.length > 0) {
+        const sensors = twinSensorsRef.current;
+        // 1) residual line (sim → sensor) — color = anomaly state
+        ctx.lineWidth = 0.8;
+        for (let i = 0; i < sensors.length; i++) {
+          const sn = sensors[i];
+          if (sn.bound >= s.N) continue;
+          const x0 = s.x[sn.bound * 2], y0 = s.x[sn.bound * 2 + 1];
+          const ok = sn.z <= p.twinAnomalyZ;
+          ctx.strokeStyle = ok ? "oklch(0.78 0.12 200 / 0.55)" : "oklch(0.72 0.22 30 / 0.85)";
+          ctx.beginPath();
+          ctx.moveTo(x0, y0);
+          ctx.lineTo(sn.px, sn.py);
+          ctx.stroke();
+          // 2) sensor cross-hair
+          ctx.strokeStyle = ok ? "oklch(0.86 0.16 200 / 0.9)" : "oklch(0.78 0.22 30)";
+          ctx.lineWidth = 1.1;
+          ctx.beginPath();
+          ctx.moveTo(sn.px - 5, sn.py); ctx.lineTo(sn.px + 5, sn.py);
+          ctx.moveTo(sn.px, sn.py - 5); ctx.lineTo(sn.px, sn.py + 5);
+          ctx.stroke();
+          // 3) noise circle (1σ)
+          ctx.strokeStyle = "oklch(0.72 0.10 200 / 0.35)";
+          ctx.lineWidth = 0.5;
+          ctx.beginPath();
+          ctx.arc(sn.px, sn.py, p.twinSensorNoise, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        // 4) ballistic forecast for each bound particle (linear: x + v·dt·k)
+        const F = Math.max(0, Math.min(60, p.twinForecastSteps | 0));
+        if (F > 0) {
+          const fdt = dt > 1e-6 ? dt : 1 / 60;
+          ctx.lineWidth = 0.6;
+          for (let i = 0; i < sensors.length; i++) {
+            const sn = sensors[i];
+            if (sn.bound >= s.N) continue;
+            const i2 = sn.bound * 2;
+            const x0 = s.x[i2], y0 = s.x[i2 + 1];
+            const vx = s.v[i2], vy = s.v[i2 + 1];
+            for (let k = 1; k <= F; k++) {
+              const a = 0.5 * (1 - k / F);
+              ctx.strokeStyle = `oklch(0.82 0.14 95 / ${a.toFixed(3)})`;
+              ctx.beginPath();
+              ctx.moveTo(x0 + vx * fdt * (k - 1), y0 + vy * fdt * (k - 1));
+              ctx.lineTo(x0 + vx * fdt * k, y0 + vy * fdt * k);
+              ctx.stroke();
+            }
+          }
         }
       }
 
