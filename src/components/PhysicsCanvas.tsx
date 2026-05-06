@@ -1081,7 +1081,7 @@ export function PhysicsCanvas({
           // BEFORE we recompute forces for the new positions.
           if (p.integrator === "verlet" && s.verletPrimed) {
             for (let q = 0; q < W; q++) {
-              verletDrift(s, subDt, partStart(q), partEnd(q));
+              verletDrift(s, subDt, partStart(q), partEnd(q), w, h, p.boundary, p.restitution);
             }
           }
 
