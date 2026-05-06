@@ -1380,6 +1380,25 @@ export function PhysicsCanvas({
           // independently-stepped slices stay consistent at the seams.
           // Rebuild boundary_indices when N, W, or edge topology changes.
           projectConstraints(s, p.constraintIters, subDt);
+
+          // 5b. Narrow-phase contact solver — sequential impulses +
+          // Baumgarte position correction. Runs after edge-constraint
+          // projection (so springs win at rest length) and before
+          // boundary sync (so cross-partition particles see corrected
+          // positions). Aggregated contact stats are surfaced via the
+          // overlay HUD.
+          if (p.contactsEnabled && p.contactRadius > 0 && s.N > 1) {
+            lastContactStatsRef.current = resolveContacts(s, {
+              radius: p.contactRadius,
+              iters: Math.max(1, p.contactIters | 0),
+              restitution: p.contactRestitution,
+              beta: p.contactBeta,
+              slop: p.contactSlop,
+            });
+          } else {
+            lastContactStatsRef.current = { contacts: 0, iters: 0, totalPenetration: 0, maxPenetration: 0 };
+          }
+
           {
             const eSig = s.E === 0
               ? 0
