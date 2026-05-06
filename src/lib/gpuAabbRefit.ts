@@ -393,6 +393,8 @@ export async function initAabbRefit(
  */
 export function markAllDirty(ctx: AabbRefitContext): void {
   ctx.tree.dirty.fill(1);
+  // Zero out boxes so the next refit sees a delta and updates everything.
+  ctx.tree.boxes.fill(0);
   ctx.stepCount = 0;
 }
 
