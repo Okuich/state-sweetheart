@@ -80,6 +80,8 @@ export type SimParams = {
   potentialGrad: "analytic" | "finite-diff";
   fieldSampling: "auto" | "clamp" | "wrap" | "none";
   showFieldArrows: boolean;
+  adaptiveSubSteps: boolean;
+  maxSubSteps: number;
 };
 
 type FloatArr = Float32Array | Float64Array;
