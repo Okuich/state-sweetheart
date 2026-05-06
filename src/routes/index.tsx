@@ -78,9 +78,12 @@ function Index() {
     subSteps: 1,
     workers: 4,
     showPartitions: true,
+    optimize: false,
+    objectiveLR: 0.05,
   });
   const [resetKey, setResetKey] = useState(0);
   const [validation, setValidation] = useState<ValidationReport | null>(null);
+  const [loss, setLoss] = useState<number | null>(null);
   const pointerRef = useRef({ x: 0, y: 0, active: false, mode: 1 as 1 | -1 });
 
   const update = <K extends keyof SimParams>(k: K, v: SimParams[K]) =>
@@ -125,7 +128,7 @@ function Index() {
 
       {/* Canvas */}
       <section className="relative z-10 mx-4 lg:mx-10 mb-4 h-[58vh] rounded-xl border border-border bg-card backdrop-blur-sm overflow-hidden">
-        <PhysicsCanvas key={resetKey} params={params} pointerRef={pointerRef} onValidation={setValidation} />
+        <PhysicsCanvas key={resetKey} params={params} pointerRef={pointerRef} onValidation={setValidation} onLoss={setLoss} />
         {/* HUD */}
         <div className="pointer-events-none absolute left-4 top-4 flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
           <div><span className="text-primary">x</span> [{params.particleCount} × 2] {params.dtype === "float64" ? "f64" : "f32"}</div>
@@ -181,6 +184,21 @@ function Index() {
         <Field label="Sub-steps / frame" value={params.subSteps} min={1} max={8} step={1} onChange={(v) => update("subSteps", v)} />
         <Field label="Workers" value={params.workers} min={1} max={8} step={1} onChange={(v) => update("workers", v)} />
         <Field label="Field · strength" value={params.fieldStrength} min={-2} max={2} step={0.05} onChange={(v) => update("fieldStrength", v)} />
+        <Field label="∂L/∂x · lr" value={params.objectiveLR} min={0} max={0.5} step={0.005} onChange={(v) => update("objectiveLR", v)} />
+
+        <div className="space-y-2">
+          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">loss.backward()</div>
+          <Button
+            variant={params.optimize ? "default" : "outline"}
+            className={`w-full uppercase tracking-[0.18em] text-[10px] ${
+              params.optimize ? "bg-secondary text-secondary-foreground glow-coral" : ""
+            }`}
+            onClick={() => update("optimize", !params.optimize)}
+            title="Differentiate L=½‖x-target‖² and descend"
+          >
+            {params.optimize ? `optimizing · L=${(loss ?? 0).toExponential(2)}` : "off"}
+          </Button>
+        </div>
 
         <div className="space-y-2">
           <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Show partitions</div>
@@ -289,18 +307,16 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          scheduler.py — distributed step
+          differentiable_loop.py — loss.backward() through the simulator
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`class DistributedSimulator:
-    def __init__(self, workers):
-        self.workers = workers
+{`def loss_fn(initial_state):
+    final_state = run_simulation(initial_state, config)
+    return objective(final_state)        # ½ ‖x - target‖²
 
-    def step(self, partitions):
-        futures = [w.run_step.remote(p)
-                   for w, p in zip(self.workers, partitions)]
-        results = gather(futures)
-        return self.sync_boundaries(results)`}
+loss = loss_fn(state)
+loss.backward()                          # ∂L/∂x  flows back through every step
+optimizer.step()                         # x ← x - lr · ∂L/∂x`}
         </pre>
       </footer>
     </main>
