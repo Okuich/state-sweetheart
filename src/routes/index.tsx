@@ -70,6 +70,8 @@ function Index() {
     pairwiseStrength: 200,
     pairwiseRadius: 50,
     integrator: "euler",
+    dtype: "float32",
+    device: "cpu",
   });
   const [resetKey, setResetKey] = useState(0);
   const [validation, setValidation] = useState<ValidationReport | null>(null);
@@ -92,8 +94,10 @@ function Index() {
           </div>
         </div>
         <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-          <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-          <span>Device · CPU canvas2d</span>
+          <span className={`h-1.5 w-1.5 rounded-full ${params.device === "webgpu" ? "bg-accent" : "bg-primary"}`} />
+          <span>device · {params.device}</span>
+          <span className="text-muted-foreground/50">/</span>
+          <span>dtype · {params.dtype}</span>
         </div>
       </header>
 
@@ -118,9 +122,9 @@ function Index() {
         <PhysicsCanvas key={resetKey} params={params} pointerRef={pointerRef} onValidation={setValidation} />
         {/* HUD */}
         <div className="pointer-events-none absolute left-4 top-4 flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-          <div><span className="text-primary">x</span> [{params.particleCount} × 2] f32</div>
-          <div><span className="text-primary">v</span> [{params.particleCount} × 2] f32</div>
-          <div><span className="text-primary">m</span> [{params.particleCount}] f32</div>
+          <div><span className="text-primary">x</span> [{params.particleCount} × 2] {params.dtype === "float64" ? "f64" : "f32"}</div>
+          <div><span className="text-primary">v</span> [{params.particleCount} × 2] {params.dtype === "float64" ? "f64" : "f32"}</div>
+          <div><span className="text-primary">m</span> [{params.particleCount}] {params.dtype === "float64" ? "f64" : "f32"}</div>
           <div><span className="text-primary">f</span> ← g + attractor + springs</div>
           <div><span className="text-accent">edges</span> ~ {params.particleCount * params.edgesPerNode}</div>
         </div>
@@ -186,6 +190,43 @@ function Index() {
           </div>
         </div>
 
+        <div className="space-y-2">
+          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Dtype</div>
+          <div className="flex gap-2">
+            {(["float32", "float64"] as const).map((opt) => (
+              <Button
+                key={opt}
+                variant={params.dtype === opt ? "default" : "outline"}
+                className={`flex-1 uppercase tracking-[0.18em] text-[10px] ${
+                  params.dtype === opt ? "bg-primary text-primary-foreground glow-mint" : ""
+                }`}
+                onClick={() => update("dtype", opt)}
+              >
+                {opt}
+              </Button>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Device</div>
+          <div className="flex gap-2">
+            {(["cpu", "webgpu"] as const).map((opt) => (
+              <Button
+                key={opt}
+                variant={params.device === opt ? "default" : "outline"}
+                className={`flex-1 uppercase tracking-[0.18em] text-[10px] ${
+                  params.device === opt ? "bg-secondary text-secondary-foreground glow-coral" : ""
+                }`}
+                onClick={() => update("device", opt)}
+                title={opt === "webgpu" ? "Logical device tag — falls back to CPU when navigator.gpu is absent" : undefined}
+              >
+                {opt}
+              </Button>
+            ))}
+          </div>
+        </div>
+
         <div className="flex items-end gap-3 md:col-span-2 lg:col-span-1">
           <Button
             variant="default"
@@ -207,23 +248,20 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          state.py — PhysicsState.step(dt)
+          state.py — PhysicsState.to(device, dtype)
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`def step(self, dt: float):
-    """Advance positions & velocities by dt using a = f / m."""
-    a = self.f / self.m.unsqueeze(-1)        # [N, D]
-    if self.integrator == "verlet":
-        # velocity-Verlet (2nd order, energy-conserving)
-        self.x += self.v * dt + 0.5 * a * dt * dt
-        a_new   = self.f / self.m.unsqueeze(-1)   # recompute next frame
-        self.v += 0.5 * (a + a_new) * dt
-    else:
-        # semi-implicit (symplectic) Euler
-        self.v += a * dt
-        self.x += self.v * dt
-    self.v *= (1.0 - self.damping * dt)
-    self.f.zero_()`}
+{`def to(self, device: str, dtype=torch.float32) -> "PhysicsState":
+    """Cast every tensor to the target device + dtype.
+    f is reinitialized to zeros so stale forces never cross devices."""
+    if self.device == device and self.dtype == dtype:
+        return self
+    self.x = self.x.to(device=device, dtype=dtype)
+    self.v = self.v.to(device=device, dtype=dtype)
+    self.m = self.m.to(device=device, dtype=dtype)
+    self.f = torch.zeros_like(self.x)        # same device, same dtype
+    self.device, self.dtype = device, dtype
+    return self`}
         </pre>
       </footer>
     </main>

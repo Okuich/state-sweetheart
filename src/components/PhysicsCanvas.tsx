@@ -8,21 +8,22 @@ export type ValidationReport = { ok: boolean; issues: ValidationIssue[]; checked
  * Mirrors what `assert x.shape == (N, D)` / `x.dtype == float32` would do in PyTorch.
  */
 function validateState(s: {
-  N: number; D: number;
+  N: number; D: number; dtype: "float32" | "float64";
   x: unknown; v: unknown; m: unknown; f: unknown;
 }): ValidationReport {
   const issues: ValidationIssue[] = [];
   const N = s.N, D = s.D;
+  const Ctor = s.dtype === "float64" ? Float64Array : Float32Array;
+  const dtypeName = Ctor.name;
 
-  const checkVec = (name: string, arr: unknown, len: number, dtype = "Float32Array") => {
-    if (!(arr instanceof Float32Array)) {
-      issues.push({ field: name, expected: dtype, got: arr?.constructor?.name ?? typeof arr });
+  const checkVec = (name: string, arr: unknown, len: number) => {
+    if (!(arr instanceof Ctor)) {
+      issues.push({ field: name, expected: dtypeName, got: (arr as ArrayBufferView | undefined)?.constructor?.name ?? typeof arr });
       return;
     }
     if (arr.length !== len) {
       issues.push({ field: name, expected: `length ${len}`, got: `length ${arr.length}` });
     }
-    // NaN / Inf scan (cheap sample for large arrays)
     const stride = Math.max(1, Math.floor(arr.length / 256));
     for (let i = 0; i < arr.length; i += stride) {
       if (!Number.isFinite(arr[i])) {
@@ -35,14 +36,17 @@ function validateState(s: {
   if (!Number.isInteger(N) || N <= 0) issues.push({ field: "N", expected: "positive int", got: String(N) });
   if (D !== 2) issues.push({ field: "D", expected: "2", got: String(D) });
 
-  checkVec("x", s.x, N * D);   // [N, D]
-  checkVec("v", s.v, N * D);   // [N, D]
-  checkVec("m", s.m, N);       // [N]
-  checkVec("f", s.f, N * D);   // [N, D]
+  checkVec("x", s.x, N * D);
+  checkVec("v", s.v, N * D);
+  checkVec("m", s.m, N);
+  checkVec("f", s.f, N * D);
 
   return { ok: issues.length === 0, issues, checkedAt: performance.now() };
 }
 
+
+export type Dtype = "float32" | "float64";
+export type Device = "cpu" | "webgpu";
 
 export type SimParams = {
   gravity: number;
@@ -58,21 +62,71 @@ export type SimParams = {
   pairwiseStrength: number;
   pairwiseRadius: number;
   integrator: "euler" | "verlet";
+  dtype: Dtype;
+  device: Device;
 };
+
+type FloatArr = Float32Array | Float64Array;
 
 type State = {
   N: number;
   D: number;
-  x: Float32Array;
-  v: Float32Array;
-  m: Float32Array;
-  f: Float32Array;
-  fPrev: Float32Array;     // previous-step forces (for velocity-Verlet)
-  hue: Float32Array;
+  dtype: Dtype;
+  device: Device;
+  x: FloatArr;
+  v: FloatArr;
+  m: FloatArr;
+  f: FloatArr;
+  fPrev: FloatArr;
+  hue: Float32Array;       // visual-only, not part of physics tensors
   edges: Int32Array;
-  edgeRest: Float32Array;
+  edgeRest: FloatArr;
   E: number;
 };
+
+/** Allocate a typed array matching `dtype`. */
+function emptyLike(len: number, dtype: Dtype): FloatArr {
+  return dtype === "float64" ? new Float64Array(len) : new Float32Array(len);
+}
+
+/** Copy/cast `src` into a fresh array of the requested dtype. */
+function castArray(src: FloatArr, dtype: Dtype): FloatArr {
+  const Ctor = dtype === "float64" ? Float64Array : Float32Array;
+  if (src instanceof Ctor) return new Ctor(src); // copy, same dtype
+  const out = new Ctor(src.length);
+  for (let i = 0; i < src.length; i++) out[i] = src[i];
+  return out;
+}
+
+/**
+ * PhysicsState.to(device, dtype)
+ *
+ * Cast every tensor (x, v, m, f, fPrev, edgeRest) to the target dtype and
+ * (logical) device. `f` is *re-initialized* to zeros with the right dtype so
+ * we never carry stale forces across a device hop. Returns a new State; the
+ * old buffers are left for GC, mirroring PyTorch's `.to()` semantics where
+ * the call is a no-op when nothing changes.
+ *
+ * Devices supported in-browser:
+ *   "cpu"    → typed arrays on the JS heap (always available)
+ *   "webgpu" → falls back to CPU when navigator.gpu is undefined; we still
+ *              record the requested device so the UI can surface it.
+ */
+function toDevice(s: State, device: Device, dtype: Dtype): State {
+  if (s.device === device && s.dtype === dtype) return s;
+  return {
+    ...s,
+    dtype,
+    device,
+    x: castArray(s.x, dtype),
+    v: castArray(s.v, dtype),
+    m: castArray(s.m, dtype),
+    // f reinitialized to zeros on the new device/dtype — never reuse stale forces
+    f: emptyLike(s.N * s.D, dtype),
+    fPrev: emptyLike(s.N * s.D, dtype),
+    edgeRest: castArray(s.edgeRest, dtype),
+  };
+}
 
 /**
  * PhysicsState.step(dt) — advance positions & velocities using a = f/m.
@@ -149,12 +203,15 @@ function buildEdges(N: number, perNode: number) {
   return new Int32Array(list);
 }
 
-function initState(N: number, w: number, h: number, perNode: number, rest: number): State {
-  const x = new Float32Array(N * 2);
-  const v = new Float32Array(N * 2);
-  const m = new Float32Array(N);
-  const f = new Float32Array(N * 2);
-  const fPrev = new Float32Array(N * 2);
+function initState(
+  N: number, w: number, h: number, perNode: number, rest: number,
+  dtype: Dtype = "float32", device: Device = "cpu",
+): State {
+  const x = emptyLike(N * 2, dtype);
+  const v = emptyLike(N * 2, dtype);
+  const m = emptyLike(N, dtype);
+  const f = emptyLike(N * 2, dtype);
+  const fPrev = emptyLike(N * 2, dtype);
   const hue = new Float32Array(N);
   for (let i = 0; i < N; i++) {
     x[i * 2] = Math.random() * w;
@@ -168,9 +225,9 @@ function initState(N: number, w: number, h: number, perNode: number, rest: numbe
   }
   const edges = buildEdges(N, perNode);
   const E = edges.length / 2;
-  const edgeRest = new Float32Array(E);
+  const edgeRest = emptyLike(E, dtype);
   edgeRest.fill(rest);
-  return { N, D: 2, x, v, m, f, fPrev, hue, edges, edgeRest, E };
+  return { N, D: 2, dtype, device, x, v, m, f, fPrev, hue, edges, edgeRest, E };
 }
 
 export function PhysicsCanvas({
@@ -204,7 +261,7 @@ export function PhysicsCanvas({
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       if (!stateRef.current) {
         const p = paramsRef.current;
-        stateRef.current = initState(p.particleCount, r.width, r.height, p.edgesPerNode, p.restLength);
+        stateRef.current = initState(p.particleCount, r.width, r.height, p.edgesPerNode, p.restLength, p.dtype, p.device);
       }
     };
     resize();
@@ -220,7 +277,11 @@ export function PhysicsCanvas({
 
       let s = stateRef.current!;
       if (s.N !== p.particleCount) {
-        s = initState(p.particleCount, w, h, p.edgesPerNode, p.restLength);
+        s = initState(p.particleCount, w, h, p.edgesPerNode, p.restLength, p.dtype, p.device);
+        stateRef.current = s;
+      } else if (s.dtype !== p.dtype || s.device !== p.device) {
+        // PhysicsState.to(device, dtype) — re-cast all tensors, re-init f
+        s = toDevice(s, p.device, p.dtype);
         stateRef.current = s;
       }
 
