@@ -1553,11 +1553,37 @@ export function PhysicsCanvas({
       const PE_total = PE_grav + PE_spring + PE_field;
       const E_total  = KE + PE_total;
 
-      if (energyBaselineRef.current === null || s.N !== energyBaselineNRef.current) {
+      // Rebase baseline when N changes OR integrator changes — comparing
+      // drift across integrators only makes sense from a fresh zero.
+      if (
+        energyBaselineRef.current === null ||
+        s.N !== energyBaselineNRef.current ||
+        p.integrator !== prevIntegratorEnergyRef.current
+      ) {
         energyBaselineRef.current = E_total;
         energyBaselineNRef.current = s.N;
+        prevIntegratorEnergyRef.current = p.integrator;
+        energyHistLenRef.current = 0;
+        energyHistHeadRef.current = 0;
+        driftAbsEmaRef.current = 0;
+        driftSqEmaRef.current = 0;
       }
-      const drift = E_total - (energyBaselineRef.current ?? E_total);
+      const baseline = energyBaselineRef.current ?? E_total;
+      const drift = E_total - baseline;
+      // Relative drift |Δ|/|E₀| — the actually meaningful stability metric.
+      const relDrift = Math.abs(baseline) > 1e-9 ? drift / Math.abs(baseline) : 0;
+      // EMA constants chosen for ~1s smoothing at 60fps.
+      driftAbsEmaRef.current = driftAbsEmaRef.current * 0.94 + Math.abs(drift) * 0.06;
+      driftSqEmaRef.current  = driftSqEmaRef.current  * 0.94 + drift * drift * 0.06;
+      const driftRms = Math.sqrt(driftSqEmaRef.current);
+      // Push into circular history.
+      {
+        const head = energyHistHeadRef.current;
+        energyHistRef.current[head] = E_total;
+        driftHistRef.current[head]  = drift;
+        energyHistHeadRef.current = (head + 1) % ENERGY_HIST_CAP;
+        if (energyHistLenRef.current < ENERGY_HIST_CAP) energyHistLenRef.current++;
+      }
 
       const fmt = (n: number) => {
         const a = Math.abs(n);
