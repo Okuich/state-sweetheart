@@ -157,7 +157,7 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          state.py — runtime model
+          forces.py — Hooke's law on edges
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
 {`def compute_forces(state, edges):
