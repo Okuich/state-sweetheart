@@ -151,17 +151,17 @@ export function RagPanel() {
       <div className="grid gap-4 md:grid-cols-2">
         <Bucket title="geometry · cosine kNN" empty="no geometry nodes yet">
           {ctx.geometry.map((r) => (
-            <Row key={r.item.id} label={r.item.label} score={r.score} reason={r.reason} />
+            <Row key={r.item.id} label={r.item.label} score={r.score} reason={r.reason} breakdown={r.breakdown} />
           ))}
         </Bucket>
         <Bucket title="topology · Jaccard match" empty="no topology overlap">
           {ctx.topology.map((r) => (
-            <Row key={r.item.id} label={r.item.label} score={r.score} reason={r.reason} />
+            <Row key={r.item.id} label={r.item.label} score={r.score} reason={r.reason} breakdown={r.breakdown} />
           ))}
         </Bucket>
         <Bucket title="historical failures" empty="no recorded failures">
           {ctx.failures.map((r) => (
-            <Row key={r.item.id} label={r.item.label} score={r.score} reason={r.reason} tone="danger" />
+            <Row key={r.item.id} label={r.item.label} score={r.score} reason={r.reason} tone="danger" breakdown={r.breakdown} />
           ))}
         </Bucket>
         <Bucket title="optimization memory" empty="no optimization history">
@@ -172,6 +172,7 @@ export function RagPanel() {
               score={r.score}
               reason={r.item.note || r.reason}
               tone="ok"
+              breakdown={r.breakdown}
             />
           ))}
         </Bucket>
