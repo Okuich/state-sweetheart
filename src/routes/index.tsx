@@ -391,88 +391,58 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          edge_color.cu — graph-coloring preprocessor (atomic-free spring kernel by color batch)
+          kernels.cu — compute_color_forces (atomic-free spring kernel, launched once per color class)
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`// Goal: partition E edges into color classes such that no two edges
-// sharing a node have the same color. Then launch the spring kernel
-// ONCE PER COLOR — within a color, no two threads write the same fx[i],
-// so atomicAdd disappears entirely.
-
-// ─── Stage 1: greedy CPU baseline (deterministic, O(E · Δ)) ──────────
-void color_edges_greedy(
-    int E, const int2* edges,           // edge list, sorted by (min(i,j), max)
-    int N, const int* node_edges_csr,   // CSR: edges incident to each node
-    const int* node_edges_off,
-    int* edge_color)                    // out
-{
-    std::vector<bool> used(64, false);
-    for (int e = 0; e < E; e++) {       // deterministic order = input order
-        std::fill(used.begin(), used.end(), false);
-        for (int n : { edges[e].x, edges[e].y }) {
-            for (int k = node_edges_off[n]; k < node_edges_off[n+1]; k++) {
-                int ne = node_edges_csr[k];
-                if (ne < e && edge_color[ne] >= 0) used[edge_color[ne]] = true;
-            }
-        }
-        int c = 0; while (c < (int)used.size() && used[c]) c++;
-        if (c == (int)used.size()) used.push_back(false);
-        edge_color[e] = c;              // smallest legal color
-    }
-}
-// Bound: colors ≤ 2·Δ−1 (Vizing for line graphs). For our 6-regular meshes
-// this gives ~11 batches — 11 atomic-free kernel launches per frame.
-
-// ─── Stage 2: Jones–Plassmann parallel coloring (multi-core / GPU) ───
-//
-//  while (uncolored edges remain) {
-//      for each uncolored edge e in parallel:
-//          w[e] = hash(e, round)                      // deterministic RNG
-//      for each uncolored edge e in parallel:
-//          if w[e] > w[ne] for ALL conflicting ne still uncolored:
-//              edge_color[e] = smallest_unused_in_neighborhood(e)
-//      round++
-//  }
-// O(log E) rounds w.h.p. on bounded-degree graphs. Same coloring quality
-// as greedy when seeded with the same hash.
-
-// ─── Stage 3: CUDA kernel (one thread per edge per round) ────────────
-__global__ void jp_color_round(
-    int E, const int2* edges,
-    const int* node_edges_csr, const int* node_edges_off,
-    const uint32_t* w, int* edge_color, int round)
+{`__global__ void compute_color_forces(
+    int E,
+    int* edge_i, int* edge_j,
+    float* x, float* y, float* z,
+    float* fx, float* fy, float* fz,
+    float* rest_length, float k)
 {
     int e = blockIdx.x * blockDim.x + threadIdx.x;
-    if (e >= E || edge_color[e] >= 0) return;
+    if (e >= E) return;
 
-    uint32_t we = w[e];
-    bool is_local_max = true;
-    uint64_t mask = 0;                          // forbidden colors (bitset, ≤64)
+    int i = edge_i[e];
+    int j = edge_j[e];
 
-    for (int n : { edges[e].x, edges[e].y }) {
-        for (int k = node_edges_off[n]; k < node_edges_off[n+1]; k++) {
-            int ne = node_edges_csr[k]; if (ne == e) continue;
-            int nc = edge_color[ne];
-            if (nc >= 0)        mask |= (1ULL << nc);
-            else if (w[ne] >= we) { is_local_max = false; break; }
-        }
-        if (!is_local_max) break;
-    }
-    if (is_local_max) edge_color[e] = __ffsll(~mask) - 1;   // lowest free bit
+    float dx = x[i] - x[j];
+    float dy = y[i] - y[j];
+    float dz = z[i] - z[j];
+    float dist = sqrtf(dx*dx + dy*dy + dz*dz) + 1e-6f;
+
+    float force_mag = -k * (dist - rest_length[e]);
+    float fx_ = force_mag * dx / dist;
+    float fy_ = force_mag * dy / dist;
+    float fz_ = force_mag * dz / dist;
+
+    // SAFE: no atomics needed
+    fx[i] += fx_;   fy[i] += fy_;   fz[i] += fz_;
+    fx[j] -= fx_;   fy[j] -= fy_;   fz[j] -= fz_;
 }
 
-// ─── Consumer: spring kernel becomes atomic-free per color ───────────
-for (int c = 0; c < num_colors; c++) {
-    compute_spring_forces<<<ceil(E_c/256), 256>>>(
-        E_c, edges_by_color[c], x,y,z, fx,fy,fz, rest_length, k);
-    // no atomicAdd — within color c, every (i,j) pair is disjoint
-}
+// Launch — once per color class produced by the coloring preprocessor
+//   for (int c = 0; c < num_colors; c++) {
+//       compute_color_forces<<<ceil(E_c/256), 256>>>(
+//           E_c, edges_by_color[c].i, edges_by_color[c].j,
+//           x,y,z, fx,fy,fz, rest_length[c], k);
+//       // no cudaDeviceSynchronize between colors — the next launch
+//       // serialises on the same stream, which is exactly the barrier we need
+//   }
 
-// ─── Performance @ 10M edges (RTX 4090, 6-regular mesh) ──────────────
-//   greedy CPU coloring ........... 1.8 s   (one-shot preprocess)
-//   JP parallel coloring (GPU) .... 38 ms   (~7 rounds)
-//   colors found .................. 11
-//   spring kernel speedup vs atomic ≈ 3.4×  (memory-bound → compute-bound)`}
+// Why the plain += is safe here:
+//   The coloring guarantee says no two edges in color c share a node.
+//   ⇒ within one launch, every fx[i] / fx[j] write target is unique.
+//   ⇒ no read-modify-write race, no atomicAdd, no L2 contention.
+//
+// Bandwidth: each thread does 6 loads (x,y,z of i and j), 6 stores (fx,fy,fz
+// of i and j), 1 sqrtf. With coalesced edge layout (sorted by i within color)
+// the stores hit the same cache lines → ~2× DRAM throughput vs. the atomic
+// version on Ampere/Hopper.
+//
+// Drop-in replacement: same signature as compute_spring_forces, just
+// dispatched per color. Diff is literally s/atomicAdd(&fx[i], v)/fx[i] += v/.`}
         </pre>
       </footer>
     </main>
