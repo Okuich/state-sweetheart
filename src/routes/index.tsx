@@ -56,6 +56,57 @@ function Field({
   );
 }
 
+const PRESETS: { label: string; src: string }[] = [
+  { label: "harmonic + spin", src: "0.5*(nx^2 + ny^2) + 0.2*sin(8*theta + t)" },
+  { label: "double well",     src: "-exp(-18*((nx+0.18)^2+ny^2)) - exp(-18*((nx-0.18)^2+ny^2))" },
+  { label: "ripple in time",  src: "0.4*cos(28*r - 3*t)*exp(-2.5*r)" },
+  { label: "saddle",          src: "0.5*(nx^2 - ny^2)" },
+];
+
+function CustomFieldEditor({
+  value, onChange, active,
+}: { value: string; onChange: (v: string) => void; active: boolean }) {
+  // Live compile for inline error feedback. Cheap (parse < 1 ms).
+  const result = useMemo(() => compileFieldExpr(value || "0"), [value]);
+  return (
+    <div className={`space-y-1 ${active ? "" : "opacity-60"}`}>
+      <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+        <span>Φ(nx, ny, r, theta, t)</span>
+        <span className={result.ok ? "text-primary" : "text-destructive"}>
+          {result.ok ? "compiled ✓" : "error"}
+        </span>
+      </div>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value.slice(0, 1024))}
+        spellCheck={false}
+        rows={2}
+        className="w-full resize-none rounded-md border border-border bg-background/60 px-2 py-1.5 font-mono text-[11px] text-foreground/90 outline-none focus:ring-1 focus:ring-primary"
+        placeholder="e.g. 0.5*(nx^2 + ny^2)"
+      />
+      {!result.ok && (
+        <div className="text-[10px] text-destructive font-mono">{result.error}</div>
+      )}
+      <div className="flex flex-wrap gap-1">
+        {PRESETS.map((p) => (
+          <button
+            key={p.label}
+            type="button"
+            onClick={() => onChange(p.src)}
+            className="text-[9px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:text-foreground hover:border-primary"
+            title={p.src}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+      <div className="text-[9px] text-muted-foreground/70">
+        vars: nx, ny ∈ [-0.5, 0.5] · r, theta · t (sec) · pi, e · fns: sin cos tan exp log sqrt abs min max hypot pow tanh ^
+      </div>
+    </div>
+  );
+}
+
 function Index() {
   const [params, setParams] = useState<SimParams>({
     gravity: 60,
