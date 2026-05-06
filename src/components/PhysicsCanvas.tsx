@@ -1055,6 +1055,36 @@ export function PhysicsCanvas({
           // independently-stepped slices stay consistent at the seams.
           projectConstraints(s, p.constraintIters, subDt);
           syncBoundaries(s, partOf);
+
+          // ── probabilistic_runtime.py ────────────────────────────
+          // Monte Carlo uncertainty propagation. Each of K replicas
+          // tracks a position-OFFSET δx_k from the deterministic mean.
+          // Linearized dynamics around the mean trajectory:
+          //   δv_k ← (δv_k + a_mean·0·dt + ξ·σ√dt) · (1 − damping·dt)
+          //   δx_k ← δx_k + δv_k · dt
+          // The mean-acceleration term cancels (already absorbed by the
+          // deterministic state), leaving the noise injection (Langevin
+          // term) and damping decay. Variance grows like σ²·t until
+          // damping balances it ⇒ stationary σ_x ≈ σ/(damping·√(2γ)).
+          const Kreq = p.stochastic ? Math.max(0, Math.min(64, p.ensembleK | 0)) : 0;
+          if (Kreq !== s.K) ensureEnsemble(s, Kreq);
+          if (s.K > 0) {
+            const sig = Math.max(0, p.noiseSigma);
+            const sqrtDt = Math.sqrt(subDt);
+            const decay = 1 - p.damping * subDt;
+            const tmp: [number, number] = [0, 0];
+            for (let kk = 0; kk < s.K; kk++) {
+              const base = kk * s.N * 2;
+              for (let i = 0; i < s.N; i++) {
+                randn2(tmp);
+                const o = base + i * 2;
+                s.ensV[o]     = (s.ensV[o]     + sig * sqrtDt * tmp[0]) * decay;
+                s.ensV[o + 1] = (s.ensV[o + 1] + sig * sqrtDt * tmp[1]) * decay;
+                s.ensX[o]     += s.ensV[o]     * subDt;
+                s.ensX[o + 1] += s.ensV[o + 1] * subDt;
+              }
+            }
+          }
         }
       }
 
