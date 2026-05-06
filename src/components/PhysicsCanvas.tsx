@@ -1629,6 +1629,14 @@ export function PhysicsCanvas({
       }
 
       const fmtPct = (n: number) => (n * 100).toFixed(2) + "%";
+      // Stability classification — only meaningful for relative drift.
+      // Symplectic methods should keep |Δ|/|E₀| bounded (≲ 1%); explicit
+      // Euler typically grows monotonically and crosses these thresholds.
+      const absRel = Math.abs(relDrift);
+      const stabLabel =
+        absRel < 0.01 ? "stable"   :
+        absRel < 0.05 ? "drifting" :
+        absRel < 0.20 ? "unstable" : "diverging";
       const lines = [
         `diagnostics · ${p.integrator}`,
         `KE        ${fmt(KE)}`,
@@ -1637,6 +1645,10 @@ export function PhysicsCanvas({
         `PE field  ${fmt(PE_field)}`,
         `── total  ${fmt(E_total)}`,
         `Δ since   ${drift >= 0 ? "+" : ""}${fmt(drift)}`,
+        `Δ/E₀      ${(relDrift >= 0 ? "+" : "")}${(relDrift * 100).toFixed(3)}%`,
+        `|Δ| ema   ${fmt(driftAbsEmaRef.current)}`,
+        `Δ rms     ${fmt(driftRms)}`,
+        `stability ${stabLabel}`,
         `c·err max ${fmtPct(cMax)}`,
         `c·err rms ${fmtPct(cRms)}`,
         `subSteps  ${subStepsEff}${p.adaptiveSubSteps ? " (auto)" : ""}`,
@@ -1650,8 +1662,13 @@ export function PhysicsCanvas({
         `anomalies ${p.twinEnabled ? twinAnomalyCountRef.current : "—"}`,
       ];
       const padX = 10, padY = 8, lineH = 14;
-      const panelW = 188;
-      const panelH = padY * 2 + lineH * lines.length;
+      const panelW = 200;
+      // Sparkline plotted under the text lines: shows Δ vs. baseline over
+      // the recent history window, with a zero reference line. Auto-scaled
+      // to peak |Δ| in the window so both stable & diverging look right.
+      const sparkH = 42;
+      const sparkPadTop = 6;
+      const panelH = padY * 2 + lineH * lines.length + sparkPadTop + sparkH;
       const panelX = w - panelW - 12;
       const panelY = 12;
       ctx.fillStyle = "oklch(0.16 0.02 260 / 0.82)";
@@ -1664,18 +1681,73 @@ export function PhysicsCanvas({
       // Color thresholds:
       //   constraint error:  green  < 1%, amber 1-5%, red > 5%
       //   fps:               green ≥ 50, amber 30-50, red < 30
+      //   stability:         green stable, amber drifting, red unstable+
       const cColor = (v: number) =>
         v < 0.01 ? "oklch(0.82 0.18 150)" : v < 0.05 ? "oklch(0.84 0.16 85)" : "oklch(0.78 0.20 35)";
       const fpsColor = fps >= 50 ? "oklch(0.82 0.18 150)" : fps >= 30 ? "oklch(0.84 0.16 85)" : "oklch(0.78 0.20 35)";
+      const stabColor =
+        absRel < 0.01 ? "oklch(0.82 0.18 150)" :
+        absRel < 0.05 ? "oklch(0.84 0.16 85)"  : "oklch(0.78 0.20 35)";
       for (let li = 0; li < lines.length; li++) {
-        if (li === 0)      ctx.fillStyle = "oklch(0.78 0.14 230)";
-        else if (li === 5) ctx.fillStyle = "oklch(0.94 0.04 230)";
-        else if (li === 6) ctx.fillStyle = drift >= 0 ? "oklch(0.78 0.18 35)" : "oklch(0.78 0.18 150)";
-        else if (li === 7) ctx.fillStyle = cColor(cMax);
-        else if (li === 8) ctx.fillStyle = cColor(cRms);
-        else if (li === 11) ctx.fillStyle = fpsColor;
-        else               ctx.fillStyle = "oklch(0.78 0.04 230 / 0.85)";
+        if (li === 0)       ctx.fillStyle = "oklch(0.78 0.14 230)";
+        else if (li === 5)  ctx.fillStyle = "oklch(0.94 0.04 230)";
+        else if (li === 6)  ctx.fillStyle = drift >= 0 ? "oklch(0.78 0.18 35)" : "oklch(0.78 0.18 150)";
+        else if (li === 7)  ctx.fillStyle = stabColor;
+        else if (li === 8)  ctx.fillStyle = "oklch(0.84 0.10 230 / 0.9)";
+        else if (li === 9)  ctx.fillStyle = "oklch(0.84 0.10 230 / 0.9)";
+        else if (li === 10) ctx.fillStyle = stabColor;
+        else if (li === 11) ctx.fillStyle = cColor(cMax);
+        else if (li === 12) ctx.fillStyle = cColor(cRms);
+        else if (li === 15) ctx.fillStyle = fpsColor;
+        else                ctx.fillStyle = "oklch(0.78 0.04 230 / 0.85)";
         ctx.fillText(lines[li], panelX + padX, panelY + padY + li * lineH);
+      }
+
+      // ── Energy-drift sparkline ───────────────────────────────────
+      // X-axis: oldest sample on the left → newest on the right.
+      // Y-axis: signed Δ, centered on zero, scaled to ±max(|Δ|) in window.
+      {
+        const sx = panelX + padX;
+        const sy = panelY + padY + lines.length * lineH + sparkPadTop;
+        const sw = panelW - padX * 2;
+        const sh = sparkH;
+        // Background + zero line
+        ctx.fillStyle = "oklch(0.20 0.02 260 / 0.6)";
+        ctx.fillRect(sx, sy, sw, sh);
+        ctx.strokeStyle = "oklch(0.5 0.03 260 / 0.7)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy + sh / 2 + 0.5);
+        ctx.lineTo(sx + sw, sy + sh / 2 + 0.5);
+        ctx.stroke();
+
+        const len = energyHistLenRef.current;
+        if (len >= 2) {
+          // Read oldest→newest by walking from (head - len) mod cap.
+          const cap = ENERGY_HIST_CAP;
+          const start = (energyHistHeadRef.current - len + cap) % cap;
+          let dMax = 1e-12;
+          for (let i = 0; i < len; i++) {
+            const v = Math.abs(driftHistRef.current[(start + i) % cap]);
+            if (v > dMax) dMax = v;
+          }
+          ctx.strokeStyle = stabColor;
+          ctx.lineWidth = 1.25;
+          ctx.beginPath();
+          for (let i = 0; i < len; i++) {
+            const d = driftHistRef.current[(start + i) % cap];
+            const px = sx + (i / (len - 1)) * sw;
+            const py = sy + sh / 2 - (d / dMax) * (sh / 2 - 2);
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          }
+          ctx.stroke();
+          // Peak-|Δ| label (top-right of sparkline)
+          ctx.fillStyle = "oklch(0.78 0.04 230 / 0.7)";
+          ctx.font = "9px ui-monospace, SFMono-Regular, Menlo, monospace";
+          ctx.fillText(`±${fmt(dMax)}`, sx + 4, sy + 2);
+          ctx.font = "11px ui-monospace, SFMono-Regular, Menlo, monospace";
+        }
       }
 
       if (p.showEdges && s.E > 0) {
