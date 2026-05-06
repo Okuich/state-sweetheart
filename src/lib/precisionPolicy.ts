@@ -112,7 +112,7 @@ export class PrecisionPolicy {
       at: Date.now(),
     };
 
-    const meaningfulLoss = maxRelLoss > 1e-7 || overflow;
+    const meaningfulLoss = maxAbsLoss > 0 || overflow;
 
     if (this.mode === "strict" && meaningfulLoss) {
       throw new Error(
