@@ -206,6 +206,29 @@ export function LearningEnginePanel() {
       {/* Candidate design + suggestions */}
       <div className="grid gap-4 lg:grid-cols-2">
         <Card label="candidate · design vector (normalized 0..1)">
+          <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+            {liveDesign ? (
+              <Badge variant="default" className="text-[10px]">
+                live · {liveDesign.variantName}
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                no live design — analyze geometry to map features
+              </Badge>
+            )}
+            <div className="flex items-center gap-2 text-[10px]">
+              <label className="flex items-center gap-1 text-muted-foreground cursor-pointer">
+                <input type="checkbox" checked={autoApply}
+                  onChange={(e) => setAutoApply(e.target.checked)}
+                  className="accent-primary" />
+                auto-apply
+              </label>
+              <Button size="sm" variant="outline" className="h-6 text-[10px]"
+                disabled={!liveDesign} onClick={applyLiveDesign}>
+                apply now
+              </Button>
+            </div>
+          </div>
           <div className="space-y-2 max-h-72 overflow-auto pr-1">
             {FEATURE_NAMES.map((n, i) => (
               <div key={n} className="flex items-center gap-2 text-[11px]">
