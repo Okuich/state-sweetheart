@@ -273,15 +273,17 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          field_engine.py — autograd potential field
+          simulation.py — full pipeline per frame
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`def compute_potential_forces(state, field_fn):
-    # field_fn: differentiable scalar field  Φ : ℝᴺˣᴰ → ℝ
-    state.x.requires_grad_(True)
-    potential = field_fn(state.x).sum()
-    forces    = -grad(potential, state.x)[0]   # F = -∇Φ
-    state.f  += forces`}
+{`def run_simulation(state, config):
+    for t in range(config.steps):           # config.steps = sub-steps / frame
+        compute_forces(state, config.edges)         # Hooke's law
+        compute_pairwise_forces(state, config.eps)  # short-range interactions
+        compute_potential_forces(state, config.field)
+        step(state, config.dt)              # a = f/m → v, x
+        project_constraints(state, config.constraints)
+    return state`}
         </pre>
       </footer>
     </main>
