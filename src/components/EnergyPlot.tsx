@@ -157,7 +157,7 @@ function Readout({ latestRef }: { latestRef: React.MutableRefObject<EnergySample
     return n.toExponential(1);
   };
   const rel = Math.abs(s.baseline) > 1e-9 ? (s.drift / Math.abs(s.baseline)) * 100 : 0;
-  void force;
+  
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[10px] font-mono">
       <Stat label="KE"      value={fmt(s.KE)}     accent="rgb(110,231,255)" />
