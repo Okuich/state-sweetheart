@@ -7,7 +7,9 @@ import { loadGraph, type Graph } from "@/lib/knowledgeGraph";
 import {
   retrieveAll,
   synthesizeQuery,
+  DEFAULT_WEIGHTS,
   type RagContext,
+  type RetrievalWeights,
 } from "@/lib/ragRetrieval";
 import {
   recommendSimulationParameters,
@@ -28,6 +30,7 @@ export function RagPanel() {
   const [target, setTarget] = useState(280);
   const [proc, setProc] = useState("mill-5ax");
   const [k, setK] = useState(5);
+  const [weights, setWeights] = useState<RetrievalWeights>(DEFAULT_WEIGHTS);
 
   // re-load graph on mount + when window storage changes (other panel writes)
   useEffect(() => {
@@ -42,8 +45,8 @@ export function RagPanel() {
       targetStress: target,
       process: proc,
     });
-    return retrieveAll(q, graph, k);
-  }, [text, target, proc, k, graph]);
+    return retrieveAll(q, graph, k, weights);
+  }, [text, target, proc, k, graph, weights]);
 
   const [reco, setReco] = useState<Recommendation | null>(null);
   const [reasoning, setReasoning] = useState(false);
@@ -118,7 +121,28 @@ export function RagPanel() {
         ))}
       </div>
 
-      {/* summary line */}
+      {/* retrieval weight sliders */}
+      <div className="rounded-lg border border-border bg-background/40 p-3">
+        <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+          <div className="text-[9px] uppercase tracking-[0.22em] text-muted-foreground">
+            retrieval weights · re-rank scores per channel
+          </div>
+          <button
+            type="button"
+            onClick={() => setWeights(DEFAULT_WEIGHTS)}
+            className="text-[9px] uppercase tracking-[0.16em] text-muted-foreground hover:text-foreground"
+          >
+            reset
+          </button>
+        </div>
+        <div className="grid gap-3 md:grid-cols-4">
+          <WeightSlider label="geometry"    value={weights.geometry} onChange={(v) => setWeights((w) => ({ ...w, geometry: v }))} />
+          <WeightSlider label="topology"    value={weights.topology} onChange={(v) => setWeights((w) => ({ ...w, topology: v }))} />
+          <WeightSlider label="failure"     value={weights.failure}  onChange={(v) => setWeights((w) => ({ ...w, failure:  v }))} />
+          <WeightSlider label="optimization" value={weights.optim}    onChange={(v) => setWeights((w) => ({ ...w, optim:    v }))} />
+        </div>
+      </div>
+
       <div className="rounded-md border border-border bg-background/40 px-3 py-2 text-[11px] font-mono text-foreground/80">
         {ctx.summary || "no context yet"}
       </div>
@@ -317,6 +341,28 @@ function NumInput({
       <input type="number" value={value} min={min} max={max} step={step}
         onChange={(e) => onChange(Number(e.target.value))}
         className="rounded-md border border-border bg-background/60 px-2 py-1.5 font-mono text-xs outline-none focus:ring-1 focus:ring-primary" />
+    </label>
+  );
+}
+
+function WeightSlider({
+  label, value, onChange,
+}: { label: string; value: number; onChange: (v: number) => void }) {
+  return (
+    <label className="flex flex-col gap-1">
+      <div className="flex items-baseline justify-between">
+        <span className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground">{label}</span>
+        <span className="font-mono text-[10px] tabular-nums text-foreground/80">{value.toFixed(2)}</span>
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={2}
+        step={0.05}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="accent-primary w-full"
+      />
     </label>
   );
 }
