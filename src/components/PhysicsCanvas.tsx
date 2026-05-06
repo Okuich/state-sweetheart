@@ -135,6 +135,11 @@ type State = {
   edges: Int32Array;
   edgeRest: FloatArr;
   E: number;
+  // Velocity-Verlet needs a valid f(x₀) the first time verletDrift runs
+  // (the half-kick is v += ½·(fPrev/m)·dt). If we leave fPrev = 0 the
+  // first sub-step silently drops gravity & every other body force from
+  // the kick. `verletPrimed` flips true after we seed fPrev = f(x₀).
+  verletPrimed: boolean;
   // ── Probabilistic ensemble ────────────────────────────────────────
   // dx/dy hold K Monte Carlo position OFFSETS per particle (relative to
   // the deterministic mean x). Layout: [k * N*2 + i*2 + d]. Velocities
@@ -184,6 +189,8 @@ function toDevice(s: State, device: Device, dtype: Dtype): State {
     // f reinitialized to zeros on the new device/dtype — never reuse stale forces
     f: emptyLike(s.N * s.D, dtype),
     fPrev: emptyLike(s.N * s.D, dtype),
+    // device/dtype changed → forces zeroed → must re-prime fPrev next frame
+    verletPrimed: false,
     edgeRest: castArray(s.edgeRest, dtype),
   };
 }
@@ -768,7 +775,7 @@ function initState(
   const edgeRest = emptyLike(E, dtype);
   edgeRest.fill(rest);
   // Ensemble starts at K=0 (off); allocated lazily when stochastic mode flips on.
-  return { N, D: 2, dtype, device, x, v, m, f, fPrev, hue, edges, edgeRest, E, K: 0, ensX: new Float32Array(0), ensV: new Float32Array(0) };
+  return { N, D: 2, dtype, device, x, v, m, f, fPrev, hue, edges, edgeRest, E, verletPrimed: false, K: 0, ensX: new Float32Array(0), ensV: new Float32Array(0) };
 }
 
 /** (Re)allocate the Monte Carlo ensemble in-place. Replicas start at the
@@ -821,6 +828,7 @@ export function PhysicsCanvas({
   const lastValidationRef = useRef(0);
   const stepOnceRef = useRef(0);
   const boundaryIdxRef = useRef<BoundaryIndex | null>(null);
+  const prevIntegratorRef = useRef<string>("");
   const onValidationRef = useRef(onValidation);
   onValidationRef.current = onValidation;
   const onLossRef = useRef(onLoss);
@@ -995,10 +1003,17 @@ export function PhysicsCanvas({
         const partEnd   = (q: number) => Math.floor(((q + 1) * s.N) / W);
 
         for (let t = 0; t < subSteps; t++) {
+          // Re-prime fPrev whenever we (re)enter verlet from another integrator.
+          // s.fPrev still holds whatever was there before — could be zeros
+          // (fresh state) or stale euler-era forces — neither is valid as a₀.
+          if (p.integrator === "verlet" && prevIntegratorRef.current !== "verlet") {
+            s.verletPrimed = false;
+          }
+          prevIntegratorRef.current = p.integrator;
           // Velocity-Verlet drift uses the PREVIOUS step's forces (s.fPrev)
           // for the first half-kick, then advances positions. This must run
           // BEFORE we recompute forces for the new positions.
-          if (p.integrator === "verlet") {
+          if (p.integrator === "verlet" && s.verletPrimed) {
             for (let q = 0; q < W; q++) {
               verletDrift(s, subDt, partStart(q), partEnd(q));
             }
@@ -1211,10 +1226,23 @@ export function PhysicsCanvas({
           // For velocity-Verlet, drift already happened above; here we apply
           // the second half-kick using the NEW forces, then cache f→fPrev.
           if (p.integrator === "verlet") {
-            for (let q = 0; q < W; q++) {
-              verletKick(s, subDt, p.damping, partStart(q), partEnd(q), p.dragMode);
-              // still call stepStateRange for boundary handling (verlet branch is a no-op for motion)
-              stepStateRange(s, subDt, p.damping, w, h, p.integrator, partStart(q), partEnd(q), p.boundary, p.restitution, p.dragMode);
+            if (!s.verletPrimed) {
+              // Priming substep: forces have just been evaluated at x₀ but
+              // we did NOT drift, and we must not kick (no a_old to combine
+              // with). Seed fPrev = f(x₀) so the next substep's verletDrift
+              // half-kick uses the correct initial acceleration. Boundary
+              // handling still runs so reflections behave consistently.
+              s.fPrev.set(s.f);
+              s.verletPrimed = true;
+              for (let q = 0; q < W; q++) {
+                stepStateRange(s, subDt, p.damping, w, h, p.integrator, partStart(q), partEnd(q), p.boundary, p.restitution, p.dragMode);
+              }
+            } else {
+              for (let q = 0; q < W; q++) {
+                verletKick(s, subDt, p.damping, partStart(q), partEnd(q), p.dragMode);
+                // still call stepStateRange for boundary handling (verlet branch is a no-op for motion)
+                stepStateRange(s, subDt, p.damping, w, h, p.integrator, partStart(q), partEnd(q), p.boundary, p.restitution, p.dragMode);
+              }
             }
           } else {
             for (let q = 0; q < W; q++) {
