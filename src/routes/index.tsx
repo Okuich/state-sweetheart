@@ -321,6 +321,11 @@ function Index() {
                 {opt}
               </Button>
             ))}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Potential gradient</div>
           <div className="grid grid-cols-2 gap-1.5">
             {(["analytic", "finite-diff"] as const).map((opt) => (
               <Button
@@ -340,7 +345,6 @@ function Index() {
               </Button>
             ))}
           </div>
-        </div>
         </div>
 
         <div className="space-y-2">
