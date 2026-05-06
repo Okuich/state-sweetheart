@@ -20,7 +20,7 @@ export const Route = createFileRoute("/api/public/telemetry")({
       OPTIONS: async () => new Response(null, { status: 204, headers: CORS }),
 
       GET: async () => {
-        const { telemetryBus } = await import("@/server/telemetryBus.server");
+        const { telemetryBus } = await import("@/lib/telemetryBus");
         return json({
           ok: true,
           stats: telemetryBus.stats(),
@@ -41,7 +41,7 @@ export const Route = createFileRoute("/api/public/telemetry")({
           );
         }
 
-        const { telemetryBus } = await import("@/server/telemetryBus.server");
+        const { telemetryBus } = await import("@/lib/telemetryBus");
         const samples: TelemetrySample[] =
           "samples" in parsed.data ? parsed.data.samples : [parsed.data];
         for (const s of samples) telemetryBus.publish(s);
