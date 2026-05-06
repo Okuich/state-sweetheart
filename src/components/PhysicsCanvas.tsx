@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { compileFieldExpr } from "@/lib/exprCompile";
+import { resolveContacts, type ContactStats } from "@/lib/contactSolver";
 
 export type ValidationIssue = { field: string; expected: string; got: string };
 export type ValidationReport = { ok: boolean; issues: ValidationIssue[]; checkedAt: number };
