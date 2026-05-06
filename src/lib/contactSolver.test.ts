@@ -49,10 +49,10 @@ describe("contactSolver: pair detection and impulse", () => {
   it("reflects approach velocity with the configured restitution", () => {
     const s = makeState([[0, 0], [6, 0]], [[5, 0], [-5, 0]]);
     resolveContacts(s, { radius: 5, iters: 1, restitution: 0.5, beta: 1, slop: 0 });
-    // v_rel along n = (vJ - vI)·n = (-5 - 5)·1 = -10. lambda = -(1+0.5)·-10/2 = 7.5
-    // v_i ← 5 - 7.5*0.5 = 1.25; v_j ← -5 + 7.5*0.5 = -1.25
-    expect(s.v[0]).toBeCloseTo(1.25, 5);
-    expect(s.v[2]).toBeCloseTo(-1.25, 5);
+    // v_rel·n = (vJ-vI)·n = -10. lambda = -(1+0.5)*(-10)/(1+1) = 7.5
+    // v_i ← 5 - 7.5*1*1 = -2.5;  v_j ← -5 + 7.5*1*1 = 2.5
+    expect(s.v[0]).toBeCloseTo(-2.5, 5);
+    expect(s.v[2]).toBeCloseTo(2.5, 5);
   });
 
   it("pinned (kinematic) body absorbs all displacement", () => {
