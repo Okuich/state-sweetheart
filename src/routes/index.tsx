@@ -14,6 +14,7 @@ import { StreamRuntimePanel } from "@/components/StreamRuntimePanel";
 import { BenchmarkPanel } from "@/components/BenchmarkPanel";
 import { GuardrailsPanel } from "@/components/GuardrailsPanel";
 import { CalibrationPanel } from "@/components/CalibrationPanel";
+import { StepIngestionPanel } from "@/components/StepIngestionPanel";
 import { saveSnapshot } from "@/lib/worldMemory";
 
 export const Route = createFileRoute("/")({
