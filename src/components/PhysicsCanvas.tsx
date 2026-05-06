@@ -1115,13 +1115,13 @@ export function PhysicsCanvas({
           // the second half-kick using the NEW forces, then cache f→fPrev.
           if (p.integrator === "verlet") {
             for (let q = 0; q < W; q++) {
-              verletKick(s, subDt, p.damping, partStart(q), partEnd(q));
+              verletKick(s, subDt, p.damping, partStart(q), partEnd(q), p.dragMode);
               // still call stepStateRange for boundary handling (verlet branch is a no-op for motion)
-              stepStateRange(s, subDt, p.damping, w, h, p.integrator, partStart(q), partEnd(q), p.boundary, p.restitution);
+              stepStateRange(s, subDt, p.damping, w, h, p.integrator, partStart(q), partEnd(q), p.boundary, p.restitution, p.dragMode);
             }
           } else {
             for (let q = 0; q < W; q++) {
-              stepStateRange(s, subDt, p.damping, w, h, p.integrator, partStart(q), partEnd(q), p.boundary, p.restitution);
+              stepStateRange(s, subDt, p.damping, w, h, p.integrator, partStart(q), partEnd(q), p.boundary, p.restitution, p.dragMode);
             }
           }
 
