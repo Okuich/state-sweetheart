@@ -67,6 +67,8 @@ function Index() {
     restLength: 40,
     edgesPerNode: 2,
     showEdges: true,
+    pairwiseStrength: 200,
+    pairwiseRadius: 50,
   });
   const [resetKey, setResetKey] = useState(0);
   const pointerRef = useRef({ x: 0, y: 0, active: false, mode: 1 as 1 | -1 });
