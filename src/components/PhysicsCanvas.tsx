@@ -57,6 +57,7 @@ export type SimParams = {
   showEdges: boolean;
   pairwiseStrength: number;
   pairwiseRadius: number;
+  integrator: "euler" | "verlet";
 };
 
 type State = {
@@ -66,11 +67,69 @@ type State = {
   v: Float32Array;
   m: Float32Array;
   f: Float32Array;
+  fPrev: Float32Array;     // previous-step forces (for velocity-Verlet)
   hue: Float32Array;
-  edges: Int32Array;       // [E*2]
-  edgeRest: Float32Array;  // [E]
+  edges: Int32Array;
+  edgeRest: Float32Array;
   E: number;
 };
+
+/**
+ * PhysicsState.step(dt) — advance positions & velocities using a = f/m.
+ *
+ * integrator = "euler"  → semi-implicit (symplectic) Euler:
+ *      v ← (v + a·dt) · (1 - damping·dt)
+ *      x ← x + v·dt
+ *
+ * integrator = "verlet" → velocity-Verlet (2nd order, energy-stable):
+ *      x ← x + v·dt + ½·a·dt²
+ *      v ← v + ½·(a + a_new)·dt        (a_new injected by caller next frame)
+ *
+ * Walls: elastic-ish reflection with restitution 0.7.
+ */
+function stepState(
+  s: State,
+  dt: number,
+  damping: number,
+  w: number,
+  h: number,
+  integrator: "euler" | "verlet",
+) {
+  const N = s.N;
+  if (integrator === "verlet") {
+    // First half: x ← x + v·dt + ½·a·dt²; cache a into fPrev (as acceleration·m == force)
+    for (let i = 0; i < N; i++) {
+      const invM = 1 / s.m[i];
+      const ax = s.f[i * 2]     * invM;
+      const ay = s.f[i * 2 + 1] * invM;
+      s.x[i * 2]     += s.v[i * 2]     * dt + 0.5 * ax * dt * dt;
+      s.x[i * 2 + 1] += s.v[i * 2 + 1] * dt + 0.5 * ay * dt * dt;
+      s.fPrev[i * 2]     = s.f[i * 2];
+      s.fPrev[i * 2 + 1] = s.f[i * 2 + 1];
+      // partial velocity kick (½·a·dt); the second ½ is applied next frame
+      s.v[i * 2]     = (s.v[i * 2]     + 0.5 * ax * dt) * (1 - damping * dt);
+      s.v[i * 2 + 1] = (s.v[i * 2 + 1] + 0.5 * ay * dt) * (1 - damping * dt);
+    }
+  } else {
+    // Semi-implicit Euler
+    for (let i = 0; i < N; i++) {
+      const invM = 1 / s.m[i];
+      const ax = s.f[i * 2]     * invM;
+      const ay = s.f[i * 2 + 1] * invM;
+      s.v[i * 2]     = (s.v[i * 2]     + ax * dt) * (1 - damping * dt);
+      s.v[i * 2 + 1] = (s.v[i * 2 + 1] + ay * dt) * (1 - damping * dt);
+      s.x[i * 2]     += s.v[i * 2]     * dt;
+      s.x[i * 2 + 1] += s.v[i * 2 + 1] * dt;
+    }
+  }
+  // Wall collisions
+  for (let i = 0; i < N; i++) {
+    if (s.x[i * 2] < 0)        { s.x[i * 2] = 0; s.v[i * 2] *= -0.7; }
+    else if (s.x[i * 2] > w)   { s.x[i * 2] = w; s.v[i * 2] *= -0.7; }
+    if (s.x[i * 2 + 1] < 0)    { s.x[i * 2 + 1] = 0; s.v[i * 2 + 1] *= -0.7; }
+    else if (s.x[i * 2 + 1] > h){ s.x[i * 2 + 1] = h; s.v[i * 2 + 1] *= -0.7; }
+  }
+}
 
 function buildEdges(N: number, perNode: number) {
   // Random sparse graph: each node connects to `perNode` neighbors
