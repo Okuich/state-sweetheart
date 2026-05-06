@@ -76,6 +76,8 @@ function Index() {
     field: "none",
     fieldStrength: 0.6,
     subSteps: 1,
+    workers: 4,
+    showPartitions: true,
   });
   const [resetKey, setResetKey] = useState(0);
   const [validation, setValidation] = useState<ValidationReport | null>(null);
