@@ -81,6 +81,7 @@ function Index() {
     optimize: false,
     objectiveLR: 0.05,
     pairwiseMode: "lj",
+    boundary: "walls",
   });
   const [resetKey, setResetKey] = useState(0);
   const [validation, setValidation] = useState<ValidationReport | null>(null);
