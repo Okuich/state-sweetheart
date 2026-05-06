@@ -83,6 +83,20 @@ export type SimParams = {
   adaptiveSubSteps: boolean;
   maxSubSteps: number;
   pairwiseAlgo: "grid" | "all-pairs";
+  // ── Probabilistic runtime ─────────────────────────────────────────
+  // stochastic: inject Gaussian noise into the force step (Langevin),
+  //   advect a Monte Carlo ensemble of K position-offset replicas
+  //   alongside the main state, and use the ensemble spread as a live
+  //   estimate of σ_x(t). Cost is O(N·K) per sub-step.
+  // confidenceZ: z-score for the rendered ellipse (1≈68%, 2≈95%).
+  // constraintTol: probabilistic edge-stretch tolerance — diagnostics
+  //   report P(|edge-rest|/rest < tol) under the Gaussian σ assumption.
+  stochastic: boolean;
+  noiseSigma: number;
+  ensembleK: number;
+  confidenceZ: number;
+  constraintTol: number;
+  showConfidence: boolean;
 };
 
 type FloatArr = Float32Array | Float64Array;
@@ -101,6 +115,13 @@ type State = {
   edges: Int32Array;
   edgeRest: FloatArr;
   E: number;
+  // ── Probabilistic ensemble ────────────────────────────────────────
+  // dx/dy hold K Monte Carlo position OFFSETS per particle (relative to
+  // the deterministic mean x). Layout: [k * N*2 + i*2 + d]. Velocities
+  // for each replica are tracked in dv. K may change at runtime.
+  K: number;
+  ensX: Float32Array;
+  ensV: Float32Array;
 };
 
 /** Allocate a typed array matching `dtype`. */
@@ -623,7 +644,40 @@ function initState(
   const E = edges.length / 2;
   const edgeRest = emptyLike(E, dtype);
   edgeRest.fill(rest);
-  return { N, D: 2, dtype, device, x, v, m, f, fPrev, hue, edges, edgeRest, E };
+  // Ensemble starts at K=0 (off); allocated lazily when stochastic mode flips on.
+  return { N, D: 2, dtype, device, x, v, m, f, fPrev, hue, edges, edgeRest, E, K: 0, ensX: new Float32Array(0), ensV: new Float32Array(0) };
+}
+
+/** (Re)allocate the Monte Carlo ensemble in-place. Replicas start at the
+ *  deterministic mean (zero offset) with zero relative velocity, so the
+ *  spread grows organically from the noise/dynamics rather than being
+ *  seeded from an arbitrary prior. */
+function ensureEnsemble(s: State, K: number) {
+  if (s.K === K) return;
+  s.K = K;
+  s.ensX = new Float32Array(K * s.N * 2);
+  s.ensV = new Float32Array(K * s.N * 2);
+}
+
+/** Box–Muller — two unit-variance Gaussians per call. */
+function randn2(out: [number, number]) {
+  let u = Math.random();
+  if (u < 1e-12) u = 1e-12;
+  const v = Math.random();
+  const r = Math.sqrt(-2 * Math.log(u));
+  const t = 2 * Math.PI * v;
+  out[0] = r * Math.cos(t);
+  out[1] = r * Math.sin(t);
+}
+
+/** Standard-normal CDF (Abramowitz & Stegun 7.1.26 erf approximation).
+ *  Used to convert a probabilistic edge tolerance into P(|stretch|<tol). */
+function normCdf(z: number): number {
+  const sign = z < 0 ? -1 : 1;
+  const ax = Math.abs(z) / Math.SQRT2;
+  const t = 1 / (1 + 0.3275911 * ax);
+  const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-ax * ax);
+  return 0.5 * (1 + sign * y);
 }
 
 export function PhysicsCanvas({
@@ -1001,6 +1055,36 @@ export function PhysicsCanvas({
           // independently-stepped slices stay consistent at the seams.
           projectConstraints(s, p.constraintIters, subDt);
           syncBoundaries(s, partOf);
+
+          // ── probabilistic_runtime.py ────────────────────────────
+          // Monte Carlo uncertainty propagation. Each of K replicas
+          // tracks a position-OFFSET δx_k from the deterministic mean.
+          // Linearized dynamics around the mean trajectory:
+          //   δv_k ← (δv_k + a_mean·0·dt + ξ·σ√dt) · (1 − damping·dt)
+          //   δx_k ← δx_k + δv_k · dt
+          // The mean-acceleration term cancels (already absorbed by the
+          // deterministic state), leaving the noise injection (Langevin
+          // term) and damping decay. Variance grows like σ²·t until
+          // damping balances it ⇒ stationary σ_x ≈ σ/(damping·√(2γ)).
+          const Kreq = p.stochastic ? Math.max(0, Math.min(64, p.ensembleK | 0)) : 0;
+          if (Kreq !== s.K) ensureEnsemble(s, Kreq);
+          if (s.K > 0) {
+            const sig = Math.max(0, p.noiseSigma);
+            const sqrtDt = Math.sqrt(subDt);
+            const decay = 1 - p.damping * subDt;
+            const tmp: [number, number] = [0, 0];
+            for (let kk = 0; kk < s.K; kk++) {
+              const base = kk * s.N * 2;
+              for (let i = 0; i < s.N; i++) {
+                randn2(tmp);
+                const o = base + i * 2;
+                s.ensV[o]     = (s.ensV[o]     + sig * sqrtDt * tmp[0]) * decay;
+                s.ensV[o + 1] = (s.ensV[o + 1] + sig * sqrtDt * tmp[1]) * decay;
+                s.ensX[o]     += s.ensV[o]     * subDt;
+                s.ensX[o + 1] += s.ensV[o + 1] * subDt;
+              }
+            }
+          }
         }
       }
 
@@ -1120,6 +1204,35 @@ export function PhysicsCanvas({
       const fps = fpsEmaRef.current;
       const subStepsEff = lastSubStepsRef.current;
 
+      // ── Probabilistic diagnostics ───────────────────────────────
+      // Reduce ensemble offsets to a per-particle isotropic σ
+      //   σᵢ² = (1/K) Σ_k (δxᵢ,k² + δyᵢ,k²) / 2     (mean is zero by construction)
+      // Aggregate to a scene-wide σ̄ (RMS over particles), and convert the
+      // user-set probabilistic edge tolerance into a satisfaction probability:
+      //   P(|edge_stretch|/rest < tol) ≈ 2·Φ(tol·rest / σ_edge) − 1
+      // where σ_edge ≈ √2·σ̄ from the variance sum of two independent endpoints.
+      let sigMean = 0;
+      let pConstraint = 1;
+      if (s.K > 0) {
+        let sumVar = 0;
+        for (let i = 0; i < s.N; i++) {
+          let acc = 0;
+          for (let kk = 0; kk < s.K; kk++) {
+            const o = kk * s.N * 2 + i * 2;
+            const dx = s.ensX[o], dy = s.ensX[o + 1];
+            acc += dx * dx + dy * dy;
+          }
+          sumVar += acc / (2 * s.K);
+        }
+        sigMean = Math.sqrt(sumVar / Math.max(1, s.N));
+        if (s.E > 0 && p.constraintTol > 0) {
+          const restMean = p.restLength;
+          const sigEdge = Math.SQRT2 * sigMean;
+          const z = (p.constraintTol * restMean) / Math.max(1e-6, sigEdge);
+          pConstraint = 2 * normCdf(z) - 1;
+        }
+      }
+
       const fmtPct = (n: number) => (n * 100).toFixed(2) + "%";
       const lines = [
         `diagnostics · ${p.integrator}`,
@@ -1134,6 +1247,9 @@ export function PhysicsCanvas({
         `subSteps  ${subStepsEff}${p.adaptiveSubSteps ? " (auto)" : ""}`,
         `cIters    ${p.constraintIters | 0}`,
         `fps       ${fps.toFixed(1)}`,
+        `MC K      ${s.K}`,
+        `σ̄ (px)    ${s.K > 0 ? sigMean.toFixed(2) : "—"}`,
+        `P(c≤${(p.constraintTol*100).toFixed(1)}%)  ${s.K > 0 ? (pConstraint*100).toFixed(1)+"%" : "—"}`,
       ];
       const padX = 10, padY = 8, lineH = 14;
       const panelW = 188;
@@ -1290,6 +1406,42 @@ export function PhysicsCanvas({
           ctx.lineTo(x1 - ah * Math.cos(ang + 0.4), y1 - ah * Math.sin(ang + 0.4));
         }
         ctx.stroke();
+      }
+
+      // ── Confidence ellipses (zσ contour of the per-particle MC cloud) ──
+      // Reduce δx_k → 2×2 covariance, eigen-decompose closed-form, draw
+      // an ellipse with semi-axes z·√λ. Skipped at K<2 (no variance).
+      if (p.showConfidence && s.K >= 2) {
+        const z = Math.max(0.1, p.confidenceZ);
+        ctx.lineWidth = 0.8;
+        ctx.strokeStyle = "oklch(0.86 0.16 200 / 0.55)";
+        for (let i = 0; i < s.N; i++) {
+          let sxx = 0, syy = 0, sxy = 0;
+          for (let kk = 0; kk < s.K; kk++) {
+            const o = kk * s.N * 2 + i * 2;
+            const dx = s.ensX[o], dy = s.ensX[o + 1];
+            sxx += dx * dx; syy += dy * dy; sxy += dx * dy;
+          }
+          const invK = 1 / s.K;
+          sxx *= invK; syy *= invK; sxy *= invK;
+          // closed-form eigenvalues of [[sxx, sxy],[sxy, syy]]
+          const tr = sxx + syy;
+          const det = sxx * syy - sxy * sxy;
+          const disc = Math.max(0, tr * tr * 0.25 - det);
+          const root = Math.sqrt(disc);
+          const l1 = tr * 0.5 + root;
+          const l2 = Math.max(0, tr * 0.5 - root);
+          if (l1 < 1e-4) continue;
+          const a = z * Math.sqrt(l1);
+          const b = z * Math.sqrt(l2);
+          // angle of dominant eigenvector
+          const ang = Math.abs(sxy) < 1e-9 && Math.abs(sxx - syy) < 1e-9
+            ? 0
+            : Math.atan2(2 * sxy, sxx - syy) * 0.5;
+          ctx.beginPath();
+          ctx.ellipse(s.x[i * 2], s.x[i * 2 + 1], a, b, ang, 0, Math.PI * 2);
+          ctx.stroke();
+        }
       }
 
 
