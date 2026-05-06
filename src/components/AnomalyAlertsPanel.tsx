@@ -9,6 +9,7 @@ import {
   type AlertRule, type AlertMetric, type AlertOp,
   type AlertSeverity, type Alert, type TelemetrySample,
 } from "@/lib/anomalyAlerts";
+import { useTelemetryStream, type StreamStatus } from "@/hooks/useTelemetryStream";
 
 const METRICS: { value: AlertMetric; label: string }[] = [
   { value: "energy_drift_pct", label: "energy drift (%)" },
@@ -43,14 +44,21 @@ export function AnomalyAlertsPanel({ sample }: AnomalyAlertsPanelProps) {
   const [, force] = useState(0);
   const refresh = () => force((n) => n + 1);
 
-  // Synthetic ticker so the panel is useful even without a live feed.
+  // Live SSE feed (preferred). Falls back to synthetic ticker if missing.
+  const stream = useTelemetryStream();
+  const lastStreamCount = useRef(0);
   const tickRef = useRef(0);
+
   useEffect(() => {
-    if (sample) {
-      engine.ingest(sample);
+    if (sample) { engine.ingest(sample); refresh(); return; }
+    if (stream.status === "open" && stream.sample && stream.count !== lastStreamCount.current) {
+      lastStreamCount.current = stream.count;
+      engine.ingest(stream.sample);
       refresh();
       return;
     }
+    if (stream.status === "open") return; // wait for next sample
+    // Synthetic fallback
     const id = setInterval(() => {
       tickRef.current++;
       const t = tickRef.current;
@@ -65,7 +73,7 @@ export function AnomalyAlertsPanel({ sample }: AnomalyAlertsPanelProps) {
       refresh();
     }, 250);
     return () => clearInterval(id);
-  }, [sample, engine]);
+  }, [sample, engine, stream.status, stream.sample, stream.count]);
 
   const persistRules = (next: AlertRule[]) => {
     setRules(next);
