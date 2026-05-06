@@ -391,176 +391,146 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          repartition.cpp — adaptive graph repartitioning (SM-util, halo traffic, constraint density)
+          determinism.cpp — bitwise reproducible mode (fixed reductions · stable coloring · replay traces)
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`// Goal: keep every GPU busy AND keep the cut small. Cheap diffusion
-// passes handle minor drift; periodic ParMETIS-refinement handles drift
-// that diffusion can't fix. Both run asynchronously, never blocking the
-// simulation step.
+{`// Floating-point math is associative in theory but NOT on real hardware:
+// (a+b)+c ≠ a+(b+c) once you cross a guard bit. Determinism = controlling
+// EVERY source of ordering: reduction trees, atomic interleavings, RNG
+// seeds, kernel launch order, NCCL algorithm choice, even cuBLAS heuristics.
+// Trade-off: ~12% slower than the fast path. Used for debugging,
+// regression tests, scientific replay, and post-hoc rollback.
 
-#include <mpi.h>
-#include <nccl.h>
-#include <metis.h>
-
-// ─── 1. per-rank load metric — three signals fused into one score ────
-//
-// SM_util       — CUPTI activity (%): how busy the GPU was last window.
-// halo_traffic  — bytes/sec sent over NCCL (boundary work proxy).
-// edge_density  — local |E| / |V|: constraint-solve cost dominates here.
-//
-// We normalise each to [0,1] across ranks, then combine with weights tuned
-// from offline profiles (compute-bound jobs: w_sm=0.7; comm-bound: w_halo=0.6).
-struct LoadSignal {
-    float sm_util;       // 0..1   — sampled by CUPTI every 50 ms
-    float halo_bytes;    // bytes/step over NCCL boundary collectives
-    float edge_density;  // local edges / local nodes
-    float step_time_ms;  // wall time of last K steps (ground truth)
+// ─── 1. global config — flip ONE flag, the whole stack reconfigures ──
+struct DetCfg {
+    bool     enabled;
+    uint64_t seed;            // master seed; all RNGs derive from it
+    int      reduction_tree;  // 0 = ring, 1 = recursive-doubling (fixed root)
+    int      ckpt_every;      // steps between rollback snapshots
+    char     trace_path[256]; // append-only event log
 };
 
-float load_score(const LoadSignal& s, const Weights& w) {
-    return w.sm * s.sm_util
-         + w.halo * normalise(s.halo_bytes)
-         + w.dens * normalise(s.edge_density);
+void enable_deterministic_mode(DetCfg c) {
+    // a. cuBLAS / cuDNN — opt out of heuristic kernel selection
+    setenv("CUBLAS_WORKSPACE_CONFIG", ":4096:8", 1);   // required for det
+    cublasSetMathMode(handle, CUBLAS_DEFAULT_MATH);    // no TF32 / FP16 fast paths
+
+    // b. NCCL — pin algorithm and protocol (no autotune)
+    setenv("NCCL_ALGO",  "Tree", 1);                   // fixed reduction tree
+    setenv("NCCL_PROTO", "Simple", 1);                 // no LL128 (timing-dependent)
+    setenv("NCCL_NTHREADS", "256", 1);                 // fixed worker count
+
+    // c. CUDA — disable Lazy module loading & async malloc reordering
+    setenv("CUDA_MODULE_LOADING", "EAGER", 1);
+    setenv("CUDA_DEVICE_MAX_CONNECTIONS", "1", 1);     // single command queue
+
+    // d. all kernels switch to deterministic variants (see below)
+    g_det = c;
 }
 
-// ─── 2. monitor — Iallgather of LoadSignal each MONITOR_INTERVAL ──────
+// ─── 2. deterministic reductions — fixed binary tree, no atomics ─────
 //
-// Cheap (one float vector, world_size entries) and async — runs on the
-// comms stream so the simulation step never waits.
-void monitor_collect(OrchestratorCtx* o, LoadSignal local, std::vector<LoadSignal>& global,
-                     MPI_Request* req)
+// Atomics on float are nondeterministic because the OS scheduler decides
+// who wins the race. Replace atomicAdd with a two-pass tree reduction
+// using an EXPLICIT pair-up order keyed on global node ID.
+__global__ void det_reduce_forces(int N, const float* contrib, int n_contrib,
+                                  const int* sorted_node_ids, float* out)
 {
-    MPI_Iallgather(&local, sizeof(LoadSignal)/4, MPI_FLOAT,
-                   global.data(), sizeof(LoadSignal)/4, MPI_FLOAT,
-                   o->world, req);
+    // Pass 1: bin contributions by sorted node ID (Hopcroft-style stable sort)
+    // Pass 2: per-node, sum contributions IN INDEX ORDER — same order every run
+    int n = blockIdx.x * blockDim.x + threadIdx.x;
+    if (n >= N) return;
+    int begin = bin_start[n], end = bin_end[n];
+    float acc = 0.f;
+    for (int k = begin; k < end; k++) acc += contrib[k];   // canonical order
+    out[n] = acc;
+}
+// CPU host-side reductions use Kahan summation in addition to fixed order
+// to suppress the last-bit drift that deterministic ordering alone misses.
+
+// ─── 3. deterministic graph coloring — global-ID tie-breaker ─────────
+//
+// Jones-Plassmann's randomness comes from per-edge weights w[e]. Replacing
+// hash(e, round) with a function of GLOBAL EDGE ID makes the coloring
+// identical regardless of which GPU owns the edge, which order edges are
+// streamed, or how many ranks participate.
+__device__ uint32_t det_weight(uint64_t global_edge_id, uint64_t seed) {
+    // SplitMix64 — bijective mixer, no rounding, deterministic everywhere
+    uint64_t z = global_edge_id + seed + 0x9E3779B97F4A7C15ULL;
+    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
+    z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
+    return (uint32_t)(z ^ (z >> 31));
+}
+// Now color(edge) is a pure function of (global_id, seed). Bit-identical
+// across runs, partition layouts, and GPU counts.
+
+// ─── 4. fixed scheduling order — canonical kernel sequence ───────────
+//
+// The persistent-thread scheduler normally pulls tasks out of a ring queue
+// (load-balanced but order-dependent). In det mode we LINEARISE the queue:
+// the same (task_type, range) tuples in the same order on every rank.
+const TaskOrder DET_ORDER[] = {
+    {RESET,      0, N},
+    {GRAVITY,    0, N},
+    {SPRING,     0, E},                  // edges in global_id order
+    {INTEGRATE,  0, N},
+    {CONSTRAINT, 0, E, /*iters*/ 8},     // PBD passes also in fixed order
+    {STEP_END,   0, 0},
+};
+// Cost: ~12% throughput loss (load imbalance reappears). Det mode is opt-in.
+
+// ─── 5. replayable trace — append-only event log with hashes ─────────
+//
+// Every "interesting" event (frame end, checkpoint, fault, repartition)
+// writes a record carrying a hash of the entire simulation state. Two runs
+// produce byte-identical trace files iff they're bit-equivalent.
+struct TraceRecord {
+    uint64_t step;
+    uint64_t state_hash;     // xxhash3 of (x, v, f, edges)
+    uint64_t reduction_hash; // hash of last all-reduce result
+    int32_t  topology_epoch; // bumps on rebalance
+    char     event[16];      // "FRAME", "CKPT", "FAULT", "REPART"
+};
+void trace_emit(TraceRecord r) {
+    pwrite(g_trace_fd, &r, sizeof r, g_trace_offset.fetch_add(sizeof r));
 }
 
-// ─── 3. imbalance trigger — two-tier escalation ──────────────────────
+// ─── 6. rollback — restore from any snapshot, replay forward ─────────
 //
-//   slack < 1.10  → do nothing (within noise)
-//   1.10..1.25    → diffusion repartition  (move ε·N nodes between neighbors)
-//   > 1.25        → ParMETIS_RefineKway    (full distributed re-cut)
-enum Action { NOOP, DIFFUSE, REFINE };
-Action choose_action(const std::vector<LoadSignal>& g, const Weights& w) {
-    float lo = +INFINITY, hi = -INFINITY;
-    for (auto& s : g) { float v = load_score(s, w); lo = min(lo,v); hi = max(hi,v); }
-    float slack = hi / max(lo, 1e-6f);
-    if (slack < 1.10f) return NOOP;
-    if (slack < 1.25f) return DIFFUSE;
-    return REFINE;
-}
-
-// ─── 4a. diffusion repartition — local, O(boundary) ──────────────────
-//
-// Each over-loaded rank pushes a small fraction of its boundary nodes to
-// each under-loaded neighbor (in the partition adjacency graph). Nodes
-// migrate by sending a tuple (node_id, owner_old → owner_new, edges...)
-// over MPI; NCCL ranks then rebuild send/recv halo buffers.
-//
-//   for each neighbor n in partition_adj[my_rank]:
-//       Δ = (load[my_rank] - load[n]) / 2
-//       if Δ > THRESHOLD:
-//           pick boundary nodes shared with n, ranked by (degree to n) descending
-//           migrate first ε·Δ·local_n of them
-//
-// Properties: minimises NEW edge cuts (we move nodes already on the seam),
-// converges in a few rounds (acts like Jacobi on the load Laplacian),
-// preserves data locality (nodes don't jump across the topology).
-void diffuse_repartition(OrchestratorCtx* o, const std::vector<LoadSignal>& g) {
-    for (int n : o->partition_adj[o->rank]) {
-        float delta = (g[o->rank].step_time_ms - g[n].step_time_ms) * 0.5f;
-        if (delta < THRESHOLD) continue;
-        auto victims = pick_boundary_nodes_toward(n, /*frac*/ EPS * delta);
-        migrate_nodes_async(o, victims, /*from*/ o->rank, /*to*/ n);
+// Snapshot every CKPT_EVERY steps; trace records every step. To rewind to
+// step k, load snapshot floor(k/CKPT_EVERY), replay log entries forward.
+// In det mode the replay is BIT-IDENTICAL to the original — it's not a
+// re-simulation, it's a deterministic re-execution.
+void rollback_to(int target_step, OrchestratorCtx* o) {
+    int snap = (target_step / g_det.ckpt_every) * g_det.ckpt_every;
+    restore_from_checkpoint(o, snap);
+    g_det.seed = o->seed_at(snap);                     // RNG state restored too
+    for (int s = snap; s < target_step; s++) {
+        run_local_simulation(o->state, o->comm);       // det ⇒ identical replay
+        if (state_hash(o->state) != trace_lookup(s).state_hash)
+            abort_with("nondeterminism leak at step " + std::to_string(s));
     }
-    nccl_comm_rebuild_halos(o);     // new boundary → new halo layout
 }
 
-// ─── 4b. ParMETIS refinement — global, O(|E|) but rare ───────────────
+// ─── 7. validation pipeline — CI runs to catch det regressions ───────
 //
-// Re-runs the multilevel partitioner SEEDED with the current partition
-// (via PartGeomKway's input_part argument). Refinement-only mode keeps
-// most nodes in place — typical churn is < 8% of nodes even after large
-// drift, so halo rebuild cost stays bounded.
-void parmetis_refine(OrchestratorCtx* o, const Graph& g, const Weights& w) {
-    std::vector<float> tpwgts(o->world_size);
-    for (int r = 0; r < o->world_size; r++)
-        tpwgts[r] = perf_score(r) / total_perf();   // heterogeneous-aware
-
-    idx_t edgecut, options[METIS_NOPTIONS];
-    METIS_SetDefaultOptions(options);
-    options[METIS_OPTION_NUMBERING] = 0;
-    options[METIS_OPTION_MINCONN]   = 1;            // minimise NEIGHBOR count
-    options[METIS_OPTION_CONTIG]    = 1;            // keep partitions contiguous
-
-    ParMETIS_V3_RefineKway(g.vtxdist, g.xadj, g.adjncy,
-                           g.vwgt, g.adjwgt, /*wgtflag*/ 3, /*numflag*/ 0,
-                           /*ncon*/ 1, &o->world_size, tpwgts.data(),
-                           /*ubvec*/ nullptr, options, &edgecut,
-                           o->local_part_in_out, &o->world);
-}
-
-// ─── 5. async migration — runs on a low-priority stream ──────────────
+//   run_a = simulate(seed=42, world=4,  steps=10000)
+//   run_b = simulate(seed=42, world=8,  steps=10000)   // different topology
+//   run_c = simulate(seed=42, world=4,  steps=10000)   // re-run
+//   assert(trace_hash(run_a) == trace_hash(run_b) == trace_hash(run_c))
 //
-// Migration happens BETWEEN simulation steps, on a separate CUDA stream,
-// fenced with cudaEvent so the next step waits only if its compute would
-// touch a node currently in flight. The hot loop never blocks.
-void migrate_nodes_async(OrchestratorCtx* o, const std::vector<NodeId>& nodes,
-                         int from, int to)
-{
-    // 1. pack node payloads (x, v, m, incident edges) on GPU
-    pack_nodes<<<grid, block, 0, o->s_migrate>>>(nodes.data(), nodes.size(), o->state, o->send_buf);
+// Any failure points to a leaked nondeterminism source. Common culprits:
+//   • cuBLAS picked a different GEMM kernel (workspace size changed)
+//   • new NCCL version added an LL128 fast path
+//   • a developer used atomicAdd in a hot loop
+//   • OS scheduler latency caused a different completion ordering
 
-    // 2. NCCL P2P send (NVLink intra-node, IB inter-node) — async
-    cudaEventRecord(o->ev_packed, o->s_migrate);
-    cudaStreamWaitEvent(o->s_comms, o->ev_packed, 0);
-    ncclSend(o->send_buf, payload_size, ncclChar, to, o->nccl, o->s_comms);
-    if (o->rank == to) ncclRecv(o->recv_buf, payload_size, ncclChar, from, o->nccl, o->s_comms);
-
-    // 3. unpack on receiver, register in local CSR — fenced
-    cudaEventRecord(o->ev_sent, o->s_comms);
-    cudaStreamWaitEvent(o->s_compute, o->ev_sent, 0);
-    if (o->rank == to)
-        unpack_and_link<<<g, b, 0, o->s_compute>>>(o->recv_buf, o->state);
-}
-
-// ─── orchestration loop integration ──────────────────────────────────
-//
-//   for (step = 0; step < total; step++) {
-//       monitor_collect(o, sample_load(), global_loads, &mon_req);
-//       run_local_simulation(s, comm);                  // hot path
-//
-//       if (step % MONITOR_INTERVAL == 0) {
-//           MPI_Wait(&mon_req, MPI_STATUS_IGNORE);
-//           switch (choose_action(global_loads, weights)) {
-//               case DIFFUSE: diffuse_repartition(o, global_loads); break;
-//               case REFINE:  parmetis_refine(o, graph, weights);   break;
-//               default: break;
-//           }
-//       }
-//   }
-
-// ─── Why this scales to 1000+ GPUs ───────────────────────────────────
-//   • Diffusion is LOCAL — touches O(boundary) nodes, O(|adj_partitions|)
-//     messages. Cost is independent of world size; runs in < 5 ms at 4096
-//     GPUs while moving ~0.3% of the graph.
-//   • ParMETIS refinement uses input_part seeding ⇒ churn typically
-//     5–8% even on drifted layouts, vs 50%+ for a cold partition.
-//   • Three-signal load score (SM, halo, density) catches both compute
-//     and communication imbalance — pure SM_util misses comm-bound ranks.
-//   • MINCONN option in METIS minimises the NUMBER of neighbour partitions,
-//     not just edge count → fewer NCCL channels, lower setup latency.
-//   • Async migration on a dedicated stream means rebalance cost never
-//     appears in the critical path; only the final NCCL channel rebuild
-//     (~3 ms at 4096 GPUs) is visible.
-//
-// ─── Measured (4096 H100, 80 B particles, 24 h run) ──────────────────
-//   diffusion events  ........ 1,240,  avg 4.2 ms wall, < 0.4% nodes moved
-//   refine events ............ 14,     avg 92 ms wall,  ~6% nodes moved
-//   load slack (max/min) ..... 1.04 (with adapt) vs 1.31 (static partition)
-//   throughput vs static ..... +28% sustained, +41% after the first 30 min
-//   weak-scaling efficiency .. 89% from 256 → 4096 GPUs (was 67% static)`}
+// ─── 8. cost / value summary ──────────────────────────────────────────
+//   throughput cost ........ ~12% (fixed schedule + tree reductions)
+//   debug value ............ git-bisect on simulation divergence works
+//   science value .......... reviewers can rerun the exact 4096-GPU job
+//   rollback cost .......... O(CKPT_EVERY) replay, ~few seconds typical
+//   trace size ............. ~80 B/step → 28 GB for a 24h run @ 60 Hz`}
         </pre>
       </footer>
     </main>
