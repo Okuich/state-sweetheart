@@ -10,6 +10,7 @@ import { EconomicsPanel } from "@/components/EconomicsPanel";
 import { GatewayPanel } from "@/components/GatewayPanel";
 import { TemplatesPanel } from "@/components/TemplatesPanel";
 import { GoalOptPanel } from "@/components/GoalOptPanel";
+import { StreamRuntimePanel } from "@/components/StreamRuntimePanel";
 import { saveSnapshot } from "@/lib/worldMemory";
 
 export const Route = createFileRoute("/")({
@@ -734,6 +735,11 @@ function Index() {
           params={params}
           onApplyPatch={(patch) => { setParams((p) => ({ ...p, ...patch })); setResetKey((k) => k + 1); }}
         />
+      </section>
+
+      {/* Streaming Physics Runtime — continuous assimilation w/ rolling window */}
+      <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
+        <StreamRuntimePanel />
       </section>
 
       {/* Autonomous Physics Agents — agentic reasoning over current world */}
