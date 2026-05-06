@@ -878,16 +878,27 @@ function normCdf(z: number): number {
   return 0.5 * (1 + sign * y);
 }
 
+export type EnergySample = {
+  t: number;        // ms (performance.now)
+  KE: number;
+  PE: number;
+  E: number;        // KE + PE
+  baseline: number; // E at first frame after rebase
+  drift: number;    // E − baseline
+};
+
 export function PhysicsCanvas({
   params,
   pointerRef,
   onValidation,
   onLoss,
+  onEnergy,
 }: {
   params: SimParams;
   pointerRef: React.MutableRefObject<{ x: number; y: number; active: boolean; mode: 1 | -1 }>;
   onValidation?: (r: ValidationReport) => void;
   onLoss?: (loss: number) => void;
+  onEnergy?: (s: EnergySample) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stateRef = useRef<State | null>(null);
@@ -901,6 +912,8 @@ export function PhysicsCanvas({
   onValidationRef.current = onValidation;
   const onLossRef = useRef(onLoss);
   onLossRef.current = onLoss;
+  const onEnergyRef = useRef(onEnergy);
+  onEnergyRef.current = onEnergy;
   const lossEmaRef = useRef(0);
   const energyBaselineRef = useRef<number | null>(null);
   const energyBaselineNRef = useRef(0);
