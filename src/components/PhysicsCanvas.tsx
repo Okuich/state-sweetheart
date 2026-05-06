@@ -121,6 +121,16 @@ export type SimParams = {
   twinAnomalyZ: number;
   twinForecastSteps: number;
   showTwin: boolean;
+  // ── Narrow-phase contact solver ───────────────────────────────────
+  // Detects pairwise overlap (|xᵢ−xⱼ| < 2·contactRadius) and applies
+  // sequential normal impulses + Baumgarte position correction every
+  // sub-step (after constraint projection, before sync_boundaries).
+  contactsEnabled: boolean;
+  contactRadius: number;
+  contactIters: number;
+  contactRestitution: number;
+  contactBeta: number;
+  contactSlop: number;
 };
 
 type FloatArr = Float32Array | Float64Array;
