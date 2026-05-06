@@ -84,6 +84,7 @@ function Index() {
     boundary: "walls",
     forceViz: "off",
     potentialGrad: "analytic",
+    fieldSampling: "auto",
   });
   const [resetKey, setResetKey] = useState(0);
   const [validation, setValidation] = useState<ValidationReport | null>(null);
