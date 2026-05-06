@@ -907,6 +907,9 @@ export function PhysicsCanvas({
   const ENERGY_HIST_CAP = 240;
   const energyHistRef = useRef<Float32Array>(new Float32Array(ENERGY_HIST_CAP));
   const driftHistRef  = useRef<Float32Array>(new Float32Array(ENERGY_HIST_CAP));
+  // Per-component history (KE / PE_total) for the energy-vs-time chart.
+  const keHistRef = useRef<Float32Array>(new Float32Array(ENERGY_HIST_CAP));
+  const peHistRef = useRef<Float32Array>(new Float32Array(ENERGY_HIST_CAP));
   const energyHistLenRef = useRef(0);
   const energyHistHeadRef = useRef(0);
   // EMA of |Δ| and |Δ|² → smoothed drift magnitude and RMS drift.
