@@ -1408,6 +1408,42 @@ export function PhysicsCanvas({
         ctx.stroke();
       }
 
+      // ── Confidence ellipses (zσ contour of the per-particle MC cloud) ──
+      // Reduce δx_k → 2×2 covariance, eigen-decompose closed-form, draw
+      // an ellipse with semi-axes z·√λ. Skipped at K<2 (no variance).
+      if (p.showConfidence && s.K >= 2) {
+        const z = Math.max(0.1, p.confidenceZ);
+        ctx.lineWidth = 0.8;
+        ctx.strokeStyle = "oklch(0.86 0.16 200 / 0.55)";
+        for (let i = 0; i < s.N; i++) {
+          let sxx = 0, syy = 0, sxy = 0;
+          for (let kk = 0; kk < s.K; kk++) {
+            const o = kk * s.N * 2 + i * 2;
+            const dx = s.ensX[o], dy = s.ensX[o + 1];
+            sxx += dx * dx; syy += dy * dy; sxy += dx * dy;
+          }
+          const invK = 1 / s.K;
+          sxx *= invK; syy *= invK; sxy *= invK;
+          // closed-form eigenvalues of [[sxx, sxy],[sxy, syy]]
+          const tr = sxx + syy;
+          const det = sxx * syy - sxy * sxy;
+          const disc = Math.max(0, tr * tr * 0.25 - det);
+          const root = Math.sqrt(disc);
+          const l1 = tr * 0.5 + root;
+          const l2 = Math.max(0, tr * 0.5 - root);
+          if (l1 < 1e-4) continue;
+          const a = z * Math.sqrt(l1);
+          const b = z * Math.sqrt(l2);
+          // angle of dominant eigenvector
+          const ang = Math.abs(sxy) < 1e-9 && Math.abs(sxx - syy) < 1e-9
+            ? 0
+            : Math.atan2(2 * sxy, sxx - syy) * 0.5;
+          ctx.beginPath();
+          ctx.ellipse(s.x[i * 2], s.x[i * 2 + 1], a, b, ang, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+
 
       if (pointerRef.current.active) {
         const sign = pointerRef.current.mode;
