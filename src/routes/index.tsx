@@ -69,7 +69,7 @@ function Index() {
     showEdges: true,
     pairwiseStrength: 200,
     pairwiseRadius: 50,
-    integrator: "euler",
+    integrator: "semi-euler",
     dtype: "float32",
     device: "cpu",
     constraintIters: 0,
@@ -174,19 +174,19 @@ function Index() {
         <Field label="Pairwise radius" value={params.pairwiseRadius} unit="px" min={0} max={200} step={1} onChange={(v) => update("pairwiseRadius", v)} />
         <Field label="Constraint iters" value={params.constraintIters} min={0} max={20} step={1} onChange={(v) => update("constraintIters", v)} />
 
-        <div className="space-y-2">
+        <div className="space-y-2 md:col-span-2 lg:col-span-1">
           <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Integrator</div>
-          <div className="flex gap-2">
-            {(["euler", "verlet"] as const).map((opt) => (
+          <div className="grid grid-cols-3 gap-2">
+            {(["euler", "semi-euler", "verlet"] as const).map((opt) => (
               <Button
                 key={opt}
                 variant={params.integrator === opt ? "default" : "outline"}
-                className={`flex-1 uppercase tracking-[0.18em] text-[10px] ${
+                className={`uppercase tracking-[0.16em] text-[9px] px-1 ${
                   params.integrator === opt ? "bg-accent text-accent-foreground" : ""
                 }`}
                 onClick={() => update("integrator", opt)}
               >
-                {opt === "euler" ? "Semi-impl. Euler" : "Velocity Verlet"}
+                {opt === "euler" ? "Euler" : opt === "semi-euler" ? "Semi-impl." : "Verlet"}
               </Button>
             ))}
           </div>
@@ -250,19 +250,16 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          constraints.py — PBD distance solver
+          integrators.py — explicit Euler step
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`def project_constraints(state, constraints, iterations=10):
-    for _ in range(iterations):
-        for c in constraints:                      # Gauss-Seidel sweep
-            i, j = c.nodes
-            diff = state.x[i] - state.x[j]
-            dist = norm(diff) + 1e-8
-            wi, wj = 1 / state.m[i], 1 / state.m[j]
-            corr = (dist - c.rest_length) / dist / (wi + wj) * diff
-            state.x[i] -= wi * corr                # split by inverse mass
-            state.x[j] += wj * corr`}
+{`def step(state, dt):
+    # v_{t+1} = v_t + (F/m) dt
+    state.v += (state.f / state.m.unsqueeze(-1)) * dt
+    # x_{t+1} = x_t + v_{t+1} dt
+    state.x += state.v * dt
+    # reset forces
+    state.f.zero_()`}
         </pre>
       </footer>
     </main>
