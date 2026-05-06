@@ -644,7 +644,40 @@ function initState(
   const E = edges.length / 2;
   const edgeRest = emptyLike(E, dtype);
   edgeRest.fill(rest);
-  return { N, D: 2, dtype, device, x, v, m, f, fPrev, hue, edges, edgeRest, E };
+  // Ensemble starts at K=0 (off); allocated lazily when stochastic mode flips on.
+  return { N, D: 2, dtype, device, x, v, m, f, fPrev, hue, edges, edgeRest, E, K: 0, ensX: new Float32Array(0), ensV: new Float32Array(0) };
+}
+
+/** (Re)allocate the Monte Carlo ensemble in-place. Replicas start at the
+ *  deterministic mean (zero offset) with zero relative velocity, so the
+ *  spread grows organically from the noise/dynamics rather than being
+ *  seeded from an arbitrary prior. */
+function ensureEnsemble(s: State, K: number) {
+  if (s.K === K) return;
+  s.K = K;
+  s.ensX = new Float32Array(K * s.N * 2);
+  s.ensV = new Float32Array(K * s.N * 2);
+}
+
+/** Box–Muller — two unit-variance Gaussians per call. */
+function randn2(out: [number, number]) {
+  let u = Math.random();
+  if (u < 1e-12) u = 1e-12;
+  const v = Math.random();
+  const r = Math.sqrt(-2 * Math.log(u));
+  const t = 2 * Math.PI * v;
+  out[0] = r * Math.cos(t);
+  out[1] = r * Math.sin(t);
+}
+
+/** Standard-normal CDF (Abramowitz & Stegun 7.1.26 erf approximation).
+ *  Used to convert a probabilistic edge tolerance into P(|stretch|<tol). */
+function normCdf(z: number): number {
+  const sign = z < 0 ? -1 : 1;
+  const ax = Math.abs(z) / Math.SQRT2;
+  const t = 1 / (1 + 0.3275911 * ax);
+  const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-ax * ax);
+  return 0.5 * (1 + sign * y);
 }
 
 export function PhysicsCanvas({
