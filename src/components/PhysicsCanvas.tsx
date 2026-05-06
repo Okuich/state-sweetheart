@@ -74,6 +74,7 @@ export type SimParams = {
   objectiveLR: number;
   pairwiseMode: "lj" | "repel" | "attract";
   boundary: "walls" | "wrap" | "periodic";
+  forceViz: "off" | "vectors" | "heatmap";
 };
 
 type FloatArr = Float32Array | Float64Array;
