@@ -1672,8 +1672,13 @@ export function PhysicsCanvas({
       // the recent history window, with a zero reference line. Auto-scaled
       // to peak |Δ| in the window so both stable & diverging look right.
       const sparkH = 42;
+      // Energy-vs-time chart sits ABOVE the drift sparkline. Plots three
+      // overlaid traces (KE, PE_total, E_total) auto-scaled to the [min,max]
+      // of all three over the window so relative motion stays visible.
+      const energyChartH = 56;
       const sparkPadTop = 6;
-      const panelH = padY * 2 + lineH * lines.length + sparkPadTop + sparkH;
+      const chartGap = 4;
+      const panelH = padY * 2 + lineH * lines.length + sparkPadTop + energyChartH + chartGap + sparkH + 12;
       const panelX = w - panelW - 12;
       const panelY = 12;
       ctx.fillStyle = "oklch(0.16 0.02 260 / 0.82)";
