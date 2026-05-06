@@ -65,6 +65,8 @@ export type SimParams = {
   dtype: Dtype;
   device: Device;
   constraintIters: number;
+  field: "none" | "swirl" | "wells" | "ripple";
+  fieldStrength: number;
 };
 
 type FloatArr = Float32Array | Float64Array;
