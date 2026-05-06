@@ -858,6 +858,11 @@ function Index() {
         <CalibrationPanel />
       </section>
 
+      {/* Material Editor — pick constitutive model + tune differentiable params */}
+      <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
+        <MaterialEditorPanel />
+      </section>
+
       {/* STEP File Ingestion — parse & normalize ISO-10303-21 into canonical geometry */}
       <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
         <StepIngestionPanel />
