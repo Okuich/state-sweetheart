@@ -5,6 +5,9 @@ import {
   calibrate, generateMeasurements, modelAt, TRUE_PARAMS,
   type FitResult, type MeasurementSample, type ModelParams,
 } from "@/lib/calibration";
+import {
+  calibrateMultiStart, type MultiStartResult,
+} from "@/lib/calibrationMultiStart";
 
 const MATERIALS: { name: string; init: ModelParams }[] = [
   { name: "Al-7075",  init: { k: 30,  c: 0.3, m: 1.2, A: 0.9 } },
@@ -19,15 +22,27 @@ export function CalibrationPanel() {
   const [matIdx, setMatIdx] = useState(0);
   const [data, setData] = useState<MeasurementSample[]>(() => generateMeasurements(120, 6, 0.04));
   const [fit, setFit] = useState<FitResult | null>(null);
+  const [multi, setMulti] = useState<MultiStartResult | null>(null);
   const [running, setRunning] = useState(false);
+  const [useMulti, setUseMulti] = useState(true);
+  const [starts, setStarts] = useState(8);
 
   const ingest = () => setData(generateMeasurements(N, 6, sigma));
 
   const run = () => {
     setRunning(true);
     requestAnimationFrame(() => {
-      const r = calibrate(MATERIALS[matIdx].init, data, 40);
-      setFit(r);
+      if (useMulti) {
+        const r = calibrateMultiStart(data, {
+          starts, seed: matIdx + 1, iterPerStart: 12, polishIter: 40,
+        });
+        setMulti(r);
+        setFit(r.best);
+      } else {
+        const r = calibrate(MATERIALS[matIdx].init, data, 40);
+        setMulti(null);
+        setFit(r);
+      }
       setRunning(false);
     });
   };
