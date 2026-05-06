@@ -887,6 +887,7 @@ function Index() {
       <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
         <PrecisionPolicyPanel />
         <AnomalyAlertsPanel />
+        <TelemetryUploadPanel />
       </section>
 
       {/* STEP File Ingestion — parse & normalize ISO-10303-21 into canonical geometry */}
