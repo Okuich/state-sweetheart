@@ -139,6 +139,9 @@ function Index() {
           <div><span className="text-accent">edge_i,j</span> int* [{params.particleCount * params.edgesPerNode}]</div>
           <div><span className="text-accent">rest_len</span> float* [{params.particleCount * params.edgesPerNode}]</div>
           <div className="text-muted-foreground/60 mt-1">{params.dtype === "float64" ? "f64" : "f32"} · {params.device}</div>
+          <div className="mt-2 text-accent/80">launch · reset_forces</div>
+          <div className="text-foreground/70">&lt;&lt;&lt;{Math.ceil(params.particleCount / 256)}, 256&gt;&gt;&gt;</div>
+          <div className="text-muted-foreground/60">grid · {Math.ceil(params.particleCount / 256)} blk × 256 thr = {Math.ceil(params.particleCount / 256) * 256} threads</div>
         </div>
 
         {/* Validation badge */}
