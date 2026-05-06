@@ -69,6 +69,7 @@ function Index() {
     showEdges: true,
     pairwiseStrength: 200,
     pairwiseRadius: 50,
+    integrator: "euler",
   });
   const [resetKey, setResetKey] = useState(0);
   const [validation, setValidation] = useState<ValidationReport | null>(null);

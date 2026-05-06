@@ -309,18 +309,8 @@ export function PhysicsCanvas({
             }
           }
         }
-        for (let i = 0; i < s.N; i++) {
-          const ax = s.f[i * 2] / s.m[i];
-          const ay = s.f[i * 2 + 1] / s.m[i];
-          s.v[i * 2]     = (s.v[i * 2]     + ax * dt) * (1 - p.damping * dt);
-          s.v[i * 2 + 1] = (s.v[i * 2 + 1] + ay * dt) * (1 - p.damping * dt);
-          s.x[i * 2]     += s.v[i * 2]     * dt;
-          s.x[i * 2 + 1] += s.v[i * 2 + 1] * dt;
-          if (s.x[i * 2] < 0)     { s.x[i * 2] = 0; s.v[i * 2] *= -0.7; }
-          else if (s.x[i * 2] > w){ s.x[i * 2] = w; s.v[i * 2] *= -0.7; }
-          if (s.x[i * 2 + 1] < 0) { s.x[i * 2 + 1] = 0; s.v[i * 2 + 1] *= -0.7; }
-          else if (s.x[i * 2 + 1] > h){ s.x[i * 2 + 1] = h; s.v[i * 2 + 1] *= -0.7; }
-        }
+        // Integrate — PhysicsState.step(dt): a = f/m, advance v and x
+        stepState(s, dt, p.damping, w, h, p.integrator);
       }
 
       // Render edges
