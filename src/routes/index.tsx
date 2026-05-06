@@ -83,6 +83,7 @@ function Index() {
   });
   const [resetKey, setResetKey] = useState(0);
   const [validation, setValidation] = useState<ValidationReport | null>(null);
+  const [loss, setLoss] = useState<number | null>(null);
   const pointerRef = useRef({ x: 0, y: 0, active: false, mode: 1 as 1 | -1 });
 
   const update = <K extends keyof SimParams>(k: K, v: SimParams[K]) =>
