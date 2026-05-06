@@ -7,7 +7,9 @@ import { loadGraph, type Graph } from "@/lib/knowledgeGraph";
 import {
   retrieveAll,
   synthesizeQuery,
+  DEFAULT_WEIGHTS,
   type RagContext,
+  type RetrievalWeights,
 } from "@/lib/ragRetrieval";
 import {
   recommendSimulationParameters,
