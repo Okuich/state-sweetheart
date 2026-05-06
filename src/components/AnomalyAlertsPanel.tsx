@@ -9,6 +9,7 @@ import {
   type AlertRule, type AlertMetric, type AlertOp,
   type AlertSeverity, type Alert, type TelemetrySample,
 } from "@/lib/anomalyAlerts";
+import { useTelemetryStream, type StreamStatus } from "@/hooks/useTelemetryStream";
 
 const METRICS: { value: AlertMetric; label: string }[] = [
   { value: "energy_drift_pct", label: "energy drift (%)" },
@@ -43,14 +44,21 @@ export function AnomalyAlertsPanel({ sample }: AnomalyAlertsPanelProps) {
   const [, force] = useState(0);
   const refresh = () => force((n) => n + 1);
 
-  // Synthetic ticker so the panel is useful even without a live feed.
+  // Live SSE feed (preferred). Falls back to synthetic ticker if missing.
+  const stream = useTelemetryStream();
+  const lastStreamCount = useRef(0);
   const tickRef = useRef(0);
+
   useEffect(() => {
-    if (sample) {
-      engine.ingest(sample);
+    if (sample) { engine.ingest(sample); refresh(); return; }
+    if (stream.status === "open" && stream.sample && stream.count !== lastStreamCount.current) {
+      lastStreamCount.current = stream.count;
+      engine.ingest(stream.sample);
       refresh();
       return;
     }
+    if (stream.status === "open") return; // wait for next sample
+    // Synthetic fallback
     const id = setInterval(() => {
       tickRef.current++;
       const t = tickRef.current;
@@ -65,7 +73,7 @@ export function AnomalyAlertsPanel({ sample }: AnomalyAlertsPanelProps) {
       refresh();
     }, 250);
     return () => clearInterval(id);
-  }, [sample, engine]);
+  }, [sample, engine, stream.status, stream.sample, stream.count]);
 
   const persistRules = (next: AlertRule[]) => {
     setRules(next);
@@ -97,8 +105,9 @@ export function AnomalyAlertsPanel({ sample }: AnomalyAlertsPanelProps) {
   return (
     <div className="space-y-4 rounded-lg border border-border bg-card p-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+        <h3 className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
           Anomaly alert rules
+          <StreamBadge status={stream.status} count={stream.count} />
         </h3>
         <div className="flex items-center gap-1">
           <Button variant="outline" size="sm" onClick={addRule} className="h-7 px-2 text-xs">
@@ -242,5 +251,25 @@ function AlertCard({ a, compact }: { a: Alert; compact?: boolean }) {
         <span>{a.cleared ? `cleared@${a.clearedAt}` : "active"}</span>
       </div>
     </div>
+  );
+}
+
+function StreamBadge({ status, count }: { status: StreamStatus; count: number }) {
+  const map: Record<StreamStatus, string> = {
+    idle:       "bg-muted text-muted-foreground",
+    connecting: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+    open:       "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+    closed:     "bg-muted text-muted-foreground",
+    error:      "bg-amber-500/15 text-amber-300 border-amber-500/30",
+  };
+  const label =
+    status === "open" ? `live · ${count}` :
+    status === "connecting" ? "connecting" :
+    status === "error" ? "synthetic (no stream)" :
+    status;
+  return (
+    <span className={`rounded border border-transparent px-1.5 py-0.5 text-[9px] tracking-[0.14em] ${map[status]}`}>
+      {label}
+    </span>
   );
 }
