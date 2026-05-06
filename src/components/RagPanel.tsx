@@ -344,3 +344,25 @@ function NumInput({
     </label>
   );
 }
+
+function WeightSlider({
+  label, value, onChange,
+}: { label: string; value: number; onChange: (v: number) => void }) {
+  return (
+    <label className="flex flex-col gap-1">
+      <div className="flex items-baseline justify-between">
+        <span className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground">{label}</span>
+        <span className="font-mono text-[10px] tabular-nums text-foreground/80">{value.toFixed(2)}</span>
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={2}
+        step={0.05}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="accent-primary w-full"
+      />
+    </label>
+  );
+}
