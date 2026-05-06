@@ -264,6 +264,31 @@ function Index() {
           </div>
         </div>
 
+        <div className="space-y-2">
+          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Boundary</div>
+          <div className="grid grid-cols-3 gap-1.5">
+            {(["walls", "wrap", "periodic"] as const).map((opt) => (
+              <Button
+                key={opt}
+                variant={params.boundary === opt ? "default" : "outline"}
+                className={`uppercase tracking-[0.14em] text-[9px] px-1 ${
+                  params.boundary === opt ? "bg-secondary text-secondary-foreground glow-coral" : ""
+                }`}
+                onClick={() => update("boundary", opt)}
+                title={
+                  opt === "walls"
+                    ? "Hard reflective walls (restitution 0.7)"
+                    : opt === "wrap"
+                    ? "Positions wrap; pairwise forces ignore the seam"
+                    : "Periodic box: positions wrap AND minimum-image pairwise forces"
+                }
+              >
+                {opt}
+              </Button>
+            ))}
+          </div>
+        </div>
+
         <div className="space-y-2 md:col-span-2 lg:col-span-1">
           <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Integrator</div>
           <div className="grid grid-cols-3 gap-2">
