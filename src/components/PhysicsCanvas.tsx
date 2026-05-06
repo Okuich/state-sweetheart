@@ -820,6 +820,90 @@ export function PhysicsCanvas({
         ctx.stroke();
       }
 
+      // ── energy_monitor.py ─────────────────────────────────────────
+      // Total mechanical energy each frame, decomposed by source.
+      //   KE         = ½ Σ mᵢ |vᵢ|²
+      //   PE_grav    = Σ mᵢ g (h - yᵢ)               (y grows downward)
+      //   PE_spring  = Σ ½ k (|xᵢ - xⱼ| - rest)²
+      //   PE_field   = Σ strength·1500·Φ(xᵢ, yᵢ)     (matches force scaling)
+      //   PE_pairwise — omitted (mode-dependent integral, sketchy estimate)
+      // Symplectic integrators (semi-Euler, velocity-Verlet) bound drift;
+      // explicit Euler trends upward. Damping & PBD intentionally inject
+      // / remove energy — drift here is informative, not a bug.
+      let KE = 0;
+      for (let i = 0; i < s.N; i++) {
+        const vx = s.v[i * 2], vy = s.v[i * 2 + 1];
+        KE += 0.5 * s.m[i] * (vx * vx + vy * vy);
+      }
+      let PE_grav = 0;
+      if (p.gravity !== 0) {
+        for (let i = 0; i < s.N; i++) {
+          PE_grav += s.m[i] * p.gravity * (h - s.x[i * 2 + 1]);
+        }
+      }
+      let PE_spring = 0;
+      if (s.E > 0 && p.springK > 0) {
+        for (let e = 0; e < s.E; e++) {
+          const i2 = s.edges[e * 2], j2 = s.edges[e * 2 + 1];
+          const ddx = s.x[i2 * 2]     - s.x[j2 * 2];
+          const ddy = s.x[i2 * 2 + 1] - s.x[j2 * 2 + 1];
+          const d = Math.sqrt(ddx * ddx + ddy * ddy);
+          const stretch = d - s.edgeRest[e];
+          PE_spring += 0.5 * p.springK * stretch * stretch;
+        }
+      }
+      let PE_field = 0;
+      if (p.field !== "none" && p.fieldStrength !== 0) {
+        const sc = p.fieldStrength * 1500;
+        for (let i = 0; i < s.N; i++) {
+          PE_field += sc * fieldPotential(p.field, s.x[i * 2], s.x[i * 2 + 1], w, h);
+        }
+      }
+      const PE_total = PE_grav + PE_spring + PE_field;
+      const E_total  = KE + PE_total;
+
+      if (energyBaselineRef.current === null || s.N !== energyBaselineNRef.current) {
+        energyBaselineRef.current = E_total;
+        energyBaselineNRef.current = s.N;
+      }
+      const drift = E_total - (energyBaselineRef.current ?? E_total);
+
+      const fmt = (n: number) => {
+        const a = Math.abs(n);
+        if (a >= 1e6) return (n / 1e6).toFixed(2) + "M";
+        if (a >= 1e3) return (n / 1e3).toFixed(2) + "k";
+        if (a >= 1)   return n.toFixed(2);
+        return n.toExponential(1);
+      };
+      const lines = [
+        `energy · ${p.integrator}`,
+        `KE        ${fmt(KE)}`,
+        `PE grav   ${fmt(PE_grav)}`,
+        `PE spring ${fmt(PE_spring)}`,
+        `PE field  ${fmt(PE_field)}`,
+        `── total  ${fmt(E_total)}`,
+        `Δ since   ${drift >= 0 ? "+" : ""}${fmt(drift)}`,
+      ];
+      const padX = 10, padY = 8, lineH = 14;
+      const panelW = 172;
+      const panelH = padY * 2 + lineH * lines.length;
+      const panelX = w - panelW - 12;
+      const panelY = 12;
+      ctx.fillStyle = "oklch(0.16 0.02 260 / 0.82)";
+      ctx.fillRect(panelX, panelY, panelW, panelH);
+      ctx.strokeStyle = "oklch(0.4 0.05 260 / 0.6)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(panelX + 0.5, panelY + 0.5, panelW - 1, panelH - 1);
+      ctx.font = "11px ui-monospace, SFMono-Regular, Menlo, monospace";
+      ctx.textBaseline = "top";
+      for (let li = 0; li < lines.length; li++) {
+        if (li === 0)      ctx.fillStyle = "oklch(0.78 0.14 230)";
+        else if (li === 5) ctx.fillStyle = "oklch(0.94 0.04 230)";
+        else if (li === 6) ctx.fillStyle = drift >= 0 ? "oklch(0.78 0.18 35)" : "oklch(0.78 0.18 150)";
+        else               ctx.fillStyle = "oklch(0.78 0.04 230 / 0.85)";
+        ctx.fillText(lines[li], panelX + padX, panelY + padY + li * lineH);
+      }
+
       if (p.showEdges && s.E > 0) {
         ctx.lineWidth = 0.6;
         ctx.beginPath();
