@@ -214,6 +214,9 @@ export class FaultTolerantOrchestrator {
 
   /** Take + store a checkpoint at the orchestrator's current step. */
   private maybeCheckpoint(step: number): void {
+    // Skip step 0 unless cpEvery=1 (otherwise the very first iteration
+    // always lands a checkpoint, even when the user wanted "every 100").
+    if (step === 0 && this.cpEvery > 1) return;
     if (step % this.cpEvery !== 0) return;
     const state = this.snapshot(this.orch, step);
     // Defensive copy — caller may reuse its buffer.
