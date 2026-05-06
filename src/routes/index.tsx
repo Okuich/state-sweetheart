@@ -731,6 +731,15 @@ function Index() {
           </Button>
           <Button
             variant="outline"
+            className="flex-1 uppercase tracking-[0.18em] text-xs border-primary/40 text-primary hover:bg-primary/10 disabled:opacity-40"
+            onClick={() => update("stepOnce", (params.stepOnce ?? 0) + 1)}
+            disabled={!params.paused}
+            title="Advance one frame (paused only)"
+          >
+            Step
+          </Button>
+          <Button
+            variant="outline"
             className="flex-1 uppercase tracking-[0.18em] text-xs border-secondary/50 text-secondary hover:bg-secondary/10"
             onClick={() => setResetKey((k) => k + 1)}
           >
