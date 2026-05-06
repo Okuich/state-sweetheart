@@ -1795,6 +1795,8 @@ export function PhysicsCanvas({
         `twin M    ${p.twinEnabled ? twinSensorsRef.current.length : 0}`,
         `res EMA   ${p.twinEnabled ? twinResidualEmaRef.current.toFixed(1)+"px" : "—"}`,
         `anomalies ${p.twinEnabled ? twinAnomalyCountRef.current : "—"}`,
+        `contacts  ${p.contactsEnabled ? lastContactStatsRef.current.contacts : "—"}`,
+        `pen max   ${p.contactsEnabled ? lastContactStatsRef.current.maxPenetration.toFixed(2)+"px" : "—"}`,
       ];
       const padX = 10, padY = 8, lineH = 14;
       const panelW = 230;
