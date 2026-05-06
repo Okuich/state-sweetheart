@@ -1017,7 +1017,7 @@ export function PhysicsCanvas({
         const samp = resolveSampling(p.fieldSampling, p.boundary);
         for (let i = 0; i < s.N; i++) {
           const [px, py] = sampleCoords(samp, s.x[i * 2], s.x[i * 2 + 1], w, h);
-          PE_field += sc * fieldPotential(p.field, px, py, w, h);
+          PE_field += sc * fieldPotential(p.field, px, py, w, h, customFnRef.current, (now - tStartRef.current) / 1000);
         }
       }
       const PE_total = PE_grav + PE_spring + PE_field;
