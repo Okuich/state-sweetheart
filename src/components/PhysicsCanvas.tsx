@@ -187,7 +187,7 @@ function stepState(
 ) {
   const N = s.N;
   if (integrator === "verlet") {
-    // First half: x ← x + v·dt + ½·a·dt²; cache a into fPrev (as acceleration·m == force)
+    // velocity-Verlet (2nd order, energy-stable)
     for (let i = 0; i < N; i++) {
       const invM = 1 / s.m[i];
       const ax = s.f[i * 2]     * invM;
@@ -196,12 +196,11 @@ function stepState(
       s.x[i * 2 + 1] += s.v[i * 2 + 1] * dt + 0.5 * ay * dt * dt;
       s.fPrev[i * 2]     = s.f[i * 2];
       s.fPrev[i * 2 + 1] = s.f[i * 2 + 1];
-      // partial velocity kick (½·a·dt); the second ½ is applied next frame
       s.v[i * 2]     = (s.v[i * 2]     + 0.5 * ax * dt) * (1 - damping * dt);
       s.v[i * 2 + 1] = (s.v[i * 2 + 1] + 0.5 * ay * dt) * (1 - damping * dt);
     }
-  } else {
-    // Semi-implicit Euler
+  } else if (integrator === "semi-euler") {
+    // Semi-implicit (symplectic) Euler — v first, then x
     for (let i = 0; i < N; i++) {
       const invM = 1 / s.m[i];
       const ax = s.f[i * 2]     * invM;
@@ -211,6 +210,22 @@ function stepState(
       s.x[i * 2]     += s.v[i * 2]     * dt;
       s.x[i * 2 + 1] += s.v[i * 2 + 1] * dt;
     }
+  } else {
+    // Explicit Euler (forward) — integrators.py
+    //   v_{t+1} = v_t + (F/m) dt
+    //   x_{t+1} = x_t + v_{t+1} dt   (note: uses old v in textbook form)
+    // We then zero forces, matching state.f.zero_().
+    for (let i = 0; i < N; i++) {
+      const invM = 1 / s.m[i];
+      const ax = s.f[i * 2]     * invM;
+      const ay = s.f[i * 2 + 1] * invM;
+      const vx0 = s.v[i * 2], vy0 = s.v[i * 2 + 1];
+      s.v[i * 2]     = (vx0 + ax * dt) * (1 - damping * dt);
+      s.v[i * 2 + 1] = (vy0 + ay * dt) * (1 - damping * dt);
+      s.x[i * 2]     += vx0 * dt;          // forward: x uses v_t, not v_{t+1}
+      s.x[i * 2 + 1] += vy0 * dt;
+    }
+    s.f.fill(0);                            // state.f.zero_()
   }
   // Wall collisions
   for (let i = 0; i < N; i++) {
