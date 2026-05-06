@@ -61,7 +61,7 @@ export type SimParams = {
   showEdges: boolean;
   pairwiseStrength: number;
   pairwiseRadius: number;
-  integrator: "euler" | "verlet";
+  integrator: "euler" | "semi-euler" | "verlet";
   dtype: Dtype;
   device: Device;
   constraintIters: number;
@@ -183,7 +183,7 @@ function stepState(
   damping: number,
   w: number,
   h: number,
-  integrator: "euler" | "verlet",
+  integrator: "euler" | "semi-euler" | "verlet",
 ) {
   const N = s.N;
   if (integrator === "verlet") {
