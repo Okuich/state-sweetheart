@@ -1005,7 +1005,7 @@ export function PhysicsCanvas({
           // Velocity-Verlet drift uses the PREVIOUS step's forces (s.fPrev)
           // for the first half-kick, then advances positions. This must run
           // BEFORE we recompute forces for the new positions.
-          if (p.integrator === "verlet") {
+          if (p.integrator === "verlet" && s.verletPrimed) {
             for (let q = 0; q < W; q++) {
               verletDrift(s, subDt, partStart(q), partEnd(q));
             }
