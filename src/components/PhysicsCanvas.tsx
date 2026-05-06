@@ -234,10 +234,14 @@ function verletKick(
   damping: number,
   a: number,
   b: number,
+  dragMode: "explicit" | "exponential" | "force" = "explicit",
 ) {
   // Second half-kick using the NEW forces just computed for this step,
   // then cache them as fPrev for the next step's drift.
-  const decay = 1 - damping * dt;
+  const decay =
+    dragMode === "force"        ? 1 :
+    dragMode === "exponential"  ? Math.exp(-damping * dt) :
+                                  Math.max(0, 1 - damping * dt);
   for (let i = a; i < b; i++) {
     const invM = 1 / s.m[i];
     const axNew = s.f[i * 2]     * invM;
