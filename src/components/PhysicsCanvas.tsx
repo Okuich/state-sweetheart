@@ -202,12 +202,15 @@ function buildEdges(N: number, perNode: number) {
   return new Int32Array(list);
 }
 
-function initState(N: number, w: number, h: number, perNode: number, rest: number): State {
-  const x = new Float32Array(N * 2);
-  const v = new Float32Array(N * 2);
-  const m = new Float32Array(N);
-  const f = new Float32Array(N * 2);
-  const fPrev = new Float32Array(N * 2);
+function initState(
+  N: number, w: number, h: number, perNode: number, rest: number,
+  dtype: Dtype = "float32", device: Device = "cpu",
+): State {
+  const x = emptyLike(N * 2, dtype);
+  const v = emptyLike(N * 2, dtype);
+  const m = emptyLike(N, dtype);
+  const f = emptyLike(N * 2, dtype);
+  const fPrev = emptyLike(N * 2, dtype);
   const hue = new Float32Array(N);
   for (let i = 0; i < N; i++) {
     x[i * 2] = Math.random() * w;
@@ -221,9 +224,9 @@ function initState(N: number, w: number, h: number, perNode: number, rest: numbe
   }
   const edges = buildEdges(N, perNode);
   const E = edges.length / 2;
-  const edgeRest = new Float32Array(E);
+  const edgeRest = emptyLike(E, dtype);
   edgeRest.fill(rest);
-  return { N, D: 2, x, v, m, f, fPrev, hue, edges, edgeRest, E };
+  return { N, D: 2, dtype, device, x, v, m, f, fPrev, hue, edges, edgeRest, E };
 }
 
 export function PhysicsCanvas({
