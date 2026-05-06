@@ -443,10 +443,13 @@ function refitStepCpu(ctx: AabbRefitContext): void {
         tree.boxes[off + 1] = Math.min(tree.boxes[ao + 1], tree.boxes[bo + 1]);
         tree.boxes[off + 2] = Math.max(tree.boxes[ao + 2], tree.boxes[bo + 2]);
         tree.boxes[off + 3] = Math.max(tree.boxes[ao + 3], tree.boxes[bo + 3]);
-      tree.dirty[n] = 1;
-      dirtyInternals++;
+        tree.boxes[off + 3] = Math.max(tree.boxes[ao + 3], tree.boxes[bo + 3]);
+        tree.dirty[n] = 1;
+        dirtyInternals++;
+      }
     }
   }
+  ctx.lastDirtyLeaves = dirtyLeaves;
   ctx.lastDirtyInternals = dirtyInternals;
 }
 
