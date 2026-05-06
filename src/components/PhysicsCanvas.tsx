@@ -188,10 +188,14 @@ function fieldPotential(name: FieldName, x: number, y: number, w: number, h: num
  * Uses central finite differences (≈ autograd.grad on a scalar field).
  */
 function computePotentialForces(s: State, name: FieldName, strength: number, w: number, h: number) {
+  computePotentialForces_range(s, name, strength, w, h, 0, s.N);
+}
+
+function computePotentialForces_range(s: State, name: FieldName, strength: number, w: number, h: number, a: number, b: number) {
   if (name === "none" || strength === 0) return;
-  const eps = 0.5; // pixels — small enough to be local, large enough for f32
-  const scale = strength * 1500; // calibrate visible motion
-  for (let i = 0; i < s.N; i++) {
+  const eps = 0.5;
+  const scale = strength * 1500;
+  for (let i = a; i < b; i++) {
     const x = s.x[i * 2], y = s.x[i * 2 + 1];
     const dphidx = (fieldPotential(name, x + eps, y, w, h) - fieldPotential(name, x - eps, y, w, h)) / (2 * eps);
     const dphidy = (fieldPotential(name, x, y + eps, w, h) - fieldPotential(name, x, y - eps, w, h)) / (2 * eps);
