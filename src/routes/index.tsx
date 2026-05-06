@@ -18,6 +18,7 @@ import { StepIngestionPanel } from "@/components/StepIngestionPanel";
 import { GeometryFeaturePanel } from "@/components/GeometryFeaturePanel";
 import { LearningEnginePanel } from "@/components/LearningEnginePanel";
 import { KnowledgeGraphPanel } from "@/components/KnowledgeGraphPanel";
+import { RagPanel } from "@/components/RagPanel";
 import { saveSnapshot } from "@/lib/worldMemory";
 
 export const Route = createFileRoute("/")({
