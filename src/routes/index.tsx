@@ -694,6 +694,25 @@ function Index() {
           </div>
         </div>
 
+        <div className="space-y-2">
+          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Debug forces</div>
+          <div className="grid grid-cols-2 gap-1.5">
+            {([["off", false], ["on", true]] as const).map(([label, val]) => (
+              <Button
+                key={label}
+                variant={params.debugForces === val ? "default" : "outline"}
+                className={`uppercase tracking-[0.14em] text-[9px] px-1 ${
+                  params.debugForces === val ? "bg-accent text-accent-foreground" : ""
+                }`}
+                onClick={() => update("debugForces", val)}
+                title={val ? "Overlay per-particle gravity (red) + net force (yellow) arrows with magnitude HUD" : "Hide debug force overlay"}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
+        </div>
+
         <div className="space-y-2 md:col-span-2 lg:col-span-1">
           <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Integrator</div>
           <div className="grid grid-cols-3 gap-2">
