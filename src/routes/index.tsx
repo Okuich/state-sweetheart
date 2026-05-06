@@ -129,13 +129,16 @@ function Index() {
       {/* Canvas */}
       <section className="relative z-10 mx-4 lg:mx-10 mb-4 h-[58vh] rounded-xl border border-border bg-card backdrop-blur-sm overflow-hidden">
         <PhysicsCanvas key={resetKey} params={params} pointerRef={pointerRef} onValidation={setValidation} onLoss={setLoss} />
-        {/* HUD */}
-        <div className="pointer-events-none absolute left-4 top-4 flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-          <div><span className="text-primary">x</span> [{params.particleCount} × 2] {params.dtype === "float64" ? "f64" : "f32"}</div>
-          <div><span className="text-primary">v</span> [{params.particleCount} × 2] {params.dtype === "float64" ? "f64" : "f32"}</div>
-          <div><span className="text-primary">m</span> [{params.particleCount}] {params.dtype === "float64" ? "f64" : "f32"}</div>
-          <div><span className="text-primary">f</span> ← g + attractor + springs</div>
-          <div><span className="text-accent">edges</span> ~ {params.particleCount * params.edgesPerNode}</div>
+        {/* HUD — SoA memory layout */}
+        <div className="pointer-events-none absolute left-4 top-4 flex flex-col gap-0.5 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+          <div className="text-accent/80 mb-1">struct PhysicsState · SoA</div>
+          <div><span className="text-primary">x ,y</span>   float* [{params.particleCount}]</div>
+          <div><span className="text-primary">vx,vy</span>  float* [{params.particleCount}]</div>
+          <div><span className="text-primary">fx,fy</span>  float* [{params.particleCount}]</div>
+          <div><span className="text-primary">m</span>      float* [{params.particleCount}]</div>
+          <div><span className="text-accent">edge_i,j</span> int* [{params.particleCount * params.edgesPerNode}]</div>
+          <div><span className="text-accent">rest_len</span> float* [{params.particleCount * params.edgesPerNode}]</div>
+          <div className="text-muted-foreground/60 mt-1">{params.dtype === "float64" ? "f64" : "f32"} · {params.device}</div>
         </div>
 
         {/* Validation badge */}
@@ -307,16 +310,21 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          differentiable_loop.py — loss.backward() through the simulator
+          state.h — struct-of-arrays memory layout
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`def loss_fn(initial_state):
-    final_state = run_simulation(initial_state, config)
-    return objective(final_state)        # ½ ‖x - target‖²
-
-loss = loss_fn(state)
-loss.backward()                          # ∂L/∂x  flows back through every step
-optimizer.step()                         # x ← x - lr · ∂L/∂x`}
+{`// positions
+float* x;   float* y;   float* z;     // [N]
+// velocities
+float* vx;  float* vy;  float* vz;    // [N]
+// forces
+float* fx;  float* fy;  float* fz;    // [N]
+// mass
+float* m;                              // [N]
+// edges (constraints / springs)
+int*   edge_i;                         // [E]
+int*   edge_j;                         // [E]
+float* rest_length;                    // [E]`}
         </pre>
       </footer>
     </main>
