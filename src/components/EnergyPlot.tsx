@@ -140,8 +140,11 @@ function Legend() {
 }
 
 function Readout({ latestRef }: { latestRef: React.MutableRefObject<EnergySample | null> }) {
-  // re-render on rAF tick for live numeric readout
-  const [, force] = useTick();
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setTick((t) => (t + 1) >>> 0), 100);
+    return () => window.clearInterval(id);
+  }, []);
   const s = latestRef.current;
   if (!s) {
     return <div className="text-[10px] text-muted-foreground">awaiting first frame…</div>;
