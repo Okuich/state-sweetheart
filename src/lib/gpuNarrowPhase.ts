@@ -372,8 +372,8 @@ export function solvePairsCpu(
 
   const out: Contact[] = [];
   let truncated = false;
-  for (let p = 0; p < opts.pairs.length; p++) {
-    const { i, j } = opts.pairs[p];
+  for (let p = 0; p < effectivePairs.length; p++) {
+    const { i, j } = effectivePairs[p];
     const ri = radius(b.kind[i], b.extra[i]);
     const rj = radius(b.kind[j], b.extra[j]);
     const rsum = ri + rj;
@@ -396,7 +396,8 @@ export function solvePairsCpu(
     out.push({ i, j, nx, ny, depth, lambda });
   }
   const end = (typeof performance !== "undefined" ? performance : Date).now();
-  return { contacts: out, truncated, mode: "cpu", ms: end - start };
+  const base: SolveResult = { contacts: out, truncated, mode: "cpu", ms: end - start };
+  return attachDedup(base, dedup, inputCount);
 }
 
 // ── GPU dispatch ─────────────────────────────────────────────────────────
