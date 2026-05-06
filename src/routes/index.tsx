@@ -184,6 +184,21 @@ function Index() {
         <Field label="Sub-steps / frame" value={params.subSteps} min={1} max={8} step={1} onChange={(v) => update("subSteps", v)} />
         <Field label="Workers" value={params.workers} min={1} max={8} step={1} onChange={(v) => update("workers", v)} />
         <Field label="Field · strength" value={params.fieldStrength} min={-2} max={2} step={0.05} onChange={(v) => update("fieldStrength", v)} />
+        <Field label="∂L/∂x · lr" value={params.objectiveLR} min={0} max={0.5} step={0.005} onChange={(v) => update("objectiveLR", v)} />
+
+        <div className="space-y-2">
+          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">loss.backward()</div>
+          <Button
+            variant={params.optimize ? "default" : "outline"}
+            className={`w-full uppercase tracking-[0.18em] text-[10px] ${
+              params.optimize ? "bg-secondary text-secondary-foreground glow-coral" : ""
+            }`}
+            onClick={() => update("optimize", !params.optimize)}
+            title="Differentiate L=½‖x-target‖² and descend"
+          >
+            {params.optimize ? `optimizing · L=${(loss ?? 0).toExponential(2)}` : "off"}
+          </Button>
+        </div>
 
         <div className="space-y-2">
           <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Show partitions</div>
