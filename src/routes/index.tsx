@@ -5,6 +5,8 @@ import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { compileFieldExpr } from "@/lib/exprCompile";
 import { WorldMemoryPanel } from "@/components/WorldMemoryPanel";
+import { AgentsPanel } from "@/components/AgentsPanel";
+import { saveSnapshot } from "@/lib/worldMemory";
 
 export const Route = createFileRoute("/")({
   component: Index,
@@ -715,6 +717,18 @@ function Index() {
             Reset
           </Button>
         </div>
+      </section>
+
+      {/* Autonomous Physics Agents — agentic reasoning over current world */}
+      <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
+        <AgentsPanel
+          params={params}
+          validation={validation}
+          loss={loss}
+          onApplyPatch={(patch) => setParams((p) => ({ ...p, ...patch }))}
+          onReset={() => setResetKey((k) => k + 1)}
+          onSnapshot={(label) => saveSnapshot(label, params, loss)}
+        />
       </section>
 
       {/* Persistent World Model — long-term memory of past runs */}
