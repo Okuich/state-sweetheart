@@ -616,11 +616,32 @@ function stepStateRange(
   //             convention so particles interact across the seam.
   if (boundary === "walls") {
     const e = restitution < 0 ? 0 : restitution > 1 ? 1 : restitution;
+    // For verlet, also flip the normal component of fPrev when a particle
+    // is reflected here. fPrev was just written to f at the end of the kick;
+    // if the post-kick position landed past a wall, the next drift's
+    // half-kick (v += ½·a_old·dt) would otherwise drive the particle back
+    // into the wall it just bounced off, producing the classic
+    // "stuck-to-wall" Verlet artifact.
+    const flipPrev = integrator === "verlet";
     for (let i = a; i < b; i++) {
-      if (s.x[i * 2] < 0)         { s.x[i * 2] = 0; if (s.v[i * 2]     < 0) s.v[i * 2]     = -s.v[i * 2]     * e; }
-      else if (s.x[i * 2] > w)    { s.x[i * 2] = w; if (s.v[i * 2]     > 0) s.v[i * 2]     = -s.v[i * 2]     * e; }
-      if (s.x[i * 2 + 1] < 0)     { s.x[i * 2 + 1] = 0; if (s.v[i * 2 + 1] < 0) s.v[i * 2 + 1] = -s.v[i * 2 + 1] * e; }
-      else if (s.x[i * 2 + 1] > h){ s.x[i * 2 + 1] = h; if (s.v[i * 2 + 1] > 0) s.v[i * 2 + 1] = -s.v[i * 2 + 1] * e; }
+      if (s.x[i * 2] < 0) {
+        s.x[i * 2] = 0;
+        if (s.v[i * 2]     < 0) s.v[i * 2]     = -s.v[i * 2]     * e;
+        if (flipPrev && s.fPrev[i * 2] < 0)     s.fPrev[i * 2]     = -s.fPrev[i * 2]     * e;
+      } else if (s.x[i * 2] > w) {
+        s.x[i * 2] = w;
+        if (s.v[i * 2]     > 0) s.v[i * 2]     = -s.v[i * 2]     * e;
+        if (flipPrev && s.fPrev[i * 2] > 0)     s.fPrev[i * 2]     = -s.fPrev[i * 2]     * e;
+      }
+      if (s.x[i * 2 + 1] < 0) {
+        s.x[i * 2 + 1] = 0;
+        if (s.v[i * 2 + 1] < 0) s.v[i * 2 + 1] = -s.v[i * 2 + 1] * e;
+        if (flipPrev && s.fPrev[i * 2 + 1] < 0) s.fPrev[i * 2 + 1] = -s.fPrev[i * 2 + 1] * e;
+      } else if (s.x[i * 2 + 1] > h) {
+        s.x[i * 2 + 1] = h;
+        if (s.v[i * 2 + 1] > 0) s.v[i * 2 + 1] = -s.v[i * 2 + 1] * e;
+        if (flipPrev && s.fPrev[i * 2 + 1] > 0) s.fPrev[i * 2 + 1] = -s.fPrev[i * 2 + 1] * e;
+      }
     }
   } else {
     // wrap & periodic both use modular position remapping
