@@ -45,6 +45,26 @@ export function RagPanel() {
     return retrieveAll(q, graph, k);
   }, [text, target, proc, k, graph]);
 
+  const [reco, setReco] = useState<Recommendation | null>(null);
+  const [reasoning, setReasoning] = useState(false);
+  const [recoError, setRecoError] = useState<string | null>(null);
+
+  const runReasoner = async () => {
+    setReasoning(true);
+    setRecoError(null);
+    setReco(null);
+    try {
+      const r = await recommendSimulationParameters({
+        data: { contextPrompt: renderPrompt(ctx), query: text },
+      });
+      setReco(r);
+    } catch (e) {
+      setRecoError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setReasoning(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-baseline justify-between gap-3">
