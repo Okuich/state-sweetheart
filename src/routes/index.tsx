@@ -732,6 +732,14 @@ function Index() {
         />
       </section>
 
+      {/* Simulation Economics Engine — runtime cost / energy / scheduler */}
+      <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
+        <EconomicsPanel
+          params={params}
+          onApplyPatch={(patch) => setParams((p) => ({ ...p, ...patch }))}
+        />
+      </section>
+
       {/* Persistent World Model — long-term memory of past runs */}
       <section className="relative z-10 mx-4 lg:mx-10 mb-10 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
         <WorldMemoryPanel
