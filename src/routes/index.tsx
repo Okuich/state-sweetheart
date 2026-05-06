@@ -82,6 +82,7 @@ function Index() {
     objectiveLR: 0.05,
     pairwiseMode: "lj",
     boundary: "walls",
+    forceViz: "off",
   });
   const [resetKey, setResetKey] = useState(0);
   const [validation, setValidation] = useState<ValidationReport | null>(null);
@@ -281,6 +282,31 @@ function Index() {
                     : opt === "wrap"
                     ? "Positions wrap; pairwise forces ignore the seam"
                     : "Periodic box: positions wrap AND minimum-image pairwise forces"
+                }
+              >
+                {opt}
+              </Button>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Force viz</div>
+          <div className="grid grid-cols-3 gap-1.5">
+            {(["off", "vectors", "heatmap"] as const).map((opt) => (
+              <Button
+                key={opt}
+                variant={params.forceViz === opt ? "default" : "outline"}
+                className={`uppercase tracking-[0.14em] text-[9px] px-1 ${
+                  params.forceViz === opt ? "bg-accent text-accent-foreground" : ""
+                }`}
+                onClick={() => update("forceViz", opt)}
+                title={
+                  opt === "vectors"
+                    ? "Yellow arrows showing per-particle force direction & magnitude"
+                    : opt === "heatmap"
+                    ? "Color particles by |F| (viridis-style)"
+                    : "Hide force overlay"
                 }
               >
                 {opt}
