@@ -207,19 +207,23 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          forces.py — pairwise interactions
+          state.py — PhysicsState.step(dt)
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`def compute_pairwise_forces(state, eps, radius):
-    # Iterate (i, j) pairs from positions, accumulate into self.f
-    diff = state.x[:, None, :] - state.x[None, :, :]   # [N, N, D]
-    dist = norm(diff, dim=-1).clamp(min=1e-3)          # [N, N]
-    mask = (dist < radius) & ~eye(state.N, dtype=bool)
-    norm_r = radius * 0.5
-    fmag = eps * (norm_r**2 / dist**2 - norm_r / dist)
-    direction = diff / dist.unsqueeze(-1)
-    forces = (direction * (fmag * mask).unsqueeze(-1)).sum(dim=1)
-    state.f += forces   # stays on the GPU device`}
+{`def step(self, dt: float):
+    """Advance positions & velocities by dt using a = f / m."""
+    a = self.f / self.m.unsqueeze(-1)        # [N, D]
+    if self.integrator == "verlet":
+        # velocity-Verlet (2nd order, energy-conserving)
+        self.x += self.v * dt + 0.5 * a * dt * dt
+        a_new   = self.f / self.m.unsqueeze(-1)   # recompute next frame
+        self.v += 0.5 * (a + a_new) * dt
+    else:
+        # semi-implicit (symplectic) Euler
+        self.v += a * dt
+        self.x += self.v * dt
+    self.v *= (1.0 - self.damping * dt)
+    self.f.zero_()`}
         </pre>
       </footer>
     </main>
