@@ -22,6 +22,7 @@ import { TrainingDataUploadPanel } from "@/components/TrainingDataUploadPanel";
 import { KnowledgeGraphPanel } from "@/components/KnowledgeGraphPanel";
 import { RagPanel } from "@/components/RagPanel";
 import { FabFeedbackPanel } from "@/components/FabFeedbackPanel";
+import { ScanImportPanel } from "@/components/ScanImportPanel";
 import { MaterialEditorPanel } from "@/components/MaterialEditorPanel";
 import { MaterialRegionPanel } from "@/components/MaterialRegionPanel";
 import { FractureVisualizationPanel } from "@/components/FractureVisualizationPanel";
