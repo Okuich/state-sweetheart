@@ -579,41 +579,6 @@ function syncBoundaries(s: State, partOf: (i: number) => number) {
     s.v[i * 2]     = (1 - a) * s.v[i * 2]     + a * mvx;
     s.v[i * 2 + 1] = (1 - a) * s.v[i * 2 + 1] + a * mvy;
   }
-          }
-
-          // 2c. all-pairs fallback — O(N²) reference path. Slower but
-          // serves as a correctness baseline for the grid above.
-          if (pStr !== 0 && pRad > 0 && p.pairwiseAlgo === "all-pairs") {
-            for (let i = 0; i < s.N; i++) {
-              const xi = s.x[i * 2], yi = s.x[i * 2 + 1];
-              for (let j = i + 1; j < s.N; j++) {
-                let dx = xi - s.x[j * 2];
-                let dy = yi - s.x[j * 2 + 1];
-                if (p.boundary === "periodic") {
-                  if (dx >  w * 0.5) dx -= w; else if (dx < -w * 0.5) dx += w;
-                  if (dy >  h * 0.5) dy -= h; else if (dy < -h * 0.5) dy += h;
-                }
-                const r2 = dx * dx + dy * dy;
-                if (r2 > r2max || r2 < 1e-4) continue;
-                const dist = Math.sqrt(r2);
-                let fmag: number;
-                if (p.pairwiseMode === "repel") {
-                  fmag = pStr * (norm * norm) / r2;
-                } else if (p.pairwiseMode === "attract") {
-                  fmag = -pStr * (1 - dist / pRad);
-                } else {
-                  fmag = pStr * (norm * norm / r2 - norm / dist);
-                }
-                const fx = (dx / dist) * fmag;
-                const fy = (dy / dist) * fmag;
-                s.f[i * 2]     += fx;
-                s.f[i * 2 + 1] += fy;
-                s.f[j * 2]     -= fx;
-                s.f[j * 2 + 1] -= fy;
-              }
-            }
-          }
-
 
 function buildEdges(N: number, perNode: number) {
   // Random sparse graph: each node connects to `perNode` neighbors
