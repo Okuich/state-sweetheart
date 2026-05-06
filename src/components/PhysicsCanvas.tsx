@@ -76,6 +76,7 @@ export type SimParams = {
   boundary: "walls" | "wrap" | "periodic";
   forceViz: "off" | "vectors" | "heatmap";
   potentialGrad: "analytic" | "finite-diff";
+  fieldSampling: "auto" | "clamp" | "wrap" | "none";
 };
 
 type FloatArr = Float32Array | Float64Array;
@@ -215,6 +216,46 @@ function verletKick(
  */
 type FieldName = "none" | "swirl" | "wells" | "ripple";
 export type PotentialGrad = "analytic" | "finite-diff";
+export type FieldSampling = "auto" | "clamp" | "wrap" | "none";
+
+/**
+ * sampleCoords — map a particle's world position into the coordinate the
+ * field is sampled at. This is what makes Φ behave correctly at canvas
+ * edges, especially for "wrap"/"periodic" boundaries where a particle
+ * that just teleported across the seam would otherwise see a wildly
+ * different ∇Φ from one frame to the next.
+ *
+ *   "auto"  — follow the simulation boundary mode (the right answer 95%
+ *             of the time): walls→clamp, wrap/periodic→wrap.
+ *   "clamp" — clip x∈[0,w], y∈[0,h]. Useful for Gaussian wells/ripples
+ *             where Φ has a meaningful "outside" but you don't want the
+ *             field to run away if a particle briefly leaks past a wall.
+ *   "wrap"  — modulo into [0,w)×[0,h), i.e. treat Φ as a torus. Required
+ *             for periodic boundaries to keep ∇Φ continuous across the seam.
+ *   "none"  — pass coords through untouched (legacy behavior; lets Φ be
+ *             evaluated arbitrarily far outside the canvas).
+ *
+ * Returns [x, y] in the same units as the input.
+ */
+function resolveSampling(mode: FieldSampling, b: Boundary): "clamp" | "wrap" | "none" {
+  if (mode !== "auto") return mode;
+  return b === "walls" ? "clamp" : "wrap";
+}
+
+function sampleCoords(mode: "clamp" | "wrap" | "none", x: number, y: number, w: number, h: number): [number, number] {
+  if (mode === "none") return [x, y];
+  if (mode === "clamp") {
+    return [
+      x < 0 ? 0 : x > w ? w : x,
+      y < 0 ? 0 : y > h ? h : y,
+    ];
+  }
+  // wrap: positive-modulo so negative coords land back inside the box
+  const xm = ((x % w) + w) % w;
+  const ym = ((y % h) + h) % h;
+  return [xm, ym];
+}
+
 
 function fieldPotential(name: FieldName, x: number, y: number, w: number, h: number): number {
   const cx = w * 0.5, cy = h * 0.5;
@@ -302,38 +343,23 @@ function fieldGradAnalytic(
  * central finite differences when requested or when an analytic gradient
  * is not registered for the active field.
  */
-function computePotentialForces(s: State, name: FieldName, strength: number, w: number, h: number, mode: PotentialGrad = "analytic") {
-  computePotentialForces_range(s, name, strength, w, h, 0, s.N, mode);
+function computePotentialForces(s: State, name: FieldName, strength: number, w: number, h: number, mode: PotentialGrad = "analytic", sampling: FieldSampling = "auto", boundary: Boundary = "walls") {
+  computePotentialForces_range(s, name, strength, w, h, 0, s.N, mode, sampling, boundary);
 }
 
-function computePotentialForces_range(s: State, name: FieldName, strength: number, w: number, h: number, a: number, b: number, mode: PotentialGrad = "analytic") {
+function computePotentialForces_range(s: State, name: FieldName, strength: number, w: number, h: number, a: number, b: number, mode: PotentialGrad = "analytic", sampling: FieldSampling = "auto", boundary: Boundary = "walls") {
   if (name === "none" || strength === 0) return;
-  // ── Resolution-invariant scale ─────────────────────────────────────
-  // Φ is defined in NORMALIZED coords (x/s, y/s) with s = max(w,h).
-  // The chain rule bakes a 1/s into the world-space gradient, so a raw
-  // `strength · k` would give acceleration ∝ 1/s — particles barely move
-  // on a 1600 px canvas and fly off a 400 px one. We want the same
-  // *visual* trajectory at any size: displacement should be a fixed
-  // fraction of the canvas, i.e. acceleration ∝ s. That requires
-  // multiplying by s², which then cancels the 1/s in ∇Φ_world and
-  // leaves one factor of s. We anchor at a reference 800 px canvas so
-  // strength=1 means the same thing it always did at the default size.
-  //
-  // Mass normalization: per-particle mass is uniform-random in [0.6, 1.8]
-  // (mean ≈ 1.2). a = F/m already cancels N (no global mass coupling),
-  // so consistency across particle counts comes "for free" — we just
-  // factor out the mean so `strength` reads as an acceleration target
-  // rather than a force on a unit mass.
   const REF = 800;
   const sizeFactor = (Math.max(w, h) / REF) ** 2;
-  const meanMass = 1.2; // matches initState distribution
+  const meanMass = 1.2;
   const scale = strength * 1500 * sizeFactor * meanMass;
+  const samp = resolveSampling(sampling, boundary);
   if (mode === "analytic") {
     for (let i = a; i < b; i++) {
-      const x = s.x[i * 2], y = s.x[i * 2 + 1];
+      const [x, y] = sampleCoords(samp, s.x[i * 2], s.x[i * 2 + 1], w, h);
       const g = fieldGradAnalytic(name, x, y, w, h);
       if (g === null) {
-        const eps = 0.5;
+        const eps = 0.5 * (Math.max(w, h) / REF);
         const dphidx = (fieldPotential(name, x + eps, y, w, h) - fieldPotential(name, x - eps, y, w, h)) / (2 * eps);
         const dphidy = (fieldPotential(name, x, y + eps, w, h) - fieldPotential(name, x, y - eps, w, h)) / (2 * eps);
         s.f[i * 2]     += -dphidx * scale;
@@ -345,12 +371,9 @@ function computePotentialForces_range(s: State, name: FieldName, strength: numbe
     }
     return;
   }
-  // finite-diff: scale eps with canvas so the FD step keeps the same
-  // fractional resolution (and therefore the same truncation error)
-  // regardless of size.
   const eps = 0.5 * (Math.max(w, h) / REF);
   for (let i = a; i < b; i++) {
-    const x = s.x[i * 2], y = s.x[i * 2 + 1];
+    const [x, y] = sampleCoords(samp, s.x[i * 2], s.x[i * 2 + 1], w, h);
     const dphidx = (fieldPotential(name, x + eps, y, w, h) - fieldPotential(name, x - eps, y, w, h)) / (2 * eps);
     const dphidy = (fieldPotential(name, x, y + eps, w, h) - fieldPotential(name, x, y - eps, w, h)) / (2 * eps);
     s.f[i * 2]     += -dphidx * scale;
@@ -746,7 +769,7 @@ export function PhysicsCanvas({
             // (kept here as a no-op slot so the worker pipeline order is preserved)
 
             // potential field (local)
-            computePotentialForces_range(s, p.field, p.fieldStrength, w, h, a, b, p.potentialGrad);
+            computePotentialForces_range(s, p.field, p.fieldStrength, w, h, a, b, p.potentialGrad, p.fieldSampling, p.boundary);
           }
 
           // 2b. pairwise via uniform spatial grid — O(N) instead of O(N²).
@@ -959,8 +982,10 @@ export function PhysicsCanvas({
       let PE_field = 0;
       if (p.field !== "none" && p.fieldStrength !== 0) {
         const sc = p.fieldStrength * 1500 * (Math.max(w, h) / 800) ** 2 * 1.2;
+        const samp = resolveSampling(p.fieldSampling, p.boundary);
         for (let i = 0; i < s.N; i++) {
-          PE_field += sc * fieldPotential(p.field, s.x[i * 2], s.x[i * 2 + 1], w, h);
+          const [px, py] = sampleCoords(samp, s.x[i * 2], s.x[i * 2 + 1], w, h);
+          PE_field += sc * fieldPotential(p.field, px, py, w, h);
         }
       }
       const PE_total = PE_grav + PE_spring + PE_field;
