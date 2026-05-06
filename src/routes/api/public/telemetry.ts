@@ -1,9 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  IngestSchema,
-  telemetryBus,
-  type TelemetrySample,
-} from "@/server/telemetryBus.server";
+import { IngestSchema, type TelemetrySample } from "@/lib/telemetrySchema";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -23,12 +19,14 @@ export const Route = createFileRoute("/api/public/telemetry")({
     handlers: {
       OPTIONS: async () => new Response(null, { status: 204, headers: CORS }),
 
-      GET: async () =>
-        json({
+      GET: async () => {
+        const { telemetryBus } = await import("@/server/telemetryBus.server");
+        return json({
           ok: true,
           stats: telemetryBus.stats(),
           recent: telemetryBus.recent(32),
-        }),
+        });
+      },
 
       POST: async ({ request }: { request: Request }) => {
         let raw: unknown;
@@ -43,6 +41,7 @@ export const Route = createFileRoute("/api/public/telemetry")({
           );
         }
 
+        const { telemetryBus } = await import("@/server/telemetryBus.server");
         const samples: TelemetrySample[] =
           "samples" in parsed.data ? parsed.data.samples : [parsed.data];
         for (const s of samples) telemetryBus.publish(s);
