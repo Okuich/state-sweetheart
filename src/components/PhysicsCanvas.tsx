@@ -520,7 +520,6 @@ function stepStateRange(
       s.x[i * 2 + 1] = yi;
     }
   }
-  }
 }
 
 
