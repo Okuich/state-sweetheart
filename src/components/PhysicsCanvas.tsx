@@ -1204,6 +1204,35 @@ export function PhysicsCanvas({
       const fps = fpsEmaRef.current;
       const subStepsEff = lastSubStepsRef.current;
 
+      // ── Probabilistic diagnostics ───────────────────────────────
+      // Reduce ensemble offsets to a per-particle isotropic σ
+      //   σᵢ² = (1/K) Σ_k (δxᵢ,k² + δyᵢ,k²) / 2     (mean is zero by construction)
+      // Aggregate to a scene-wide σ̄ (RMS over particles), and convert the
+      // user-set probabilistic edge tolerance into a satisfaction probability:
+      //   P(|edge_stretch|/rest < tol) ≈ 2·Φ(tol·rest / σ_edge) − 1
+      // where σ_edge ≈ √2·σ̄ from the variance sum of two independent endpoints.
+      let sigMean = 0;
+      let pConstraint = 1;
+      if (s.K > 0) {
+        let sumVar = 0;
+        for (let i = 0; i < s.N; i++) {
+          let acc = 0;
+          for (let kk = 0; kk < s.K; kk++) {
+            const o = kk * s.N * 2 + i * 2;
+            const dx = s.ensX[o], dy = s.ensX[o + 1];
+            acc += dx * dx + dy * dy;
+          }
+          sumVar += acc / (2 * s.K);
+        }
+        sigMean = Math.sqrt(sumVar / Math.max(1, s.N));
+        if (s.E > 0 && p.constraintTol > 0) {
+          const restMean = p.restLength;
+          const sigEdge = Math.SQRT2 * sigMean;
+          const z = (p.constraintTol * restMean) / Math.max(1e-6, sigEdge);
+          pConstraint = 2 * normCdf(z) - 1;
+        }
+      }
+
       const fmtPct = (n: number) => (n * 100).toFixed(2) + "%";
       const lines = [
         `diagnostics · ${p.integrator}`,
