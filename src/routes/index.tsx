@@ -11,6 +11,7 @@ import { GatewayPanel } from "@/components/GatewayPanel";
 import { TemplatesPanel } from "@/components/TemplatesPanel";
 import { GoalOptPanel } from "@/components/GoalOptPanel";
 import { StreamRuntimePanel } from "@/components/StreamRuntimePanel";
+import { BenchmarkPanel } from "@/components/BenchmarkPanel";
 import { saveSnapshot } from "@/lib/worldMemory";
 
 export const Route = createFileRoute("/")({
@@ -740,6 +741,11 @@ function Index() {
       {/* Streaming Physics Runtime — continuous assimilation w/ rolling window */}
       <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
         <StreamRuntimePanel />
+      </section>
+
+      {/* Physics Truth Benchmark Suite — analytic-reference validation gate */}
+      <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
+        <BenchmarkPanel />
       </section>
 
       {/* Autonomous Physics Agents — agentic reasoning over current world */}
