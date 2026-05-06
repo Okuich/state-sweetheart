@@ -73,6 +73,7 @@ export type SimParams = {
   optimize: boolean;
   objectiveLR: number;
   pairwiseMode: "lj" | "repel" | "attract";
+  boundary: "walls" | "wrap" | "periodic";
 };
 
 type FloatArr = Float32Array | Float64Array;
@@ -243,6 +244,8 @@ function projectConstraints(s: State, iterations: number, dt: number) {
   }
 }
 
+type Boundary = "walls" | "wrap" | "periodic";
+
 function stepState(
   s: State,
   dt: number,
@@ -250,8 +253,9 @@ function stepState(
   w: number,
   h: number,
   integrator: "euler" | "semi-euler" | "verlet",
+  boundary: Boundary = "walls",
 ) {
-  stepStateRange(s, dt, damping, w, h, integrator, 0, s.N);
+  stepStateRange(s, dt, damping, w, h, integrator, 0, s.N, boundary);
 }
 
 function stepStateRange(
@@ -263,6 +267,7 @@ function stepStateRange(
   integrator: "euler" | "semi-euler" | "verlet",
   a: number,
   b: number,
+  boundary: Boundary = "walls",
 ) {
   if (integrator === "verlet") {
     for (let i = a; i < b; i++) {
@@ -297,16 +302,33 @@ function stepStateRange(
       s.x[i * 2]     += vx0 * dt;
       s.x[i * 2 + 1] += vy0 * dt;
     }
-    // forces zeroed at top of next sub-step
   }
-  // Wall collisions
-  for (let i = a; i < b; i++) {
-    if (s.x[i * 2] < 0)        { s.x[i * 2] = 0; s.v[i * 2] *= -0.7; }
-    else if (s.x[i * 2] > w)   { s.x[i * 2] = w; s.v[i * 2] *= -0.7; }
-    if (s.x[i * 2 + 1] < 0)    { s.x[i * 2 + 1] = 0; s.v[i * 2 + 1] *= -0.7; }
-    else if (s.x[i * 2 + 1] > h){ s.x[i * 2 + 1] = h; s.v[i * 2 + 1] *= -0.7; }
+  // Boundary handling — three modes:
+  //   walls:    elastic-ish reflection at the box edges (restitution 0.7)
+  //   wrap:     positions teleport across edges; velocity unchanged
+  //             (useful to see flux without bouncing artifacts)
+  //   periodic: same wrap, AND pairwise forces use the minimum-image
+  //             convention so particles interact across the seam — this
+  //             is the standard MD periodic-box setup.
+  if (boundary === "walls") {
+    for (let i = a; i < b; i++) {
+      if (s.x[i * 2] < 0)         { s.x[i * 2] = 0; s.v[i * 2] *= -0.7; }
+      else if (s.x[i * 2] > w)    { s.x[i * 2] = w; s.v[i * 2] *= -0.7; }
+      if (s.x[i * 2 + 1] < 0)     { s.x[i * 2 + 1] = 0; s.v[i * 2 + 1] *= -0.7; }
+      else if (s.x[i * 2 + 1] > h){ s.x[i * 2 + 1] = h; s.v[i * 2 + 1] *= -0.7; }
+    }
+  } else {
+    // wrap & periodic both use modular position remapping
+    for (let i = a; i < b; i++) {
+      let xi = s.x[i * 2], yi = s.x[i * 2 + 1];
+      xi = xi - Math.floor(xi / w) * w;
+      yi = yi - Math.floor(yi / h) * h;
+      s.x[i * 2] = xi;
+      s.x[i * 2 + 1] = yi;
+    }
   }
 }
+
 
 /**
  * scheduler.py — sync_boundaries(results)
@@ -622,8 +644,16 @@ export function PhysicsCanvas({
                       const startB = same ? ai + 1 : bS;
                       for (let bi = startB; bi < bE; bi++) {
                         const j = order[bi];
-                        const dx = xi - s.x[j * 2];
-                        const dy = yi - s.x[j * 2 + 1];
+                        let dx = xi - s.x[j * 2];
+                        let dy = yi - s.x[j * 2 + 1];
+                        // Minimum-image convention for periodic boundary —
+                        // wrap the displacement to the [-w/2, w/2] interval
+                        // so a particle near the right edge "sees" its
+                        // neighbor near the left edge across the seam.
+                        if (p.boundary === "periodic") {
+                          if (dx >  w * 0.5) dx -= w; else if (dx < -w * 0.5) dx += w;
+                          if (dy >  h * 0.5) dy -= h; else if (dy < -h * 0.5) dy += h;
+                        }
                         const r2 = dx * dx + dy * dy;
                         if (r2 > r2max || r2 < 1e-4) continue;
                         const dist = Math.sqrt(r2);
@@ -676,7 +706,7 @@ export function PhysicsCanvas({
 
           // 4. step(state, dt) — each worker integrates its own slice
           for (let q = 0; q < W; q++) {
-            stepStateRange(s, subDt, p.damping, w, h, p.integrator, partStart(q), partEnd(q));
+            stepStateRange(s, subDt, p.damping, w, h, p.integrator, partStart(q), partEnd(q), p.boundary);
           }
 
           // 5. sync_boundaries — re-project cross-partition edges so the
