@@ -820,6 +820,7 @@ export function PhysicsCanvas({
   paramsRef.current = params;
   const lastValidationRef = useRef(0);
   const stepOnceRef = useRef(0);
+  const boundaryIdxRef = useRef<BoundaryIndex | null>(null);
   const onValidationRef = useRef(onValidation);
   onValidationRef.current = onValidation;
   const onLossRef = useRef(onLoss);
