@@ -908,9 +908,25 @@ export function PhysicsCanvas({
           for (let q = 0; q < W; q++) {
             const a = partStart(q), b = partEnd(q);
 
-            // gravity (local)
-            for (let i = a; i < b; i++) {
-              s.f[i * 2 + 1] += p.gravity * s.m[i];
+            // gravity (local) — three modes:
+            //   "zero"        → no body force
+            //   "uniform"     → classic +y body force (down)
+            //   "directional" → vector force along gravityAngle (degrees)
+            const gMode = p.gravityMode ?? "uniform";
+            if (gMode !== "zero" && p.gravity !== 0) {
+              if (gMode === "directional") {
+                const ang = ((p.gravityAngle ?? 90) * Math.PI) / 180;
+                const gx = Math.cos(ang) * p.gravity;
+                const gy = Math.sin(ang) * p.gravity;
+                for (let i = a; i < b; i++) {
+                  s.f[i * 2]     += gx * s.m[i];
+                  s.f[i * 2 + 1] += gy * s.m[i];
+                }
+              } else {
+                for (let i = a; i < b; i++) {
+                  s.f[i * 2 + 1] += p.gravity * s.m[i];
+                }
+              }
             }
 
             // pointer attractor (local)
