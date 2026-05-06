@@ -234,8 +234,10 @@ export class FaultTolerantOrchestrator {
     const t0 = performance.now();
 
     // (1) Revoke + (2) Agree. In-process: every survivor sees the same
-    // failure set already, so agree just canonicalizes it.
-    const survivorReports: Set<number>[] = [];
+    // failure set already, so agree just canonicalizes it. We always
+    // include `failedRanks` directly so that even a total-comm-loss
+    // (zero survivors) is correctly reported as "everyone died".
+    const survivorReports: Set<number>[] = [new Set(failedRanks)];
     for (let r = 0; r < this.orch.size; r++) {
       if (!failedRanks.has(r)) survivorReports.push(new Set(failedRanks));
     }
