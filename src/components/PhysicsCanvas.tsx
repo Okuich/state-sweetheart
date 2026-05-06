@@ -68,6 +68,8 @@ export type SimParams = {
   field: "none" | "swirl" | "wells" | "ripple";
   fieldStrength: number;
   subSteps: number;
+  workers: number;
+  showPartitions: boolean;
 };
 
 type FloatArr = Float32Array | Float64Array;
@@ -186,10 +188,14 @@ function fieldPotential(name: FieldName, x: number, y: number, w: number, h: num
  * Uses central finite differences (≈ autograd.grad on a scalar field).
  */
 function computePotentialForces(s: State, name: FieldName, strength: number, w: number, h: number) {
+  computePotentialForces_range(s, name, strength, w, h, 0, s.N);
+}
+
+function computePotentialForces_range(s: State, name: FieldName, strength: number, w: number, h: number, a: number, b: number) {
   if (name === "none" || strength === 0) return;
-  const eps = 0.5; // pixels — small enough to be local, large enough for f32
-  const scale = strength * 1500; // calibrate visible motion
-  for (let i = 0; i < s.N; i++) {
+  const eps = 0.5;
+  const scale = strength * 1500;
+  for (let i = a; i < b; i++) {
     const x = s.x[i * 2], y = s.x[i * 2 + 1];
     const dphidx = (fieldPotential(name, x + eps, y, w, h) - fieldPotential(name, x - eps, y, w, h)) / (2 * eps);
     const dphidy = (fieldPotential(name, x, y + eps, w, h) - fieldPotential(name, x, y - eps, w, h)) / (2 * eps);
@@ -242,10 +248,21 @@ function stepState(
   h: number,
   integrator: "euler" | "semi-euler" | "verlet",
 ) {
-  const N = s.N;
+  stepStateRange(s, dt, damping, w, h, integrator, 0, s.N);
+}
+
+function stepStateRange(
+  s: State,
+  dt: number,
+  damping: number,
+  w: number,
+  h: number,
+  integrator: "euler" | "semi-euler" | "verlet",
+  a: number,
+  b: number,
+) {
   if (integrator === "verlet") {
-    // velocity-Verlet (2nd order, energy-stable)
-    for (let i = 0; i < N; i++) {
+    for (let i = a; i < b; i++) {
       const invM = 1 / s.m[i];
       const ax = s.f[i * 2]     * invM;
       const ay = s.f[i * 2 + 1] * invM;
@@ -257,8 +274,7 @@ function stepState(
       s.v[i * 2 + 1] = (s.v[i * 2 + 1] + 0.5 * ay * dt) * (1 - damping * dt);
     }
   } else if (integrator === "semi-euler") {
-    // Semi-implicit (symplectic) Euler — v first, then x
-    for (let i = 0; i < N; i++) {
+    for (let i = a; i < b; i++) {
       const invM = 1 / s.m[i];
       const ax = s.f[i * 2]     * invM;
       const ay = s.f[i * 2 + 1] * invM;
@@ -268,30 +284,61 @@ function stepState(
       s.x[i * 2 + 1] += s.v[i * 2 + 1] * dt;
     }
   } else {
-    // Explicit Euler (forward) — integrators.py
-    //   v_{t+1} = v_t + (F/m) dt
-    //   x_{t+1} = x_t + v_{t+1} dt   (note: uses old v in textbook form)
-    // We then zero forces, matching state.f.zero_().
-    for (let i = 0; i < N; i++) {
+    for (let i = a; i < b; i++) {
       const invM = 1 / s.m[i];
       const ax = s.f[i * 2]     * invM;
       const ay = s.f[i * 2 + 1] * invM;
       const vx0 = s.v[i * 2], vy0 = s.v[i * 2 + 1];
       s.v[i * 2]     = (vx0 + ax * dt) * (1 - damping * dt);
       s.v[i * 2 + 1] = (vy0 + ay * dt) * (1 - damping * dt);
-      s.x[i * 2]     += vx0 * dt;          // forward: x uses v_t, not v_{t+1}
+      s.x[i * 2]     += vx0 * dt;
       s.x[i * 2 + 1] += vy0 * dt;
     }
-    s.f.fill(0);                            // state.f.zero_()
+    // forces zeroed at top of next sub-step
   }
   // Wall collisions
-  for (let i = 0; i < N; i++) {
+  for (let i = a; i < b; i++) {
     if (s.x[i * 2] < 0)        { s.x[i * 2] = 0; s.v[i * 2] *= -0.7; }
     else if (s.x[i * 2] > w)   { s.x[i * 2] = w; s.v[i * 2] *= -0.7; }
     if (s.x[i * 2 + 1] < 0)    { s.x[i * 2 + 1] = 0; s.v[i * 2 + 1] *= -0.7; }
     else if (s.x[i * 2 + 1] > h){ s.x[i * 2 + 1] = h; s.v[i * 2 + 1] *= -0.7; }
   }
 }
+
+/**
+ * scheduler.py — DistributedSimulator.sync_boundaries
+ *
+ * After each worker integrates its own slice, edges that cross partition
+ * borders may be slightly stretched. Apply one extra Gauss-Seidel pass
+ * over ONLY those cross-partition edges to keep the seams consistent —
+ * this is the "boundary halo exchange" step in distributed N-body codes.
+ */
+function syncBoundaries(s: State, partOf: (i: number) => number, dt: number) {
+  if (s.E === 0) return;
+  const invDt = dt > 0 ? 1 / dt : 0;
+  for (let e = 0; e < s.E; e++) {
+    const i = s.edges[e * 2];
+    const j = s.edges[e * 2 + 1];
+    if (partOf(i) === partOf(j)) continue;
+    const dx = s.x[i * 2]     - s.x[j * 2];
+    const dy = s.x[i * 2 + 1] - s.x[j * 2 + 1];
+    const dist = Math.sqrt(dx * dx + dy * dy) + 1e-8;
+    const rest = s.edgeRest[e];
+    const wi = 1 / s.m[i], wj = 1 / s.m[j];
+    const wsum = wi + wj;
+    const c = (dist - rest) / dist / wsum;
+    const cx = c * dx, cy = c * dy;
+    s.x[i * 2]     -= wi * cx;
+    s.x[i * 2 + 1] -= wi * cy;
+    s.x[j * 2]     += wj * cx;
+    s.x[j * 2 + 1] += wj * cy;
+    s.v[i * 2]     -= wi * cx * invDt * 0.5;
+    s.v[i * 2 + 1] -= wi * cy * invDt * 0.5;
+    s.v[j * 2]     += wj * cx * invDt * 0.5;
+    s.v[j * 2 + 1] += wj * cy * invDt * 0.5;
+  }
+}
+
 
 function buildEdges(N: number, perNode: number) {
   // Random sparse graph: each node connects to `perNode` neighbors
@@ -447,33 +494,74 @@ export function PhysicsCanvas({
         const r2max = pRad * pRad;
         const norm = pRad * 0.5;
 
+        // ── scheduler.py ──────────────────────────────────────────────
+        // DistributedSimulator.step(partitions): partition nodes across
+        // `workers`, run each worker's local pipeline, then sync_boundaries
+        // by re-projecting edges that cross partition borders. Workers run
+        // sequentially here (single thread) but each sees only its own slice
+        // of state — same data-dependency pattern as the Ray/MPI version.
+        const W = Math.max(1, Math.min(p.workers | 0, s.N));
+        const partOf = (i: number) => Math.min(W - 1, Math.floor((i * W) / s.N));
+        const partStart = (q: number) => Math.floor((q * s.N) / W);
+        const partEnd   = (q: number) => Math.floor(((q + 1) * s.N) / W);
+
         for (let t = 0; t < subSteps; t++) {
           // 1. zero forces — state.f.zero_()
           s.f.fill(0);
 
-          // 2. external + interaction forces
-          // gravity
-          for (let i = 0; i < s.N; i++) {
-            s.f[i * 2 + 1] += p.gravity * s.m[i];
-          }
+          // 2. per-worker local forces (each worker owns nodes [a,b))
+          for (let q = 0; q < W; q++) {
+            const a = partStart(q), b = partEnd(q);
 
-          // pointer attractor
-          if (pointerRef.current.active) {
-            const px = pointerRef.current.x, py = pointerRef.current.y;
-            const sign = pointerRef.current.mode;
-            const G = p.attractor * sign;
-            for (let i = 0; i < s.N; i++) {
-              const dx = px - s.x[i * 2];
-              const dy = py - s.x[i * 2 + 1];
-              const r2 = dx * dx + dy * dy + 400;
-              const inv = 1 / Math.sqrt(r2);
-              const a = (G * s.m[i]) / r2;
-              s.f[i * 2]     += dx * inv * a * 1000;
-              s.f[i * 2 + 1] += dy * inv * a * 1000;
+            // gravity (local)
+            for (let i = a; i < b; i++) {
+              s.f[i * 2 + 1] += p.gravity * s.m[i];
             }
+
+            // pointer attractor (local)
+            if (pointerRef.current.active) {
+              const px = pointerRef.current.x, py = pointerRef.current.y;
+              const sign = pointerRef.current.mode;
+              const G = p.attractor * sign;
+              for (let i = a; i < b; i++) {
+                const dx = px - s.x[i * 2];
+                const dy = py - s.x[i * 2 + 1];
+                const r2 = dx * dx + dy * dy + 400;
+                const inv = 1 / Math.sqrt(r2);
+                const acc = (G * s.m[i]) / r2;
+                s.f[i * 2]     += dx * inv * acc * 1000;
+                s.f[i * 2 + 1] += dy * inv * acc * 1000;
+              }
+            }
+
+            // pairwise within partition (short-range, local interactions)
+            if (pStr !== 0 && pRad > 0) {
+              for (let i = a; i < b; i++) {
+                const xi = s.x[i * 2], yi = s.x[i * 2 + 1];
+                for (let j = i + 1; j < b; j++) {
+                  const dx = xi - s.x[j * 2];
+                  const dy = yi - s.x[j * 2 + 1];
+                  const r2 = dx * dx + dy * dy;
+                  if (r2 > r2max || r2 < 1e-4) continue;
+                  const dist = Math.sqrt(r2);
+                  const fmag = pStr * (norm * norm / r2 - norm / dist);
+                  const fx = (dx / dist) * fmag;
+                  const fy = (dy / dist) * fmag;
+                  s.f[i * 2]     += fx;
+                  s.f[i * 2 + 1] += fy;
+                  s.f[j * 2]     -= fx;
+                  s.f[j * 2 + 1] -= fy;
+                }
+              }
+            }
+
+            // potential field (local)
+            computePotentialForces_range(s, p.field, p.fieldStrength, w, h, a, b);
           }
 
-          // compute_forces — Hooke's law on edges
+          // 3. springs on ALL edges — interior edges are local to one
+          // worker; boundary edges (i,j in different partitions) are the
+          // sync points exchanged between workers.
           for (let e = 0; e < s.E; e++) {
             const i = s.edges[e * 2];
             const j = s.edges[e * 2 + 1];
@@ -489,35 +577,15 @@ export function PhysicsCanvas({
             s.f[j * 2 + 1] -= fy;
           }
 
-          // compute_pairwise_forces (skip in sub-steps when expensive)
-          if (pStr !== 0 && pRad > 0) {
-            for (let i = 0; i < s.N; i++) {
-              const xi = s.x[i * 2], yi = s.x[i * 2 + 1];
-              for (let j = i + 1; j < s.N; j++) {
-                const dx = xi - s.x[j * 2];
-                const dy = yi - s.x[j * 2 + 1];
-                const r2 = dx * dx + dy * dy;
-                if (r2 > r2max || r2 < 1e-4) continue;
-                const dist = Math.sqrt(r2);
-                const fmag = pStr * (norm * norm / r2 - norm / dist);
-                const fx = (dx / dist) * fmag;
-                const fy = (dy / dist) * fmag;
-                s.f[i * 2]     += fx;
-                s.f[i * 2 + 1] += fy;
-                s.f[j * 2]     -= fx;
-                s.f[j * 2 + 1] -= fy;
-              }
-            }
+          // 4. step(state, dt) — each worker integrates its own slice
+          for (let q = 0; q < W; q++) {
+            stepStateRange(s, subDt, p.damping, w, h, p.integrator, partStart(q), partEnd(q));
           }
 
-          // 3. compute_potential_forces — F += -∇Φ
-          computePotentialForces(s, p.field, p.fieldStrength, w, h);
-
-          // 4. step(state, dt) — advance positions & velocities
-          stepState(s, subDt, p.damping, w, h, p.integrator);
-
-          // 5. project_constraints — PBD distance solver
+          // 5. sync_boundaries — re-project cross-partition edges so the
+          // independently-stepped slices stay consistent at the seams.
           projectConstraints(s, p.constraintIters, subDt);
+          syncBoundaries(s, partOf, subDt);
         }
       }
 
@@ -535,17 +603,23 @@ export function PhysicsCanvas({
         ctx.stroke();
       }
 
-      // Render nodes
+      // Render nodes — tinted by partition when showPartitions is on
+      const W = Math.max(1, Math.min(p.workers | 0, s.N));
       for (let i = 0; i < s.N; i++) {
         const sp = Math.hypot(s.v[i * 2], s.v[i * 2 + 1]);
         const radius = 1.5 + s.m[i] * 1.6;
-        const hueDeg = (s.hue[i] * 80 + 140) % 360;
+        const q = Math.min(W - 1, Math.floor((i * W) / s.N));
+        const hueDeg = p.showPartitions
+          ? (q * 360) / Math.max(1, W)
+          : (s.hue[i] * 80 + 140) % 360;
+        const chroma = p.showPartitions ? 0.22 : 0.18;
         const light = Math.min(0.92, 0.55 + sp / 600);
         ctx.beginPath();
         ctx.arc(s.x[i * 2], s.x[i * 2 + 1], radius, 0, Math.PI * 2);
-        ctx.fillStyle = `oklch(${light} 0.18 ${hueDeg})`;
+        ctx.fillStyle = `oklch(${light} ${chroma} ${hueDeg})`;
         ctx.fill();
       }
+
 
       if (pointerRef.current.active) {
         const sign = pointerRef.current.mode;

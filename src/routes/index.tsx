@@ -76,6 +76,8 @@ function Index() {
     field: "none",
     fieldStrength: 0.6,
     subSteps: 1,
+    workers: 4,
+    showPartitions: true,
   });
   const [resetKey, setResetKey] = useState(0);
   const [validation, setValidation] = useState<ValidationReport | null>(null);
@@ -177,7 +179,21 @@ function Index() {
         <Field label="Pairwise radius" value={params.pairwiseRadius} unit="px" min={0} max={200} step={1} onChange={(v) => update("pairwiseRadius", v)} />
         <Field label="Constraint iters" value={params.constraintIters} min={0} max={20} step={1} onChange={(v) => update("constraintIters", v)} />
         <Field label="Sub-steps / frame" value={params.subSteps} min={1} max={8} step={1} onChange={(v) => update("subSteps", v)} />
+        <Field label="Workers" value={params.workers} min={1} max={8} step={1} onChange={(v) => update("workers", v)} />
         <Field label="Field · strength" value={params.fieldStrength} min={-2} max={2} step={0.05} onChange={(v) => update("fieldStrength", v)} />
+
+        <div className="space-y-2">
+          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Show partitions</div>
+          <Button
+            variant={params.showPartitions ? "default" : "outline"}
+            className={`w-full uppercase tracking-[0.18em] text-[10px] ${
+              params.showPartitions ? "bg-accent text-accent-foreground" : ""
+            }`}
+            onClick={() => update("showPartitions", !params.showPartitions)}
+          >
+            {params.showPartitions ? "On" : "Off"}
+          </Button>
+        </div>
 
         <div className="space-y-2">
           <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Potential field</div>
@@ -273,17 +289,18 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          simulation.py — full pipeline per frame
+          scheduler.py — distributed step
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`def run_simulation(state, config):
-    for t in range(config.steps):           # config.steps = sub-steps / frame
-        compute_forces(state, config.edges)         # Hooke's law
-        compute_pairwise_forces(state, config.eps)  # short-range interactions
-        compute_potential_forces(state, config.field)
-        step(state, config.dt)              # a = f/m → v, x
-        project_constraints(state, config.constraints)
-    return state`}
+{`class DistributedSimulator:
+    def __init__(self, workers):
+        self.workers = workers
+
+    def step(self, partitions):
+        futures = [w.run_step.remote(p)
+                   for w, p in zip(self.workers, partitions)]
+        results = gather(futures)
+        return self.sync_boundaries(results)`}
         </pre>
       </footer>
     </main>
