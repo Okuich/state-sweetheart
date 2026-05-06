@@ -281,7 +281,6 @@ function Index() {
     forces    = -grad(potential, state.x)[0]   # F = -∇Φ
     state.f  += forces`}
         </pre>
-        </pre>
       </footer>
     </main>
   );
