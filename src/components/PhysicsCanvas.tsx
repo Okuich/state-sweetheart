@@ -215,7 +215,7 @@ function verletKick(
  *   • "finite-diff"  — central differences. Plug-and-play fallback for any
  *                      Φ that doesn't ship an analytic gradient.
  */
-type FieldName = "none" | "swirl" | "wells" | "ripple";
+type FieldName = "none" | "swirl" | "wells" | "ripple" | "custom";
 export type PotentialGrad = "analytic" | "finite-diff";
 export type FieldSampling = "auto" | "clamp" | "wrap" | "none";
 
