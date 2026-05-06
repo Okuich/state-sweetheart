@@ -152,6 +152,7 @@ function Index() {
     objectiveLR: 0.05,
     pairwiseMode: "lj",
     boundary: "walls",
+    restitution: 0.7,
     forceViz: "off",
     potentialGrad: "analytic",
     fieldSampling: "auto",
@@ -354,6 +355,7 @@ function Index() {
       <section className="relative z-10 mx-4 lg:mx-10 mb-10 grid gap-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm md:grid-cols-2 lg:grid-cols-3">
         <Field label="Gravity"   value={params.gravity}   min={-200} max={400} step={1}    onChange={(v) => update("gravity", v)} />
         <Field label="Damping"   value={params.damping}   min={0}    max={1}   step={0.01} onChange={(v) => update("damping", v)} />
+        <Field label="Restitution" value={params.restitution} min={0}  max={1}   step={0.01} onChange={(v) => update("restitution", v)} />
         <Field label="Attractor" value={params.attractor} min={0}    max={5}   step={0.1}  onChange={(v) => update("attractor", v)} />
         <Field label="Particles · N" value={params.particleCount} min={50} max={8000} step={50} onChange={(v) => update("particleCount", v)} />
         <Field label="Trail"     value={params.trail}     min={0}    max={0.95} step={0.01} onChange={(v) => update("trail", v)} />
