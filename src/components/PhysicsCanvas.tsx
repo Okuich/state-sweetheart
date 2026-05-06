@@ -72,6 +72,7 @@ export type SimParams = {
   showPartitions: boolean;
   optimize: boolean;
   objectiveLR: number;
+  pairwiseMode: "lj" | "repel" | "attract";
 };
 
 type FloatArr = Float32Array | Float64Array;
