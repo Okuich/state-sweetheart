@@ -19,6 +19,7 @@ import { GeometryFeaturePanel } from "@/components/GeometryFeaturePanel";
 import { LearningEnginePanel } from "@/components/LearningEnginePanel";
 import { KnowledgeGraphPanel } from "@/components/KnowledgeGraphPanel";
 import { RagPanel } from "@/components/RagPanel";
+import { FabFeedbackPanel } from "@/components/FabFeedbackPanel";
 import { saveSnapshot } from "@/lib/worldMemory";
 
 export const Route = createFileRoute("/")({
