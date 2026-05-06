@@ -675,6 +675,15 @@ function Index() {
         </div>
       </section>
 
+      {/* Persistent World Model — long-term memory of past runs */}
+      <section className="relative z-10 mx-4 lg:mx-10 mb-10 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
+        <WorldMemoryPanel
+          params={params}
+          loss={loss}
+          onRestore={(p) => { setParams(p); setResetKey((k) => k + 1); }}
+        />
+      </section>
+
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
