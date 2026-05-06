@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PhysicsCanvas, type SimParams, type ValidationReport } from "@/components/PhysicsCanvas";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
+import { compileFieldExpr } from "@/lib/exprCompile";
 
 export const Route = createFileRoute("/")({
   component: Index,
