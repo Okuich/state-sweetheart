@@ -73,9 +73,12 @@ export function PrecisionPolicyPanel() {
         <h3 className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
           GPU precision policy (f64 → f32)
         </h3>
-        <Button variant="ghost" size="sm" onClick={reset} className="h-7 px-2 text-xs">
-          reset
-        </Button>
+        <div className="flex items-center gap-1">
+          <WhyThisMatters />
+          <Button variant="ghost" size="sm" onClick={reset} className="h-7 px-2 text-xs">
+            reset
+          </Button>
+        </div>
       </div>
 
       {!decision.f64Enabled && (
