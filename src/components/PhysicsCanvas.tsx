@@ -902,6 +902,19 @@ export function PhysicsCanvas({
   const lossEmaRef = useRef(0);
   const energyBaselineRef = useRef<number | null>(null);
   const energyBaselineNRef = useRef(0);
+  // Rolling history of E_total and Δ for the sparkline + drift statistics.
+  // Capacity ≈ a few seconds at 60 fps; cheap fixed-size circular buffer.
+  const ENERGY_HIST_CAP = 240;
+  const energyHistRef = useRef<Float32Array>(new Float32Array(ENERGY_HIST_CAP));
+  const driftHistRef  = useRef<Float32Array>(new Float32Array(ENERGY_HIST_CAP));
+  const energyHistLenRef = useRef(0);
+  const energyHistHeadRef = useRef(0);
+  // EMA of |Δ| and |Δ|² → smoothed drift magnitude and RMS drift.
+  const driftAbsEmaRef = useRef(0);
+  const driftSqEmaRef  = useRef(0);
+  // Track integrator changes so switching Euler↔Verlet rebases the baseline
+  // and clears history (otherwise the sparkline shows a meaningless step).
+  const prevIntegratorEnergyRef = useRef<string>("");
   const lastSubStepsRef = useRef(1);
   const fpsEmaRef = useRef(60);
   // ── Digital Twin telemetry (synthetic IoT/sensor stream) ─────────
