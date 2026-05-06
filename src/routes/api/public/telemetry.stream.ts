@@ -16,7 +16,7 @@ export const Route = createFileRoute("/api/public/telemetry/stream")({
       OPTIONS: async () => new Response(null, { status: 204, headers: CORS }),
 
       GET: async ({ request }: { request: Request }) => {
-        const { telemetryBus } = await import("@/server/telemetryBus.server");
+        const { telemetryBus } = await import("@/lib/telemetryBus");
         const stream = new ReadableStream<Uint8Array>({
           start(controller) {
             const enc = new TextEncoder();
