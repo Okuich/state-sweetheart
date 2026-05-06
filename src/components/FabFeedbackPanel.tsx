@@ -15,6 +15,7 @@ import {
   type Channel,
   type Observation,
 } from "@/lib/fabFeedback";
+import { scanImportBridge } from "@/lib/scanImportStore";
 
 export function FabFeedbackPanel() {
   const [state, setState] = useState<CalibrationState>(() => initState());
