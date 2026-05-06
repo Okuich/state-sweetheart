@@ -34,10 +34,28 @@ export type RagQuery = {
   };
 };
 
+export type ScoreComponent = { label: string; value: number; weight?: number };
+
+export type Breakdown = {
+  components: ScoreComponent[];
+  // tokens shared between query and candidate (topology-style)
+  overlap?: string[];
+  // tokens in candidate but not query
+  onlyCandidate?: string[];
+  // tokens in query but not candidate
+  onlyQuery?: string[];
+  // raw cosine 0..1, when applicable
+  cosine?: number;
+  // per-dimension contribution to cosine (q_i * n_i), normalized
+  cosineDims?: number[];
+  formula: string;
+};
+
 export type Retrieved<T> = {
   item: T;
   score: number;
   reason: string;
+  breakdown?: Breakdown;
 };
 
 // ─── helpers ─────────────────────────────────────────────────
