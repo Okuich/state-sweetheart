@@ -140,6 +140,7 @@ function Index() {
     showFieldArrows: false,
     adaptiveSubSteps: false,
     maxSubSteps: 8,
+    pairwiseAlgo: "grid",
     customFieldSrc: "0.5*(nx^2 + ny^2) + 0.2*sin(8*theta + t)",
   });
   const [resetKey, setResetKey] = useState(0);
