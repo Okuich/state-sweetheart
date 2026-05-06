@@ -4,6 +4,7 @@ import { PhysicsCanvas, type SimParams, type ValidationReport } from "@/componen
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { compileFieldExpr } from "@/lib/exprCompile";
+import { WorldMemoryPanel } from "@/components/WorldMemoryPanel";
 
 export const Route = createFileRoute("/")({
   component: Index,
