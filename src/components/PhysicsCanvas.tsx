@@ -244,6 +244,8 @@ function projectConstraints(s: State, iterations: number, dt: number) {
   }
 }
 
+type Boundary = "walls" | "wrap" | "periodic";
+
 function stepState(
   s: State,
   dt: number,
@@ -251,8 +253,9 @@ function stepState(
   w: number,
   h: number,
   integrator: "euler" | "semi-euler" | "verlet",
+  boundary: Boundary = "walls",
 ) {
-  stepStateRange(s, dt, damping, w, h, integrator, 0, s.N);
+  stepStateRange(s, dt, damping, w, h, integrator, 0, s.N, boundary);
 }
 
 function stepStateRange(
@@ -264,6 +267,7 @@ function stepStateRange(
   integrator: "euler" | "semi-euler" | "verlet",
   a: number,
   b: number,
+  boundary: Boundary = "walls",
 ) {
   if (integrator === "verlet") {
     for (let i = a; i < b; i++) {
@@ -298,16 +302,33 @@ function stepStateRange(
       s.x[i * 2]     += vx0 * dt;
       s.x[i * 2 + 1] += vy0 * dt;
     }
-    // forces zeroed at top of next sub-step
   }
-  // Wall collisions
-  for (let i = a; i < b; i++) {
-    if (s.x[i * 2] < 0)        { s.x[i * 2] = 0; s.v[i * 2] *= -0.7; }
-    else if (s.x[i * 2] > w)   { s.x[i * 2] = w; s.v[i * 2] *= -0.7; }
-    if (s.x[i * 2 + 1] < 0)    { s.x[i * 2 + 1] = 0; s.v[i * 2 + 1] *= -0.7; }
-    else if (s.x[i * 2 + 1] > h){ s.x[i * 2 + 1] = h; s.v[i * 2 + 1] *= -0.7; }
+  // Boundary handling — three modes:
+  //   walls:    elastic-ish reflection at the box edges (restitution 0.7)
+  //   wrap:     positions teleport across edges; velocity unchanged
+  //             (useful to see flux without bouncing artifacts)
+  //   periodic: same wrap, AND pairwise forces use the minimum-image
+  //             convention so particles interact across the seam — this
+  //             is the standard MD periodic-box setup.
+  if (boundary === "walls") {
+    for (let i = a; i < b; i++) {
+      if (s.x[i * 2] < 0)         { s.x[i * 2] = 0; s.v[i * 2] *= -0.7; }
+      else if (s.x[i * 2] > w)    { s.x[i * 2] = w; s.v[i * 2] *= -0.7; }
+      if (s.x[i * 2 + 1] < 0)     { s.x[i * 2 + 1] = 0; s.v[i * 2 + 1] *= -0.7; }
+      else if (s.x[i * 2 + 1] > h){ s.x[i * 2 + 1] = h; s.v[i * 2 + 1] *= -0.7; }
+    }
+  } else {
+    // wrap & periodic both use modular position remapping
+    for (let i = a; i < b; i++) {
+      let xi = s.x[i * 2], yi = s.x[i * 2 + 1];
+      xi = xi - Math.floor(xi / w) * w;
+      yi = yi - Math.floor(yi / h) * h;
+      s.x[i * 2] = xi;
+      s.x[i * 2 + 1] = yi;
+    }
   }
 }
+
 
 /**
  * scheduler.py — sync_boundaries(results)
