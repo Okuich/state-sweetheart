@@ -391,36 +391,35 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          multi_gpu.cu — sync_boundary (average ghost-node positions across peers after halo exchange)
+          launch_config.cu — grid sizing (round-up division for nodes vs. edges)
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`__global__ void sync_boundary(
-    float* x_local,         // this GPU's position buffer
-    float* x_remote,        // peer's positions, staged via cudaMemcpyPeerAsync
-    int*   boundary_indices) // compact list of overlap-region node IDs
-{
-    int i   = blockIdx.x * blockDim.x + threadIdx.x;
-    int idx = boundary_indices[i];
-    x_local[idx] = 0.5f * (x_local[idx] + x_remote[idx]);   // consensus avg
-}
+{`int N = ${params.particleCount};                      // particles
+int E = ${params.particleCount * params.edgesPerNode};                      // edges (N × edges_per_node)
 
-// Launch — one thread per ghost node (boundary_count ≪ N_local)
-//   sync_boundary<<<ceil(B/256), 256>>>(x_local, x_remote, boundary_indices);
+int threads       = 256;                                  // warp-aligned (8 warps/block)
+int blocks_nodes  = (N + threads - 1) / threads;          // = ${Math.ceil(params.particleCount / 256)}
+int blocks_edges  = (E + threads - 1) / threads;          // = ${Math.ceil((params.particleCount * params.edgesPerNode) / 256)}
+
+// node-parallel kernels — one thread per particle
+reset_forces  <<<blocks_nodes, threads>>>(N, fx, fy, fz);
+apply_gravity <<<blocks_nodes, threads>>>(N, fy, g);
+integrate     <<<blocks_nodes, threads>>>(N, x,y,z, vx,vy,vz, fx,fy,fz, m, dt);
+
+// edge-parallel kernels — one thread per spring
+compute_spring_forces<<<blocks_edges, threads>>>(E, edge_i, edge_j, ...);
+project_constraints  <<<blocks_edges, threads>>>(E, edge_i, edge_j, ...);
+
+// Why ceil-div ((X + T - 1) / T)?
+//   Integer division truncates: 401/256 = 1, leaving 145 threads unlaunched.
+//   The +T-1 trick rounds UP, then the in-kernel \`if (i >= N) return;\` guard
+//   masks the few overshoot threads in the final partial block.
 //
-// Why average instead of overwrite?
-//   Both GPUs integrated the same ghost nodes independently this step,
-//   producing two slightly different positions (different rounding,
-//   different neighbour subsets). Averaging is a cheap consensus that
-//   keeps the simulation single-valued without a global reduction.
-//
-// Pipeline placement (runs AFTER integrate, BEFORE next force pass):
-//   integrate<<<...>>>(N_local, ...);
-//   cudaMemcpyPeerAsync(x_remote, peer.x, ...);   // pull peer's view
-//   sync_boundary<<<...>>>(x_local, x_remote, boundary_indices);
-//
-// Indirection through boundary_indices means the kernel touches only the
-// few hundred overlap nodes — fully coalesced, latency-bound, microseconds
-// per step even on million-node graphs.`}
+// Why 256?
+//   Multiple of warp size (32) → no idle lanes.
+//   Small enough that 4–8 blocks fit per SM (good occupancy / latency hiding),
+//   large enough to amortise the block-launch fixed cost.
+//   Sweet spot on every NVIDIA arch from Pascal to Hopper.`}
         </pre>
       </footer>
     </main>
