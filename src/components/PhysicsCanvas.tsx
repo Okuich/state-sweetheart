@@ -1584,6 +1584,8 @@ export function PhysicsCanvas({
         const head = energyHistHeadRef.current;
         energyHistRef.current[head] = E_total;
         driftHistRef.current[head]  = drift;
+        keHistRef.current[head]     = KE;
+        peHistRef.current[head]     = PE_total;
         energyHistHeadRef.current = (head + 1) % ENERGY_HIST_CAP;
         if (energyHistLenRef.current < ENERGY_HIST_CAP) energyHistLenRef.current++;
       }
