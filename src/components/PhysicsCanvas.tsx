@@ -1753,15 +1753,15 @@ export function PhysicsCanvas({
         absRel < 0.05 ? "oklch(0.84 0.16 85)"  : "oklch(0.78 0.20 35)";
       for (let li = 0; li < lines.length; li++) {
         if (li === 0)       ctx.fillStyle = "oklch(0.78 0.14 230)";
-        else if (li === 5)  ctx.fillStyle = "oklch(0.94 0.04 230)";
-        else if (li === 6)  ctx.fillStyle = drift >= 0 ? "oklch(0.78 0.18 35)" : "oklch(0.78 0.18 150)";
-        else if (li === 7)  ctx.fillStyle = stabColor;
-        else if (li === 8)  ctx.fillStyle = "oklch(0.84 0.10 230 / 0.9)";
+        else if (li === 6)  ctx.fillStyle = "oklch(0.94 0.04 230)";
+        else if (li === 7)  ctx.fillStyle = drift >= 0 ? "oklch(0.78 0.18 35)" : "oklch(0.78 0.18 150)";
+        else if (li === 8)  ctx.fillStyle = stabColor;
         else if (li === 9)  ctx.fillStyle = "oklch(0.84 0.10 230 / 0.9)";
-        else if (li === 10) ctx.fillStyle = stabColor;
-        else if (li === 11) ctx.fillStyle = cColor(cMax);
-        else if (li === 12) ctx.fillStyle = cColor(cRms);
-        else if (li === 15) ctx.fillStyle = fpsColor;
+        else if (li === 10) ctx.fillStyle = "oklch(0.84 0.10 230 / 0.9)";
+        else if (li === 11) ctx.fillStyle = stabColor;
+        else if (li === 12) ctx.fillStyle = cColor(cMax);
+        else if (li === 13) ctx.fillStyle = cColor(cRms);
+        else if (li === 16) ctx.fillStyle = fpsColor;
         else                ctx.fillStyle = "oklch(0.78 0.04 230 / 0.85)";
         ctx.fillText(lines[li], panelX + padX, panelY + padY + li * lineH);
       }
