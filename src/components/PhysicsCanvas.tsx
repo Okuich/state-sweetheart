@@ -644,8 +644,16 @@ export function PhysicsCanvas({
                       const startB = same ? ai + 1 : bS;
                       for (let bi = startB; bi < bE; bi++) {
                         const j = order[bi];
-                        const dx = xi - s.x[j * 2];
-                        const dy = yi - s.x[j * 2 + 1];
+                        let dx = xi - s.x[j * 2];
+                        let dy = yi - s.x[j * 2 + 1];
+                        // Minimum-image convention for periodic boundary —
+                        // wrap the displacement to the [-w/2, w/2] interval
+                        // so a particle near the right edge "sees" its
+                        // neighbor near the left edge across the seam.
+                        if (p.boundary === "periodic") {
+                          if (dx >  w * 0.5) dx -= w; else if (dx < -w * 0.5) dx += w;
+                          if (dy >  h * 0.5) dy -= h; else if (dy < -h * 0.5) dy += h;
+                        }
                         const r2 = dx * dx + dy * dy;
                         if (r2 > r2max || r2 < 1e-4) continue;
                         const dist = Math.sqrt(r2);
