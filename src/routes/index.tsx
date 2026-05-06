@@ -307,18 +307,17 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          scheduler.py — distributed step
+          differentiable_loop.py — loss.backward() through the simulator
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`class DistributedSimulator:
-    def __init__(self, workers):
-        self.workers = workers
+{`def loss_fn(initial_state):
+    final_state = run_simulation(initial_state, config)
+    return objective(final_state)        # ½ ‖x - target‖²
 
-    def step(self, partitions):
-        futures = [w.run_step.remote(p)
-                   for w, p in zip(self.workers, partitions)]
-        results = gather(futures)
-        return self.sync_boundaries(results)`}
+loss = loss_fn(state)
+loss.backward()                          # ∂L/∂x  flows back through every step
+optimizer.step()                         # x ← x - lr · ∂L/∂x`}
+        </pre>
         </pre>
       </footer>
     </main>
