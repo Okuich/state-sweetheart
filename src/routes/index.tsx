@@ -57,12 +57,16 @@ function Field({
 
 function Index() {
   const [params, setParams] = useState<SimParams>({
-    gravity: 80,
-    damping: 0.05,
+    gravity: 60,
+    damping: 0.4,
     attractor: 1.2,
-    particleCount: 600,
-    trail: 0.18,
+    particleCount: 400,
+    trail: 0.22,
     paused: false,
+    springK: 80,
+    restLength: 40,
+    edgesPerNode: 2,
+    showEdges: true,
   });
   const [resetKey, setResetKey] = useState(0);
   const pointerRef = useRef({ x: 0, y: 0, active: false, mode: 1 as 1 | -1 });
@@ -113,7 +117,8 @@ function Index() {
           <div><span className="text-primary">x</span> [{params.particleCount} × 2]</div>
           <div><span className="text-primary">v</span> [{params.particleCount} × 2]</div>
           <div><span className="text-primary">m</span> [{params.particleCount}]</div>
-          <div><span className="text-primary">f</span> ← g + attractor</div>
+          <div><span className="text-primary">f</span> ← g + attractor + springs</div>
+          <div><span className="text-accent">edges</span> ~ {params.particleCount * params.edgesPerNode}</div>
         </div>
         <div className="pointer-events-none absolute right-4 bottom-4 text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
           drag · attract &nbsp;·&nbsp; right-drag · repel
@@ -127,8 +132,11 @@ function Index() {
         <Field label="Attractor" value={params.attractor} min={0}    max={5}   step={0.1}  onChange={(v) => update("attractor", v)} />
         <Field label="Particles · N" value={params.particleCount} min={50} max={2500} step={50} onChange={(v) => update("particleCount", v)} />
         <Field label="Trail"     value={params.trail}     min={0}    max={0.95} step={0.01} onChange={(v) => update("trail", v)} />
+        <Field label="Spring k"  value={params.springK}   min={0}    max={400} step={5}    onChange={(v) => update("springK", v)} />
+        <Field label="Rest length" value={params.restLength} unit="px" min={5} max={200} step={1} onChange={(v) => update("restLength", v)} />
+        <Field label="Edges / node" value={params.edgesPerNode} min={0} max={6} step={1} onChange={(v) => { update("edgesPerNode", v); setResetKey((k) => k + 1); }} />
 
-        <div className="flex items-end gap-3">
+        <div className="flex items-end gap-3 md:col-span-2 lg:col-span-1">
           <Button
             variant="default"
             className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90 glow-mint uppercase tracking-[0.18em] text-xs"
@@ -152,12 +160,14 @@ function Index() {
           state.py — runtime model
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`class PhysicsState:
-    def __init__(self, positions, velocities, mass):
-        self.x = positions      # [N, D]
-        self.v = velocities     # [N, D]
-        self.m = mass           # [N]
-        self.f = zeros_like(self.x)`}
+{`def compute_forces(state, edges):
+    i, j = edges[:,0], edges[:,1]
+    diff = state.x[i] - state.x[j]
+    dist = norm(diff, dim=1, keepdim=True)
+    direction = diff / (dist + 1e-8)
+    force = direction * -k * (dist - rest_length)
+    scatter_add(state.f, i,  force)
+    scatter_add(state.f, j, -force)`}
         </pre>
       </footer>
     </main>
