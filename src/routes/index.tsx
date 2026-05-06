@@ -5,6 +5,8 @@ import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { compileFieldExpr } from "@/lib/exprCompile";
 import { WorldMemoryPanel } from "@/components/WorldMemoryPanel";
+import { AgentsPanel } from "@/components/AgentsPanel";
+import { saveSnapshot } from "@/lib/worldMemory";
 
 export const Route = createFileRoute("/")({
   component: Index,
