@@ -23,6 +23,7 @@ import { RagPanel } from "@/components/RagPanel";
 import { FabFeedbackPanel } from "@/components/FabFeedbackPanel";
 import { MaterialEditorPanel } from "@/components/MaterialEditorPanel";
 import { MaterialRegionPanel } from "@/components/MaterialRegionPanel";
+import { FractureVisualizationPanel } from "@/components/FractureVisualizationPanel";
 import { FederatedPanel } from "@/components/FederatedPanel";
 import { saveSnapshot } from "@/lib/worldMemory";
 
@@ -867,6 +868,11 @@ function Index() {
       {/* Material Regions — per-tetrahedron MatID painting + visualization */}
       <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
         <MaterialRegionPanel />
+      </section>
+
+      {/* Fracture Visualization — phase-field damage d and crack growth */}
+      <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
+        <FractureVisualizationPanel />
       </section>
 
       {/* STEP File Ingestion — parse & normalize ISO-10303-21 into canonical geometry */}
