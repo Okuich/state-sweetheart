@@ -146,12 +146,59 @@ function toDevice(s: State, device: Device, dtype: Dtype): State {
  *      v ← (v + a·dt) · (1 - damping·dt)
  *      x ← x + v·dt
  *
- * integrator = "verlet" → velocity-Verlet (2nd order, energy-stable):
- *      x ← x + v·dt + ½·a·dt²
- *      v ← v + ½·(a + a_new)·dt        (a_new injected by caller next frame)
+ * integrator = "verlet" → velocity-Verlet (2nd order, energy-stable),
+ * split across the force evaluation so the kick really uses (a_old + a_new)/2:
+ *
+ *      // BEFORE recomputing forces (uses a_old from previous step, in s.fPrev)
+ *      v ← v + ½·a_old·dt
+ *      x ← x + v·dt                                         [verletDrift]
+ *
+ *      // recompute forces here → s.f now holds a_new
+ *
+ *      v ← (v + ½·a_new·dt) · (1 - damping·dt)
+ *      s.fPrev ← s.f                                        [verletKick]
  *
  * Walls: elastic-ish reflection with restitution 0.7.
  */
+function verletDrift(
+  s: State,
+  dt: number,
+  a: number,
+  b: number,
+) {
+  // First half-kick using PREVIOUS step's forces (cached in s.fPrev),
+  // then drift positions with the half-updated velocity.
+  for (let i = a; i < b; i++) {
+    const invM = 1 / s.m[i];
+    const axOld = s.fPrev[i * 2]     * invM;
+    const ayOld = s.fPrev[i * 2 + 1] * invM;
+    s.v[i * 2]     += 0.5 * axOld * dt;
+    s.v[i * 2 + 1] += 0.5 * ayOld * dt;
+    s.x[i * 2]     += s.v[i * 2]     * dt;
+    s.x[i * 2 + 1] += s.v[i * 2 + 1] * dt;
+  }
+}
+
+function verletKick(
+  s: State,
+  dt: number,
+  damping: number,
+  a: number,
+  b: number,
+) {
+  // Second half-kick using the NEW forces just computed for this step,
+  // then cache them as fPrev for the next step's drift.
+  const decay = 1 - damping * dt;
+  for (let i = a; i < b; i++) {
+    const invM = 1 / s.m[i];
+    const axNew = s.f[i * 2]     * invM;
+    const ayNew = s.f[i * 2 + 1] * invM;
+    s.v[i * 2]     = (s.v[i * 2]     + 0.5 * axNew * dt) * decay;
+    s.v[i * 2 + 1] = (s.v[i * 2 + 1] + 0.5 * ayNew * dt) * decay;
+    s.fPrev[i * 2]     = s.f[i * 2];
+    s.fPrev[i * 2 + 1] = s.f[i * 2 + 1];
+  }
+}
 /**
  * Differentiable scalar potential fields Φ(x, y) and helpers.
  *
