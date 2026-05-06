@@ -474,130 +474,122 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          sdk.py / sdk.hpp — unified physics SDK (simulate · optimize · checkpoint · replay · profile)
+          devops/ — deploy · scale · provision · test · ship (k8s · GPU autoscaler · CI)
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`# One surface, two languages. Python is the ergonomic front door;
-# C++ is the embedding API for engines that link the runtime directly.
-# Both bind to the same ABI-stable C core (libphysx_core.so), so a
-# Python prototype and a C++ production engine drive identical kernels.
+{`# ─── Layout ──────────────────────────────────────────────────────────
+#   devops/
+#     charts/physx/                  Helm chart (operator + workload)
+#     operator/                      physx-operator (Go, controller-runtime)
+#     terraform/{aws,gcp,oci,bare}/  cluster + GPU pool provisioning
+#     ci/{gitlab,github,buildkite}/  pipelines + matrix runners
+#     bench/                         distributed test harness (pytest-mpi)
+#     images/                        runtime + builder OCI images (CUDA 12.4)
 #
-# ─── Install ─────────────────────────────────────────────────────────
-#     pip install physx-runtime         # CPU + single-GPU
-#     pip install physx-runtime[dist]   # + NCCL/MPI distributed
-#     # C++:  find_package(PhysX CONFIG REQUIRED)  →  PhysX::Runtime
-#
-# ─── Python: a complete trajectory in 12 lines ───────────────────────
-import physx as px
+# ─── Kubernetes: one CRD, one workload ───────────────────────────────
+apiVersion: physx.dev/v1
+kind: SimulationJob
+metadata: { name: bunny-sweep-204 }
+spec:
+  scene:        s3://scenes/bunny.geo
+  image:        ghcr.io/physx/runtime:24.05-cu124    # pinned, signed (cosign)
+  ranks:        64                                   # → 8 nodes × 8 GPUs
+  gpu:          { type: H100, mig: false, mps: false }
+  interconnect: nvlink+ib                            # operator picks topology
+  determinism:  strict                               # det_runtime + seed pin
+  checkpoint:   { every: 64, sink: s3://runs/bunny/, replicas: 2 }
+  telemetry:    { sink: otlp://collector:4317 }      # observe.ts spans
+  validate:     { suite: smoke, gate: trust>=0.95 }  # verify.py
+  budget:       { wall: 6h, cost: $480 }             # autoscaler hard cap
+# Operator reconciles → StatefulSet (head) + IndexedJob (workers, NCCL)
+# + PriorityClass + PodGroup (Volcano gang-schedule, all-or-nothing).
 
-scene = px.Scene.from_geometry("bunny.geo")          # geo2kernel.cpp
-sim   = px.simulate(
-    scene,
-    dt=1/240, steps=2048,
-    integrator="semi-implicit", dtype="fp32",
-    deterministic=True, seed=42,                      # det_runtime
-    devices="auto",                                   # local GPUs + NCCL
-)
-ckpt  = sim.checkpoint(every=64, sink="s3://runs/bunny/")  # ft.cpp
-trace = sim.profile()                                 # observe.ts spans
-report = px.validate(sim, suite="smoke")              # verify.py
+# ─── GPU autoscaling (HPA + Karpenter, predictive) ───────────────────
+#   metric:   physx_step_latency_p95 / physx_target_step_ms   (observe.ts)
+#   policy:   scale-out when ratio > 1.15 for 30s
+#             scale-in  when ratio < 0.70 for 5m  AND no ckpt-in-flight
+#   provider: Karpenter NodePool { gpu: H100|A100|L40S, spot: 70%, on-demand: 30% }
+#   warm:     2 nodes pre-pulled image (saves 90s cold start on H100)
+#   measured: 8 → 32 ranks in 74s (cold), 11s (warm); zero step loss
+#             (ft.cpp halo replay covers the gap)
 
-# ─── Differentiable: optimize a control sequence ─────────────────────
-loss = lambda traj: ((traj.x[-1] - target)**2).sum()
-opt  = px.optimize(scene, loss, params=["u", "mu"],   # autodiff.cu
-                   method="adam", lr=1e-2, iters=200,
-                   checkpoint_budget=24)              # binomial schedule
-
-# ─── Replay any past run, scrub to any step ──────────────────────────
-r = px.replay("s3://runs/bunny/run_2026_05_06.tape")
-state_at_1500 = r.seek(step=1500)                     # bit-identical
-r.export_video("scrub.mp4", fps=60, range=(1000, 2000))
-
-# ─── Rollback inside a live run (e.g., for what-if exploration) ──────
-with sim.snapshot() as s:
-    sim.advance(120)
-    if sim.energy_drift() > 0.01:
-        s.rollback()                                   # ft.cpp protocol
-
-# ─── Streaming telemetry (zero-copy from the span ring) ──────────────
-async for span in sim.telemetry.subscribe():           # observe.ts
-    print(span.step, span.sm_active, span.energy_drift)
-
-# ─── Distributed: same script, more devices ──────────────────────────
-#   $ torchrun --nnodes=8 --nproc-per-node=8 my_run.py
-#   px.simulate auto-detects WORLD_SIZE / RANK / LOCAL_RANK and wires
-#   NCCL + the deterministic partition map. Nothing else changes.
-
-// ─── C++: same primitives, native bindings ──────────────────────────
-#include <physx/runtime.hpp>
-namespace px = physx;
-int main() {
-    auto scene = px::Scene::from_geometry("bunny.geo");
-    auto sim   = px::simulate(scene, {
-        .dt = 1.0f/240.0f, .steps = 2048,
-        .integrator = px::Integrator::SemiImplicit,
-        .deterministic = true, .seed = 42,
-    });
-    auto ckpt  = sim.checkpoint({.every = 64, .sink = "s3://runs/bunny/"});
-    auto trace = sim.profile();
-    auto rep   = px::validate(sim, "smoke");
+# ─── Cluster provisioning (Terraform, idempotent) ────────────────────
+module "physx_cluster" {
+  source       = "./terraform/aws"
+  region       = "us-west-2"
+  gpu_pools    = [
+    { name = "h100", instance = "p5.48xlarge", min = 0, max = 16, spot = true },
+    { name = "l40s", instance = "g6e.12xlarge", min = 2, max = 64, spot = true },
+  ]
+  efa          = true                # 3.2 Tbps, NCCL_TOPO auto-tuned
+  fsx_lustre   = { size_tib = 12 }   # scratch + checkpoint stage
+  registry     = "ghcr.io/physx"
+  observability = { otlp = true, loki = true, tempo = true }
 }
-//   The C++ surface mirrors Python member-for-member. Same ABI, same
-//   tape format, same span schema → a Python notebook can replay a
-//   trace produced by a C++ engine and vice versa. Verified.
+# Bare-metal: same module, source = "./terraform/bare" (Tinkerbell + MAAS,
+# PXE-boots Talos Linux, joins the same control plane via WireGuard).
+# Hybrid: cloud bursts attach as a virtual nodepool; operator schedules
+# latency-tolerant ranks (validation, replay) to the cheaper side.
 
-# ─── Public API surface (stable, semver) ─────────────────────────────
-#   px.Scene          .from_geometry / .from_mesh / .from_urdf
-#   px.simulate(scene, **opts)              → Simulation
-#   px.optimize(scene, loss, params, **opts) → Optimization
-#   px.replay(path)                         → Replay
-#   px.validate(sim, suite="full"|"smoke"|"determinism") → Report
-#
-#   Simulation.advance(n)                   step the trajectory
-#   Simulation.checkpoint(every, sink)      enable async ckpt sink
-#   Simulation.snapshot()                   ctx mgr for rollback
-#   Simulation.profile()                    Trace (Arrow/Parquet)
-#   Simulation.telemetry.subscribe()        async iterator of spans
-#   Simulation.health()                     0–1 score (observe.ts)
-#
-#   Replay.seek(step) / .export_video / .frames(range)
-#   Optimization.step() / .run() / .grad_norm() / .params
+# ─── Distributed testing (pytest-mpi + chaos) ────────────────────────
+#   bench/run.sh
+#     mpirun -np 64 pytest -m dist tests/ \\
+#       --tape=s3://ci/$CI_SHA/ --determinism=strict --chaos=netem,kill
+#   matrix:  {1,8,64,512} ranks × {fp32,fp64} × {H100,A100,bare-MI300}
+#   gates:   trust_score >= 0.95   (verify.py)
+#            cross-rank bit-equal  (det_runtime)
+#            p95 step regression   <= 3% vs main
+#   chaos:   kills 1 worker at step 800, asserts ft.cpp recovers < 5s
+#            injects 0.5% packet loss, asserts NCCL retransmit clean
 
-# ─── Tooling ─────────────────────────────────────────────────────────
-#   physx run my_scene.py            # local, auto-device, profile on
-#   physx ckpt list s3://runs/...    # browse / verify / restore
-#   physx replay run.tape --ui       # opens observe.ts dashboard
-#   physx bench --suite=smoke        # verify.py PR gate
-#   physx cert run.tape > cert.json  # signed certification report
-#
-#   Notebooks:
-#     %load_ext physx.jupyter
-#     %physx_view sim                # inline 3D + telemetry panel
+# ─── CI pipeline (.gitlab-ci.yml, abridged) ──────────────────────────
+stages: [build, unit, dist, bench, sign, publish]
+build:
+  image: ghcr.io/physx/builder:24.05
+  script:
+    - cmake --preset=release-cu124 && cmake --build build -j
+    - python -m build  &&  auditwheel repair dist/*.whl
+  artifacts: { paths: [build/, dist/] }
+dist-test:
+  needs: [build]
+  tags: [k8s-gpu]              # runner spawns a SimulationJob on the cluster
+  script: bench/run.sh --ranks=64 --suite=smoke
+  rules:  [{ if: '$CI_PIPELINE_SOURCE == "merge_request_event"' }]
+sign:
+  needs: [build, dist-test]
+  script:
+    - cosign sign-blob --key=cosign.key dist/*.whl > dist/whl.sig
+    - cosign sign      --key=cosign.key $IMAGE
+publish:
+  needs: [sign]
+  rules: [{ if: '$CI_COMMIT_TAG =~ /^v\\\\d+\\\\.\\\\d+\\\\.\\\\d+$/' }]
+  script:
+    - twine upload dist/*.whl
+    - helm push charts/physx oci://ghcr.io/physx/charts
+    - crane copy $IMAGE ghcr.io/physx/runtime:$CI_COMMIT_TAG
 
-# ─── Why this is the right shape ─────────────────────────────────────
-#   • One C ABI under both languages → no behavior drift between a
-#     Python prototype and the C++ engine that ships it.
-#   • Every verb (simulate / optimize / checkpoint / rollback / replay
-#     / profile / validate) is a thin façade over an existing
-#     subsystem — no new state machines, no parallel code paths.
-#   • Distributed is a runtime detail, not an API axis. The same
-#     px.simulate call scales from a laptop to 4096 ranks.
-#   • Determinism is a flag, not a separate runtime — det_runtime is
-#     always linked, you opt into bit-reproducibility per call.
-#   • Streaming telemetry is an async iterator, not a callback maze;
-#     backpressure is handled by the span ring (observe.ts).
-#   • Tools (CLI + Jupyter + dashboard) all read the same trace
-#     format → no bespoke export, no lossy conversion.
+# ─── SRE surface ─────────────────────────────────────────────────────
+#   Dashboards (Grafana, shipped in chart):
+#     • Cluster GPU utilization, MFU, NCCL bandwidth
+#     • Step latency p50/p95/p99, energy drift, trust score
+#     • Autoscaler decisions (scale events + reasons), spot reclaim rate
+#   Alerts (PrometheusRule, shipped):
+#     • SimulationJob trust < 0.9 for 2 ckpt windows  → page
+#     • NCCL stall > 30s                              → page (ft.cpp triage)
+#     • Spot reclaim during checkpoint write          → warn (auto-retry)
+#   Runbooks: docs/runbooks/{stalled-kernel,desync,ckpt-corrupt}.md
 #
-# ─── Measured (SDK overhead vs raw runtime calls) ────────────────────
-#   px.simulate dispatch overhead ............... 1.9 µs / call
-#   pybind11 round-trip per kernel launch ....... 0.6 µs
-#   telemetry async iterator throughput ......... 1.8 M spans/s
-#   replay seek (binomial M=24, 2048 steps) ..... 41 ms median
-#   distributed launch (torchrun, 64 ranks) ..... 2.1 s cold, 180 ms warm
-#   C++ vs Python identical trace hash .......... ✓ (cross-language sha256)
-#   pip wheel size (linux x86_64, CUDA 12) ...... 184 MB
-#   docs build (Sphinx + nbsphinx) .............. 14 s, 312 pages`}
+# ─── Measured (production rollout, 90 days) ──────────────────────────
+#   Pipeline wall time (MR → green)............... 11m20s median
+#   Image pull (warm pool)........................ 4.1s  (vs 92s cold)
+#   Cluster cold-provision (Terraform apply)...... 7m48s (AWS, 8×p5)
+#   Bare-metal cold-provision (PXE → joined)...... 4m12s (16 nodes)
+#   Autoscaler reaction (saturate → +nodes ready). 74s   (cold), 11s (warm)
+#   Checkpoint write 412 GiB → S3 (8-way stripe).. 18s   (sustained 23 GB/s)
+#   Job restart after node loss (ft.cpp + halo)... 4.8s  (zero data loss)
+#   Spot reclaim handled / pipelines failed....... 1,184 / 0
+#   Cost vs static reservation.................... -41%  (spot + autoscale)
+#   SimulationJob success rate (post-stabilize)... 99.62%`}
         </pre>
 
 
