@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, AlertTriangle, Loader2 } from "lucide-react";
+import { Sparkles, AlertTriangle, Loader2, ChevronDown, ChevronRight } from "lucide-react";
 import { loadGraph, type Graph } from "@/lib/knowledgeGraph";
 import {
   retrieveAll,
@@ -10,6 +10,7 @@ import {
   DEFAULT_WEIGHTS,
   type RagContext,
   type RetrievalWeights,
+  type Breakdown,
 } from "@/lib/ragRetrieval";
 import {
   recommendSimulationParameters,
@@ -151,17 +152,17 @@ export function RagPanel() {
       <div className="grid gap-4 md:grid-cols-2">
         <Bucket title="geometry · cosine kNN" empty="no geometry nodes yet">
           {ctx.geometry.map((r) => (
-            <Row key={r.item.id} label={r.item.label} score={r.score} reason={r.reason} />
+            <Row key={r.item.id} label={r.item.label} score={r.score} reason={r.reason} breakdown={r.breakdown} />
           ))}
         </Bucket>
         <Bucket title="topology · Jaccard match" empty="no topology overlap">
           {ctx.topology.map((r) => (
-            <Row key={r.item.id} label={r.item.label} score={r.score} reason={r.reason} />
+            <Row key={r.item.id} label={r.item.label} score={r.score} reason={r.reason} breakdown={r.breakdown} />
           ))}
         </Bucket>
         <Bucket title="historical failures" empty="no recorded failures">
           {ctx.failures.map((r) => (
-            <Row key={r.item.id} label={r.item.label} score={r.score} reason={r.reason} tone="danger" />
+            <Row key={r.item.id} label={r.item.label} score={r.score} reason={r.reason} tone="danger" breakdown={r.breakdown} />
           ))}
         </Bucket>
         <Bucket title="optimization memory" empty="no optimization history">
@@ -172,6 +173,7 @@ export function RagPanel() {
               score={r.score}
               reason={r.item.note || r.reason}
               tone="ok"
+              breakdown={r.breakdown}
             />
           ))}
         </Bucket>
@@ -310,25 +312,127 @@ function Bucket({
 }
 
 function Row({
-  label, score, reason, tone = "default",
-}: { label: string; score: number; reason: string; tone?: "default" | "ok" | "danger" }) {
+  label, score, reason, tone = "default", breakdown,
+}: { label: string; score: number; reason: string; tone?: "default" | "ok" | "danger"; breakdown?: Breakdown }) {
+  const [open, setOpen] = useState(false);
   const cls = tone === "ok" ? "text-primary" : tone === "danger" ? "text-destructive" : "text-foreground/90";
+  const Icon = open ? ChevronDown : ChevronRight;
   return (
-    <li className="grid grid-cols-[1fr_60px] gap-2 items-start text-[11px]">
-      <div>
-        <div className={`font-mono ${cls}`}>{label}</div>
-        <div className="text-[9px] text-muted-foreground/80">{reason}</div>
-      </div>
-      <div className="text-right">
-        <span className="inline-block w-12 font-mono tabular-nums text-foreground/70">
-          {score.toFixed(3)}
-        </span>
-        <div className="h-1 mt-0.5 rounded-sm bg-muted overflow-hidden">
-          <div className="h-full bg-primary"
-               style={{ width: `${Math.max(0, Math.min(1, score)) * 100}%` }} />
+    <li className="text-[11px]">
+      <div className="grid grid-cols-[1fr_60px] gap-2 items-start">
+        <button
+          type="button"
+          onClick={() => breakdown && setOpen((o) => !o)}
+          className="text-left flex items-start gap-1 group"
+          disabled={!breakdown}
+        >
+          {breakdown && (
+            <Icon className="h-3 w-3 mt-0.5 shrink-0 text-muted-foreground group-hover:text-foreground" />
+          )}
+          <div className="min-w-0">
+            <div className={`font-mono ${cls} truncate`}>{label}</div>
+            <div className="text-[9px] text-muted-foreground/80 truncate">{reason}</div>
+          </div>
+        </button>
+        <div className="text-right">
+          <span className="inline-block w-12 font-mono tabular-nums text-foreground/70">
+            {score.toFixed(3)}
+          </span>
+          <div className="h-1 mt-0.5 rounded-sm bg-muted overflow-hidden">
+            <div className="h-full bg-primary"
+                 style={{ width: `${Math.max(0, Math.min(1, score)) * 100}%` }} />
+          </div>
         </div>
       </div>
+      {open && breakdown && <Explanation b={breakdown} />}
     </li>
+  );
+}
+
+function Explanation({ b }: { b: Breakdown }) {
+  return (
+    <div className="mt-2 ml-4 rounded-md border border-border/60 bg-background/60 p-2 space-y-2">
+      <div className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground">
+        why · breakdown
+      </div>
+      <div className="font-mono text-[10px] text-foreground/80">{b.formula}</div>
+
+      {/* score components */}
+      <div className="space-y-1">
+        {b.components.map((c, i) => {
+          const contrib = (c.weight ?? 1) * c.value;
+          return (
+            <div key={i} className="grid grid-cols-[80px_1fr_70px] gap-2 items-center">
+              <span className="text-[10px] text-muted-foreground">{c.label}</span>
+              <div className="h-1.5 rounded-sm bg-muted overflow-hidden">
+                <div
+                  className="h-full bg-primary/80"
+                  style={{ width: `${Math.max(0, Math.min(1, c.value)) * 100}%` }}
+                />
+              </div>
+              <span className="font-mono text-[10px] tabular-nums text-foreground/80 text-right">
+                {c.weight !== undefined
+                  ? `${c.weight.toFixed(2)}·${c.value.toFixed(2)} = ${contrib.toFixed(2)}`
+                  : c.value.toFixed(3)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* token overlap */}
+      {(b.overlap || b.onlyQuery || b.onlyCandidate) && (
+        <div className="space-y-1">
+          <div className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground">
+            token overlap
+          </div>
+          <TokenList label="∩ shared"     items={b.overlap}       cls="text-primary border-primary/40 bg-primary/5" />
+          <TokenList label="only query"   items={b.onlyQuery}     cls="text-foreground/70 border-border bg-background/40" />
+          <TokenList label="only node"    items={b.onlyCandidate} cls="text-muted-foreground border-border bg-background/40" />
+        </div>
+      )}
+
+      {/* per-dim cosine */}
+      {b.cosineDims && b.cosineDims.length > 0 && (
+        <div>
+          <div className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground mb-1">
+            cosine · per-dim contribution (normalized)
+          </div>
+          <div className="flex items-end gap-0.5 h-8">
+            {b.cosineDims.map((d, i) => {
+              const h = Math.min(1, Math.abs(d)) * 100;
+              return (
+                <div key={i} className="flex-1 flex flex-col justify-end" title={`d${i}: ${d.toFixed(3)}`}>
+                  <div
+                    className={d >= 0 ? "bg-primary/80" : "bg-destructive/70"}
+                    style={{ height: `${h}%`, minHeight: "1px" }}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TokenList({ label, items, cls }: { label: string; items?: string[]; cls: string }) {
+  if (!items || items.length === 0) return null;
+  return (
+    <div className="flex items-start gap-2">
+      <span className="text-[9px] uppercase tracking-[0.14em] text-muted-foreground shrink-0 w-16 mt-0.5">{label}</span>
+      <div className="flex flex-wrap gap-1">
+        {items.slice(0, 24).map((t, i) => (
+          <span key={i} className={`text-[9px] font-mono px-1 py-0.5 rounded border ${cls}`}>
+            {t}
+          </span>
+        ))}
+        {items.length > 24 && (
+          <span className="text-[9px] text-muted-foreground">+{items.length - 24}</span>
+        )}
+      </div>
+    </div>
   );
 }
 
