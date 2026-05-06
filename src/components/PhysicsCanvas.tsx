@@ -1695,7 +1695,11 @@ export function PhysicsCanvas({
         absRel < 0.05 ? "drifting" :
         absRel < 0.20 ? "unstable" : "diverging";
       const lines = [
-        `diagnostics · ${p.integrator}`,
+        `diagnostics · ${
+          p.integrator === "euler"      ? "Euler (1st, explicit)"
+        : p.integrator === "semi-euler" ? "Semi-impl. Euler (symplectic)"
+        :                                 "Velocity-Verlet (2nd, symplectic)"
+        }`,
         `KE        ${fmt(KE)}`,
         `PE grav   ${fmt(PE_grav)}`,
         `PE spring ${fmt(PE_spring)}`,
