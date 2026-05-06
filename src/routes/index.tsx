@@ -122,9 +122,9 @@ function Index() {
         <PhysicsCanvas key={resetKey} params={params} pointerRef={pointerRef} onValidation={setValidation} />
         {/* HUD */}
         <div className="pointer-events-none absolute left-4 top-4 flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-          <div><span className="text-primary">x</span> [{params.particleCount} × 2] f32</div>
-          <div><span className="text-primary">v</span> [{params.particleCount} × 2] f32</div>
-          <div><span className="text-primary">m</span> [{params.particleCount}] f32</div>
+          <div><span className="text-primary">x</span> [{params.particleCount} × 2] {params.dtype === "float64" ? "f64" : "f32"}</div>
+          <div><span className="text-primary">v</span> [{params.particleCount} × 2] {params.dtype === "float64" ? "f64" : "f32"}</div>
+          <div><span className="text-primary">m</span> [{params.particleCount}] {params.dtype === "float64" ? "f64" : "f32"}</div>
           <div><span className="text-primary">f</span> ← g + attractor + springs</div>
           <div><span className="text-accent">edges</span> ~ {params.particleCount * params.edgesPerNode}</div>
         </div>
@@ -248,23 +248,20 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          state.py — PhysicsState.step(dt)
+          state.py — PhysicsState.to(device, dtype)
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`def step(self, dt: float):
-    """Advance positions & velocities by dt using a = f / m."""
-    a = self.f / self.m.unsqueeze(-1)        # [N, D]
-    if self.integrator == "verlet":
-        # velocity-Verlet (2nd order, energy-conserving)
-        self.x += self.v * dt + 0.5 * a * dt * dt
-        a_new   = self.f / self.m.unsqueeze(-1)   # recompute next frame
-        self.v += 0.5 * (a + a_new) * dt
-    else:
-        # semi-implicit (symplectic) Euler
-        self.v += a * dt
-        self.x += self.v * dt
-    self.v *= (1.0 - self.damping * dt)
-    self.f.zero_()`}
+{`def to(self, device: str, dtype=torch.float32) -> "PhysicsState":
+    """Cast every tensor to the target device + dtype.
+    f is reinitialized to zeros so stale forces never cross devices."""
+    if self.device == device and self.dtype == dtype:
+        return self
+    self.x = self.x.to(device=device, dtype=dtype)
+    self.v = self.v.to(device=device, dtype=dtype)
+    self.m = self.m.to(device=device, dtype=dtype)
+    self.f = torch.zeros_like(self.x)        # same device, same dtype
+    self.device, self.dtype = device, dtype
+    return self`}
         </pre>
       </footer>
     </main>
