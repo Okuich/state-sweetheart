@@ -69,7 +69,7 @@ function Index() {
     showEdges: true,
     pairwiseStrength: 200,
     pairwiseRadius: 50,
-    integrator: "euler",
+    integrator: "semi-euler",
     dtype: "float32",
     device: "cpu",
     constraintIters: 0,
