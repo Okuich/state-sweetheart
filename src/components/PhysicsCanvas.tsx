@@ -649,6 +649,8 @@ export function PhysicsCanvas({
   const lossEmaRef = useRef(0);
   const energyBaselineRef = useRef<number | null>(null);
   const energyBaselineNRef = useRef(0);
+  const lastSubStepsRef = useRef(1);
+  const fpsEmaRef = useRef(60);
 
   // Compile the user-provided Φ exactly when the source string changes.
   // useMemo gives us a stable reference per source (cheap, parse is < 1 ms),
