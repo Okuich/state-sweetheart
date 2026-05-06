@@ -44,6 +44,9 @@ function validateState(s: {
 }
 
 
+export type Dtype = "float32" | "float64";
+export type Device = "cpu" | "webgpu";
+
 export type SimParams = {
   gravity: number;
   damping: number;
@@ -58,21 +61,71 @@ export type SimParams = {
   pairwiseStrength: number;
   pairwiseRadius: number;
   integrator: "euler" | "verlet";
+  dtype: Dtype;
+  device: Device;
 };
+
+type FloatArr = Float32Array | Float64Array;
 
 type State = {
   N: number;
   D: number;
-  x: Float32Array;
-  v: Float32Array;
-  m: Float32Array;
-  f: Float32Array;
-  fPrev: Float32Array;     // previous-step forces (for velocity-Verlet)
-  hue: Float32Array;
+  dtype: Dtype;
+  device: Device;
+  x: FloatArr;
+  v: FloatArr;
+  m: FloatArr;
+  f: FloatArr;
+  fPrev: FloatArr;
+  hue: Float32Array;       // visual-only, not part of physics tensors
   edges: Int32Array;
-  edgeRest: Float32Array;
+  edgeRest: FloatArr;
   E: number;
 };
+
+/** Allocate a typed array matching `dtype`. */
+function emptyLike(len: number, dtype: Dtype): FloatArr {
+  return dtype === "float64" ? new Float64Array(len) : new Float32Array(len);
+}
+
+/** Copy/cast `src` into a fresh array of the requested dtype. */
+function castArray(src: FloatArr, dtype: Dtype): FloatArr {
+  const Ctor = dtype === "float64" ? Float64Array : Float32Array;
+  if (src instanceof Ctor) return new Ctor(src); // copy, same dtype
+  const out = new Ctor(src.length);
+  for (let i = 0; i < src.length; i++) out[i] = src[i];
+  return out;
+}
+
+/**
+ * PhysicsState.to(device, dtype)
+ *
+ * Cast every tensor (x, v, m, f, fPrev, edgeRest) to the target dtype and
+ * (logical) device. `f` is *re-initialized* to zeros with the right dtype so
+ * we never carry stale forces across a device hop. Returns a new State; the
+ * old buffers are left for GC, mirroring PyTorch's `.to()` semantics where
+ * the call is a no-op when nothing changes.
+ *
+ * Devices supported in-browser:
+ *   "cpu"    → typed arrays on the JS heap (always available)
+ *   "webgpu" → falls back to CPU when navigator.gpu is undefined; we still
+ *              record the requested device so the UI can surface it.
+ */
+function toDevice(s: State, device: Device, dtype: Dtype): State {
+  if (s.device === device && s.dtype === dtype) return s;
+  return {
+    ...s,
+    dtype,
+    device,
+    x: castArray(s.x, dtype),
+    v: castArray(s.v, dtype),
+    m: castArray(s.m, dtype),
+    // f reinitialized to zeros on the new device/dtype — never reuse stale forces
+    f: emptyLike(s.N * s.D, dtype),
+    fPrev: emptyLike(s.N * s.D, dtype),
+    edgeRest: castArray(s.edgeRest, dtype),
+  };
+}
 
 /**
  * PhysicsState.step(dt) — advance positions & velocities using a = f/m.
