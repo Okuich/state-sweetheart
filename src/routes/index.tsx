@@ -141,6 +141,12 @@ function Index() {
     adaptiveSubSteps: false,
     maxSubSteps: 8,
     pairwiseAlgo: "grid",
+    stochastic: false,
+    noiseSigma: 8,
+    ensembleK: 12,
+    confidenceZ: 2,
+    constraintTol: 0.05,
+    showConfidence: true,
     customFieldSrc: "0.5*(nx^2 + ny^2) + 0.2*sin(8*theta + t)",
   });
   const [resetKey, setResetKey] = useState(0);
