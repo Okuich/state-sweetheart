@@ -14,6 +14,7 @@ import { StreamRuntimePanel } from "@/components/StreamRuntimePanel";
 import { BenchmarkPanel } from "@/components/BenchmarkPanel";
 import { GuardrailsPanel } from "@/components/GuardrailsPanel";
 import { CalibrationPanel } from "@/components/CalibrationPanel";
+import { StepIngestionPanel } from "@/components/StepIngestionPanel";
 import { saveSnapshot } from "@/lib/worldMemory";
 
 export const Route = createFileRoute("/")({
@@ -758,6 +759,11 @@ function Index() {
       {/* Real-World Calibration Framework — fit model to measured sensor data */}
       <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
         <CalibrationPanel />
+      </section>
+
+      {/* STEP File Ingestion — parse & normalize ISO-10303-21 into canonical geometry */}
+      <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
+        <StepIngestionPanel />
       </section>
 
       {/* Autonomous Physics Agents — agentic reasoning over current world */}
