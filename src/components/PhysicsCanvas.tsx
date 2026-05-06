@@ -718,6 +718,20 @@ export function PhysicsCanvas({
   const energyBaselineNRef = useRef(0);
   const lastSubStepsRef = useRef(1);
   const fpsEmaRef = useRef(60);
+  // ── Digital Twin telemetry (synthetic IoT/sensor stream) ─────────
+  // Each sensor has: a Lissajous phase pair, an assigned particle id
+  // (re-bound on count change), the latest reading (px,py) with noise,
+  // and the residual = ||sensor − particle|| in σ-units (anomaly score).
+  const twinSensorsRef = useRef<{
+    px: number; py: number;       // latest noisy reading
+    bound: number;                // particle index it's tracking
+    ax: number; ay: number;       // Lissajous frequencies
+    phx: number; phy: number;     // phase offsets
+    residual: number;             // |reading − sim| in pixels
+    z: number;                    // residual / sensorNoise (z-score)
+  }[]>([]);
+  const twinAnomalyCountRef = useRef(0);
+  const twinResidualEmaRef = useRef(0);
 
   // Compile the user-provided Φ exactly when the source string changes.
   // useMemo gives us a stable reference per source (cheap, parse is < 1 ms),
