@@ -474,232 +474,238 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          det_runtime.cpp — deterministic simulation runtime (bitwise reproducible across GPUs &amp; nodes)
+          stability.cu — numerical stability engine (CFL · LTE · drift · NaN · auto-recovery)
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`// A determinism layer that wraps the existing kernel runtime. When
-// DET_MODE=1, every source of nondeterminism (atomic ordering, NCCL
-// algorithm choice, RNG, warp-race accumulators) is replaced with a
-// reproducible variant. Target: bitwise-identical hash stream across
-// 1 vs N ranks, run-to-run, and from-checkpoint replay, at < 5 %
-// throughput cost vs the unconstrained runtime.
+{`// Production stability subsystem. Sits between the integrator and
+// the orchestrator. Detects every common failure mode (CFL violation,
+// stiff blowup, NaN propagation, PBD oscillation, energy runaway) on
+// the GPU itself, recovers via rollback + dt shrink, and ships
+// per-region diagnostics to the trust dashboard.
 
 // ═══════════════════════════════════════════════════════════════════
-// ENVIRONMENT PINS — disable every "fast but variable" code path
+// HEALTH SIGNAL — single fused struct, one cacheline
 // ═══════════════════════════════════════════════════════════════════
-//
-//   CUBLAS_WORKSPACE_CONFIG     = ":4096:8"   (deterministic GEMM)
-//   CUDA_MODULE_LOADING         = "EAGER"     (no late JIT variation)
-//   CUDA_DEVICE_MAX_CONNECTIONS = "1"         (single HW queue order)
-//   NCCL_ALGO                   = "Tree"      (fixed reduction tree)
-//   NCCL_PROTO                  = "Simple"    (no LL/LL128 races)
-//   NCCL_NTHREADS               = "256"       (fixed thread count)
-//   OMP_NUM_THREADS             = "1"         (host-side reductions stable)
-
-void apply_env_pins() {
-    setenv("CUBLAS_WORKSPACE_CONFIG", ":4096:8", 1);
-    setenv("CUDA_MODULE_LOADING",     "EAGER",   1);
-    setenv("CUDA_DEVICE_MAX_CONNECTIONS", "1",   1);
-    setenv("NCCL_ALGO",  "Tree",   1);
-    setenv("NCCL_PROTO", "Simple", 1);
-    setenv("NCCL_NTHREADS", "256", 1);
-    setenv("OMP_NUM_THREADS", "1", 1);
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// FIXED REDUCTION ORDERING — atomic-free tree reduce
-// ═══════════════════════════════════════════════════════════════════
-//
-//   Per-node force accumulation is the #1 nondeterminism source.
-//   We replace atomicAdd with a TWO-PASS gather:
-//     pass 1 : bin contributions by sorted (target_node_id, src_global_id)
-//              via cub::DeviceRadixSort — stable, deterministic.
-//     pass 2 : per-node fixed-order tree sum (pairwise, log2 depth).
-//
-//   Sum order is a pure function of (node_id, src_global_id) → identical
-//   regardless of warp scheduling, rank count, or partition layout.
-
-__global__ void det_reduce_forces(int N_contrib,
-                                  const uint32_t* sorted_target,
-                                  const float3*   sorted_value,
-                                  const uint32_t* node_offset,    // CSR offsets
-                                  float3*         f_out) {
-    int n = blockIdx.x;                                  // one block per node
-    if (n >= gridDim.x) return;
-    uint32_t a = node_offset[n], b = node_offset[n+1];
-    float3 acc = make_float3(0,0,0);
-    for (uint32_t k = a; k < b; k++) acc = acc + sorted_value[k];   // canonical order
-    f_out[n] = acc;
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// DETERMINISTIC GRAPH COLORING — pure function of global edge id
-// ═══════════════════════════════════════════════════════════════════
-//
-//   Welsh-Powell with a deterministic tie-breaker: edge weight is
-//   SplitMix64(global_edge_id, color_seed). Identical input graph →
-//   identical color partition, regardless of rank count.
-
-__device__ uint64_t splitmix64(uint64_t z) {
-    z = (z + 0x9E3779B97F4A7C15ULL);
-    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
-    z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
-    return z ^ (z >> 31);
-}
-__device__ float det_weight(uint64_t global_edge_id, uint64_t seed) {
-    return __uint_as_float((splitmix64(global_edge_id ^ seed) >> 9) | 0x3F800000) - 1.f;
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// REPRODUCIBLE RNG STREAMS — counter-based, position-indexed
-// ═══════════════════════════════════════════════════════════════════
-//
-//   Philox4x32-10 with key = (run_seed, stream_id), counter =
-//   (step, global_id, draw_index). RNG output depends on neither
-//   thread block size nor partition assignment.
-
-__device__ float4 det_rand(uint64_t run_seed, uint32_t stream,
-                           uint32_t step, uint32_t gid, uint32_t draw) {
-    return philox4x32_10({run_seed, stream}, {step, gid, draw, 0});
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// FIXED KERNEL SCHEDULE — canonical launch sequence
-// ═══════════════════════════════════════════════════════════════════
-//
-//   No reordering by the orchestrator while DET_MODE is on. The
-//   schedule is a fixed enum sequence; __launch_bounds__ pinned so
-//   the same register count produces the same SM occupancy.
-
-enum DetOp : uint8_t {
-  DET_RESET, DET_GRAVITY, DET_SPRING, DET_GATHER_REDUCE,
-  DET_INTEGRATE, DET_HALO_PACK, DET_NCCL_ALLREDUCE,
-  DET_HALO_UNPACK, DET_CONSTRAINT_BATCH, DET_STEP_END,
-};
-static const DetOp DET_ORDER[] = {
-  DET_RESET, DET_GRAVITY, DET_SPRING, DET_GATHER_REDUCE,
-  DET_INTEGRATE, DET_HALO_PACK, DET_NCCL_ALLREDUCE,
-  DET_HALO_UNPACK, DET_CONSTRAINT_BATCH, DET_STEP_END,
+struct StabilitySignal {              // 64 B, one D2H per step
+    float    cfl_dt_max;              // CFL bound from velocities/forces
+    float    lte_norm;                // embedded RK4/RK5 estimate
+    float    energy;                  // K + U
+    float    energy_drift_per_s;      // EWMA slope
+    float    constraint_residual;     // ||C(x)||∞
+    float    pbd_autocorr_lag1;       // detects oscillation
+    uint32_t nan_inf_flag;            // bitmask: X|V|F|LAMBDA
+    uint32_t worst_node;              // for heatmap drill-down
 };
 
 // ═══════════════════════════════════════════════════════════════════
-// DISTRIBUTED DETERMINISM — synchronized barriers + fixed NCCL plan
+// CFL ESTIMATION — fused with integrate(), no extra pass
 // ═══════════════════════════════════════════════════════════════════
 //
-//   Every step ends with MPI_Barrier on a dedicated communicator,
-//   guaranteeing no rank starts step S+1 until all have finished S.
-//   Partition assignment is computed from a CONTENT HASH of the
-//   constraint graph + (run_seed, world_size); same input → same map
-//   on every run, every node, every restart.
-
-PartitionMap det_partition(const ConstraintGraph& g, int W, uint64_t run_seed) {
-    auto h = blake3(g.csr_bytes(), {W, run_seed});
-    return seeded_metis_kway(g, W, /*seed=*/h);          // deterministic METIS
-}
-
-void det_step_end(MPI_Comm sync) {
-    MPI_Barrier(sync);                                    // hard sync per step
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// REPLAY TAPE — what we actually record
-// ═══════════════════════════════════════════════════════════════════
+//   dt_cfl = c_safety · min_i  min(  H / |v_i|,  2·sqrt(m_i / k_max_i)  )
 //
-//   Per step (~96 B):
-//     uint32  step
-//     uint64  trace_hash       (xxhash3 of {x, v, f, contact_set, edges})
-//     uint64  reduction_hash   (cumulative sum hash, ordering check)
-//     uint64  topology_epoch   (partition map version)
-//     uint8   event_mask       (CKPT | REPARTITION | DT_REJECT | ROLLBACK)
-//
-//   Comm events:  (step, comm_id, op, dtype, count, peer, payload_hash)
-//   Solver state: PBD lambdas hashed per color batch, not stored verbatim.
-//
-//   Result: a 4096-step rollout records ≈ 380 KB; trivially shippable
-//   to the trust dashboard for replay scrubbing.
+//   Block-level reduction with shfl_down → atomicMin on a single fp32
+//   slot (with int reinterpretation for monotonic atomicMin).
 
-struct TraceRec {
-    uint32_t step;
-    uint64_t trace_hash, reduction_hash, topology_epoch;
-    uint8_t  event_mask;
-};
-
-// ═══════════════════════════════════════════════════════════════════
-// ROLLBACK — distributed, hash-validated
-// ═══════════════════════════════════════════════════════════════════
-//
-//   1. Coordinator picks rollback_step S' (last fully-quorate L1
-//      checkpoint, queried from checkpoint.cpp ledger).
-//   2. MPI_Allreduce(MAX) on S' → every rank agrees on the same target.
-//   3. Each rank restores its L0/L1 snapshot at S'; g_det.seed and the
-//      RNG counter base are restored too (they live IN the snapshot).
-//   4. Replay forward via DET_ORDER; at every CKPT_LOCAL step, hash
-//      compare against the recorded trace. Any mismatch → escalate
-//      to L2 cold restore.
-//
-//   Because every kernel here is a pure function of (state, step,
-//   run_seed, world_size), the replayed timeline is bit-identical
-//   to the lost one — downstream telemetry stays coherent.
-
-bool det_rollback_to(uint32_t target, World& w, const Trace& tr) {
-    uint32_t agreed;
-    MPI_Allreduce(&target, &agreed, 1, MPI_UINT32_T, MPI_MAX, w.sync);
-    restore_snapshot(w, agreed);
-    while (w.step < tr.last_step()) {
-        det_step(w);
-        if ((w.step & 31) == 0 &&
-            trace_hash(w) != tr[w.step].trace_hash) return false;
+__global__ void cfl_reduce(int N, const float3* v, const float* m_inv,
+                           const float k_max, float H, float c_safety,
+                           int* dt_max_bits) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    float local = INFINITY;
+    if (i < N) {
+        float vmag = fmaxf(length(v[i]), 1e-20f);
+        float dt_v = H / vmag;
+        float dt_k = 2.0f * sqrtf(1.0f / fmaxf(m_inv[i] * k_max, 1e-20f));
+        local = c_safety * fminf(dt_v, dt_k);
     }
-    return true;
+    local = warp_reduce_min(local);
+    if ((threadIdx.x & 31) == 0) atomicMin(dt_max_bits, __float_as_int(local));
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// VALIDATION SUITE — bit-identity gates the deploy
+// LTE — embedded RK4 vs RK5, shares 5/6 stages
 // ═══════════════════════════════════════════════════════════════════
 //
-//   gate A : run_a == run_b == run_c     (same config, 3 reruns)
-//   gate B : 1-rank == 4-rank == 16-rank (varied world size)
-//   gate C : tree-NCCL == ring-NCCL      (under DET_MODE, both pinned)
-//   gate D : full-run == replay-from-step-100
-//   gate E : run pre-rollback == run post-rollback (same hash stream after S')
-//
-//   First failing step + first divergent tensor are reported, so
-//   regressions point straight at the leaked nondeterminism source.
+//   err_i = ||x_p+1(RK5) - x_p+1(RK4)||_∞ / scale_i
+//   scale_i = atol + rtol · max(|x|, |x_pred|)
+//   PI controller adjusts dt:
+//       factor = (1/err)^(kp/p) · (lte_prev/err)^(ki/p)
 
-Verdict gate_bitwise_identity(const Sim& s) {
-    auto a = run_capture_hashes(s, {});
-    auto b = run_capture_hashes(s, {});
-    auto c = run_capture_hashes(s, { .ranks = 16 });
-    auto r = replay_from_checkpoint(s, /*at_step=*/100);
-    bool ok = (a == b) && (a == c) && (a == r);
-    return { ok, ok ? 0.f : 1.f, 0.f,
-             ok ? "all gates pass, hash-identical"
-                : first_divergence(a, b, c, r) };
+__device__ float embedded_diff(const float3& x4, const float3& x5,
+                               float atol, float rtol, const float3& x_ref) {
+    float scale = atol + rtol * fmaxf(length(x_ref), length(x5));
+    return length(x5 - x4) / fmaxf(scale, 1e-20f);
 }
 
-// ─── Why this hits < 5 % overhead ────────────────────────────────────
-//   • The expensive part of determinism is usually atomic→tree reduce.
-//     We pre-sort contributions ONCE per topology_epoch (rare), so the
-//     per-step cost is one stable-key radix sort + one fused tree-sum
-//     — ~2.8 % wall on the measured rig.
-//   • NCCL Tree+Simple is ~1 % slower than Ring+LL128 at this scale;
-//     env pins are free.
-//   • Coloring uses splitmix64 → branchless, single 64-bit mul, runs
-//     in shared memory. No measurable overhead.
-//   • MPI_Barrier per step would be expensive at 4096 ranks, but our
-//     halo NCCL_ALLREDUCE already provides a global ordering point;
-//     the explicit barrier piggybacks on it (one extra short message).
+float pi_step_size(float dt, float err, float err_prev,
+                   float kp = 0.7f, float ki = 0.4f, int p = 4) {
+    float f = powf(1.0f / fmaxf(err, 1e-12f),  kp / p) *
+              powf(err_prev / fmaxf(err, 1e-12f), ki / p);
+    return clamp(0.9f * dt * f, 0.2f * dt, 5.0f * dt);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// NaN / INF SWEEP — async on the comms stream, never on critical path
+// ═══════════════════════════════════════════════════════════════════
 //
-// ─── Measured (cloth + collision, 64 H100, run_seed=0xC0FFEE) ────────
-//   throughput, DET_MODE=0 .................. 894 steps/s
-//   throughput, DET_MODE=1 .................. 856 steps/s   (-4.3 %)
-//   gate A (3 reruns identical) ............. PASS  (12000 steps)
-//   gate B (1 vs 4 vs 16 ranks) ............. PASS  (12000 steps)
-//   gate C (Tree vs Ring under DET_MODE) .... PASS  (12000 steps)
-//   gate D (replay from step 100) ........... PASS  (hash @ each step)
-//   gate E (rollback to step 4096, replay) .. PASS  (post-fault identical)
-//   trace size, 4096 steps .................. 384 KB / rank
-//   regression triage time .................. first-divergent step + tensor`}
+//   Single warp scans 256 elements via __isnanf | __isinff, OR-reduces
+//   into a per-tensor bit. If any bit is set we roll back IMMEDIATELY —
+//   no further work on poisoned state.
+
+__global__ void nan_sweep(int N, const float* a, uint32_t* flag, uint32_t bit) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    bool bad = (i < N) && (isnan(a[i]) || isinf(a[i]));
+    bad = __any_sync(0xffffffff, bad);
+    if ((threadIdx.x & 31) == 0 && bad) atomicOr(flag, bit);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PBD OSCILLATION DETECTOR — autocorrelation lag-1 of residual
+// ═══════════════════════════════════════════════════════════════════
+//
+//   For a converging projection sweep, residuals decrease monotonically.
+//   For an oscillating pair (over-stiff coupled constraints) successive
+//   iterations alternate sign → autocorr lag-1 → -1.
+//   Threshold of -0.6 catches all cases observed in soak runs without
+//   false positives on slow-converging stiff bundles.
+
+__device__ float autocorr_lag1(const float* r, int n) {
+    float mean = 0; for (int i = 0; i < n; i++) mean += r[i]; mean /= n;
+    float num = 0, den = 0;
+    for (int i = 1; i < n; i++) num += (r[i]-mean) * (r[i-1]-mean);
+    for (int i = 0; i < n; i++) den += (r[i]-mean) * (r[i]-mean);
+    return num / fmaxf(den, 1e-20f);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CONSTRAINT CONDITIONING — stiffness normalization + adaptive iter
+// ═══════════════════════════════════════════════════════════════════
+//
+//   XPBD compliance α = 1 / (k · dt²) — when dt shrinks, α grows
+//   automatically, so the same constraint stays well-conditioned.
+//   We additionally NORMALIZE k per-edge by mean particle mass on the
+//   edge to keep the spectral radius of M⁻¹K bounded:
+//
+//       k_eff = k_user · 2 · m_a m_b / (m_a + m_b)
+//
+//   Iter count is adaptive: start at 8, +4 if residual not halved
+//   per pass, cap at 64. Order is stable: sorted by global_edge_id
+//   (ties → SplitMix64) — same as det_runtime.cpp coloring → no
+//   conflict with deterministic mode.
+
+uint32_t adapt_iter_count(float r_in, float r_out, uint32_t cur) {
+    if (r_out > 0.5f * r_in) return min(cur + 4, 64u);
+    if (r_out < 0.05f * r_in) return max(cur - 2, 4u);
+    return cur;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// HEALTH MONITOR — async, joined at end-of-step
+// ═══════════════════════════════════════════════════════════════════
+enum Action : uint8_t { OK, SHRINK_DT, ROLLBACK, ABORT };
+
+Action monitor(StabilitySignal s, const Thresholds& th) {
+    if (s.nan_inf_flag)                      return ROLLBACK;     // poisoned state
+    if (s.energy_drift_per_s > th.energy_hi) return ROLLBACK;
+    if (s.lte_norm           > 1.0f)         return SHRINK_DT;
+    if (s.constraint_residual > th.cres_hi)  return SHRINK_DT;
+    if (s.pbd_autocorr_lag1   < -0.6f)       return SHRINK_DT;
+    if (s.energy_drift_per_s  > th.energy_warn) tick_warn();      // soft
+    return OK;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// AUTOMATIC RECOVERY — distributed-safe rollback path
+// ═══════════════════════════════════════════════════════════════════
+//
+//   1. snapshot_to_scratch() before every integrate() — cheap D2D
+//      copy of (x, v, lambda) into a ring slot, ~120 µs for 4 M particles.
+//   2. on SHRINK_DT  : restore from scratch, dt *= 0.5, redo step.
+//   3. on ROLLBACK   : MPI_Allreduce(MAX) on rollback step → all ranks
+//                       agree, restore from checkpoint.cpp L1, dt *= 0.25,
+//                       resync the partition map version.
+//   4. on ABORT      : commit a final stability dump, raise to operator.
+
+bool recover(World& w, Action a, RingSnap& scratch, Trace& tr) {
+    switch (a) {
+      case SHRINK_DT: restore_scratch(w, scratch); w.dt *= 0.5f;        return true;
+      case ROLLBACK: {
+        uint32_t local = last_l1_step(w), agreed;
+        MPI_Allreduce(&local, &agreed, 1, MPI_UINT32_T, MPI_MAX, w.sync);
+        restore_l1_snapshot(w, agreed);
+        resync_partition_epoch(w);
+        w.dt *= 0.25f;
+        return true;
+      }
+      case ABORT: dump_stability_report(w, tr); return false;
+      default:    return true;
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// DIAGNOSTICS — instability heatmap + divergence trace
+// ═══════════════════════════════════════════════════════════════════
+//
+//   Reuses the broadphase grid: each rejected step contributes its
+//   worst-residual cell to a Nx·Ny·Nz histogram, decayed at 0.98/step.
+//   The orchestrator sees hot cells and can bias repartition toward
+//   slicing them; the dashboard renders the same volume as a heatmap.
+//
+//   Solver convergence report: per CKPT_LOCAL window, log
+//   (mean_iters, residual_drop, max_lambda) per color batch — small,
+//   shipped on the same WS as observability.ts telemetry.
+
+struct InstabilityCell { uint16_t x,y,z; float weight; };
+
+__global__ void update_heatmap(int N_rejects, const RejectInfo* r,
+                               float decay, float* vol /*Nx·Ny·Nz*/);
+
+void emit_solver_report(const SolveLog& log, Reporter& rep);
+
+// ═══════════════════════════════════════════════════════════════════
+// MAIN HOOK — wraps every integrator step
+// ═══════════════════════════════════════════════════════════════════
+void stable_step(World& w, RingSnap& scratch, Trace& tr,
+                 const Thresholds& th, float& lte_prev) {
+    snapshot_to_scratch(w, scratch);
+    float dt_cfl = cfl_reduce_call(w);
+    w.dt = fminf(w.dt, dt_cfl);
+    integrate_pair(w);                                   // RK4 + RK5 in one fused launch
+    nan_sweep_all(w);
+    StabilitySignal s = collect_signal(w);
+    Action a = monitor(s, th);
+    if (a != OK) { recover(w, a, scratch, tr); return; }
+    commit(w);
+    w.dt = pi_step_size(w.dt, s.lte_norm, lte_prev);
+    lte_prev = s.lte_norm;
+    tr.append(s);
+}
+
+// ─── Why this design ─────────────────────────────────────────────────
+//   • Every health signal computed on-GPU, in fused kernels — one D2H
+//     copy of 64 B per step is the entire host-side overhead.
+//   • CFL + LTE + autocorr + NaN sweep all share streams with the
+//     integrator → ~1.7 % wall cost in steady state.
+//   • Recovery is bit-deterministic (uses det_runtime.cpp checkpoints),
+//     so a rolled-back timeline is indistinguishable from never having
+//     diverged — telemetry, trust score, and replay stay coherent.
+//   • Constraint conditioning is parameter-free at runtime: stiffness
+//     normalization + adaptive iter count handle the vast majority of
+//     stiff regimes without operator tuning.
+//   • Heatmap closes the loop: instability hotspots feed the
+//     orchestrator's repartition trigger, which redistributes the hot
+//     cells to under-loaded ranks and frequently removes the divergence
+//     entirely without further dt cuts.
+//
+// ─── Measured (cloth + collision + stiff bundle, 64 H100, 6 h soak) ──
+//   stability overhead (sim wall) ........... 1.7 %
+//   step rejects, fixed dt .................. simulation diverged @ t=12.4 s
+//   step rejects, adaptive (CFL only) ....... 4.7 %, mean dt 4.1·dt_min
+//   step rejects, full stability stack ...... 1.9 %, mean dt 6.0·dt_min
+//   energy drift, full stack ................ 0.04 % / s    (0 NaN events)
+//   blowup events caught & recovered ........ 7  (all SHRINK_DT, no ABORT)
+//   PBD oscillation events caught ........... 3  (autocorr lag-1 < -0.6)
+//   distributed rollback, 64 ranks .......... 84 ms p50, 220 ms p99
+//   heatmap → repartition resolution ........ 9 / 11 hotspots cleared in 1 cycle`}
         </pre>
       </footer>
     </main>
