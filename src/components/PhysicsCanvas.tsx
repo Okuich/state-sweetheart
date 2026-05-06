@@ -775,21 +775,71 @@ export function PhysicsCanvas({
         ctx.stroke();
       }
 
-      // Render nodes — tinted by partition when showPartitions is on
+      // Render nodes — tinted by partition when showPartitions is on,
+      // or by force magnitude when forceViz === "heatmap".
+      // s.f still holds the last sub-step's accumulated force (sim doesn't
+      // zero it after step → great free signal for visualization).
       const W = Math.max(1, Math.min(p.workers | 0, s.N));
+
+      // Compute force magnitudes once if we need them
+      let fmagMax = 1;
+      if (p.forceViz !== "off") {
+        for (let i = 0; i < s.N; i++) {
+          const fm = Math.hypot(s.f[i * 2], s.f[i * 2 + 1]);
+          if (fm > fmagMax) fmagMax = fm;
+        }
+      }
+
       for (let i = 0; i < s.N; i++) {
         const sp = Math.hypot(s.v[i * 2], s.v[i * 2 + 1]);
         const radius = 1.5 + s.m[i] * 1.6;
         const q = Math.min(W - 1, Math.floor((i * W) / s.N));
-        const hueDeg = p.showPartitions
-          ? (q * 360) / Math.max(1, W)
-          : (s.hue[i] * 80 + 140) % 360;
-        const chroma = p.showPartitions ? 0.22 : 0.18;
+
+        let hueDeg: number;
+        let chroma = 0.18;
+        if (p.forceViz === "heatmap") {
+          // viridis-ish: low force = deep blue/purple, high = bright yellow
+          const t = Math.min(1, Math.hypot(s.f[i * 2], s.f[i * 2 + 1]) / fmagMax);
+          hueDeg = 280 - 200 * t;
+          chroma = 0.10 + 0.18 * t;
+        } else if (p.showPartitions) {
+          hueDeg = (q * 360) / Math.max(1, W);
+          chroma = 0.22;
+        } else {
+          hueDeg = (s.hue[i] * 80 + 140) % 360;
+        }
         const light = Math.min(0.92, 0.55 + sp / 600);
         ctx.beginPath();
         ctx.arc(s.x[i * 2], s.x[i * 2 + 1], radius, 0, Math.PI * 2);
         ctx.fillStyle = `oklch(${light} ${chroma} ${hueDeg})`;
         ctx.fill();
+      }
+
+      // Force vectors — one short arrow per particle, length ∝ |f|/fmax.
+      // Drawn after the dots so the tails stay visible.
+      if (p.forceViz === "vectors" && fmagMax > 0) {
+        const VEC_PX = 22; // max arrow length in pixels
+        ctx.strokeStyle = "oklch(0.88 0.18 95 / 0.7)";
+        ctx.lineWidth = 0.7;
+        ctx.beginPath();
+        for (let i = 0; i < s.N; i++) {
+          const fxv = s.f[i * 2], fyv = s.f[i * 2 + 1];
+          const fm = Math.hypot(fxv, fyv);
+          if (fm < 1e-3) continue;
+          const k2 = (VEC_PX * fm / fmagMax) / fm;
+          const x0 = s.x[i * 2], y0 = s.x[i * 2 + 1];
+          const x1 = x0 + fxv * k2, y1 = y0 + fyv * k2;
+          ctx.moveTo(x0, y0);
+          ctx.lineTo(x1, y1);
+          // arrowhead
+          const ang = Math.atan2(y1 - y0, x1 - x0);
+          const ah = 3;
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x1 - ah * Math.cos(ang - 0.4), y1 - ah * Math.sin(ang - 0.4));
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x1 - ah * Math.cos(ang + 0.4), y1 - ah * Math.sin(ang + 0.4));
+        }
+        ctx.stroke();
       }
 
 
