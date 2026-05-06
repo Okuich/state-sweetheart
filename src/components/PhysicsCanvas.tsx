@@ -11,6 +11,8 @@ export type SimParams = {
   restLength: number;
   edgesPerNode: number;
   showEdges: boolean;
+  pairwiseStrength: number;
+  pairwiseRadius: number;
 };
 
 type State = {
