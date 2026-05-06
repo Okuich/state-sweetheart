@@ -391,41 +391,26 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          kernels.cu — project_constraints (PBD distance constraint, one thread per edge)
+          kernels.cu — apply_gravity (uniform body force, one thread per particle)
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`__global__ void project_constraints(
-    int E,
-    int* edge_i, int* edge_j,
-    float* x, float* y, float* z,
-    float* rest_length)
+{`__global__ void apply_gravity(
+    int N,
+    float* fy,
+    float g)
 {
-    int e = blockIdx.x * blockDim.x + threadIdx.x;
-    if (e >= E) return;
-
-    int i = edge_i[e];
-    int j = edge_j[e];
-
-    float dx = x[i] - x[j];
-    float dy = y[i] - y[j];
-    float dz = z[i] - z[j];
-    float dist = sqrtf(dx*dx + dy*dy + dz*dz) + 1e-6f;
-
-    float diff = (dist - rest_length[e]) / dist;   // fractional stretch
-    float cx = 0.5f * dx * diff;                   // equal-mass split
-    float cy = 0.5f * dy * diff;
-    float cz = 0.5f * dz * diff;
-
-    atomicAdd(&x[i], -cx);   atomicAdd(&y[i], -cy);   atomicAdd(&z[i], -cz);
-    atomicAdd(&x[j],  cx);   atomicAdd(&y[j],  cy);   atomicAdd(&z[j],  cz);
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < N) {
+        fy[i] -= g;             // accumulate −g into the y-force channel
+    }
 }
 
-// Launch — one thread per edge; atomics resolve shared-vertex contention
-//   project_constraints<<<ceil(E/256), 256>>>(E, edge_i, edge_j, x,y,z, rest_length);
+// Launch — embarrassingly parallel, one thread per particle, zero atomics
+//   apply_gravity<<<ceil(N/256), 256>>>(N, fy, g);
 //
-// Position-Based Dynamics: snap endpoints back onto the rest-length sphere
-// directly in position space (no force, no dt). Iterate several times per
-// frame for stiffer constraints — convergence ≈ Gauss-Seidel relaxation.`}
+// Runs after reset_forces and before pairwise/spring kernels so every
+// integrator step sees gravity already folded into the force buffer.
+// Mass cancels in free-fall: F = m·g divided by m in integrate() ⇒ a = g.`}
         </pre>
       </footer>
     </main>
