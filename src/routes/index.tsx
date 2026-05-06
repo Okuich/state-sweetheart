@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useRef, useState } from "react";
-import { PhysicsCanvas, type SimParams } from "@/components/PhysicsCanvas";
+import { PhysicsCanvas, type SimParams, type ValidationReport } from "@/components/PhysicsCanvas";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 
