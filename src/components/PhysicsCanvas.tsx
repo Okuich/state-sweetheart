@@ -75,6 +75,7 @@ export type SimParams = {
   pairwiseMode: "lj" | "repel" | "attract";
   boundary: "walls" | "wrap" | "periodic";
   forceViz: "off" | "vectors" | "heatmap";
+  potentialGrad: "analytic" | "finite-diff";
 };
 
 type FloatArr = Float32Array | Float64Array;
