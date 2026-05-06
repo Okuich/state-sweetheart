@@ -365,12 +365,13 @@ function fieldGradAnalytic(
  * central finite differences when requested or when an analytic gradient
  * is not registered for the active field.
  */
-function computePotentialForces(s: State, name: FieldName, strength: number, w: number, h: number, mode: PotentialGrad = "analytic", sampling: FieldSampling = "auto", boundary: Boundary = "walls") {
-  computePotentialForces_range(s, name, strength, w, h, 0, s.N, mode, sampling, boundary);
+function computePotentialForces(s: State, name: FieldName, strength: number, w: number, h: number, mode: PotentialGrad = "analytic", sampling: FieldSampling = "auto", boundary: Boundary = "walls", custom: CustomFieldFn | null = null, t = 0) {
+  computePotentialForces_range(s, name, strength, w, h, 0, s.N, mode, sampling, boundary, custom, t);
 }
 
-function computePotentialForces_range(s: State, name: FieldName, strength: number, w: number, h: number, a: number, b: number, mode: PotentialGrad = "analytic", sampling: FieldSampling = "auto", boundary: Boundary = "walls") {
+function computePotentialForces_range(s: State, name: FieldName, strength: number, w: number, h: number, a: number, b: number, mode: PotentialGrad = "analytic", sampling: FieldSampling = "auto", boundary: Boundary = "walls", custom: CustomFieldFn | null = null, t = 0) {
   if (name === "none" || strength === 0) return;
+  if (name === "custom" && !custom) return; // no compiled fn → no-op
   const REF = 800;
   const sizeFactor = (Math.max(w, h) / REF) ** 2;
   const meanMass = 1.2;
@@ -382,8 +383,8 @@ function computePotentialForces_range(s: State, name: FieldName, strength: numbe
       const g = fieldGradAnalytic(name, x, y, w, h);
       if (g === null) {
         const eps = 0.5 * (Math.max(w, h) / REF);
-        const dphidx = (fieldPotential(name, x + eps, y, w, h) - fieldPotential(name, x - eps, y, w, h)) / (2 * eps);
-        const dphidy = (fieldPotential(name, x, y + eps, w, h) - fieldPotential(name, x, y - eps, w, h)) / (2 * eps);
+        const dphidx = (fieldPotential(name, x + eps, y, w, h, custom, t) - fieldPotential(name, x - eps, y, w, h, custom, t)) / (2 * eps);
+        const dphidy = (fieldPotential(name, x, y + eps, w, h, custom, t) - fieldPotential(name, x, y - eps, w, h, custom, t)) / (2 * eps);
         s.f[i * 2]     += -dphidx * scale;
         s.f[i * 2 + 1] += -dphidy * scale;
       } else {
@@ -396,8 +397,8 @@ function computePotentialForces_range(s: State, name: FieldName, strength: numbe
   const eps = 0.5 * (Math.max(w, h) / REF);
   for (let i = a; i < b; i++) {
     const [x, y] = sampleCoords(samp, s.x[i * 2], s.x[i * 2 + 1], w, h);
-    const dphidx = (fieldPotential(name, x + eps, y, w, h) - fieldPotential(name, x - eps, y, w, h)) / (2 * eps);
-    const dphidy = (fieldPotential(name, x, y + eps, w, h) - fieldPotential(name, x, y - eps, w, h)) / (2 * eps);
+    const dphidx = (fieldPotential(name, x + eps, y, w, h, custom, t) - fieldPotential(name, x - eps, y, w, h, custom, t)) / (2 * eps);
+    const dphidy = (fieldPotential(name, x, y + eps, w, h, custom, t) - fieldPotential(name, x, y - eps, w, h, custom, t)) / (2 * eps);
     s.f[i * 2]     += -dphidx * scale;
     s.f[i * 2 + 1] += -dphidy * scale;
   }
