@@ -124,14 +124,84 @@ export function CalibrationPanel() {
         </div>
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button onClick={ingest} variant="outline" className="uppercase tracking-[0.18em] text-[10px]">
           ingest sensors
         </Button>
         <Button onClick={run} disabled={running} className="uppercase tracking-[0.18em] text-[10px]">
-          {running ? "calibrating…" : fit ? "re-fit (LM)" : "calibrate"}
+          {running ? "calibrating…" : fit ? "re-fit" : "calibrate"}
         </Button>
+        <button
+          onClick={() => setUseMulti((v) => !v)}
+          className={`text-[10px] uppercase tracking-[0.18em] px-2 py-1.5 rounded border transition ${
+            useMulti
+              ? "border-primary bg-primary/10 text-foreground"
+              : "border-border bg-background/30 text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          multi-start {useMulti ? "on" : "off"}
+        </button>
+        {useMulti && (
+          <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+            <span>starts</span>
+            <input
+              type="number" min={2} max={32} value={starts}
+              onChange={(e) => setStarts(Math.max(2, Math.min(32, Number(e.target.value) | 0)))}
+              className="w-14 h-7 rounded border border-border bg-background/40 px-2 text-foreground tabular-nums"
+            />
+          </div>
+        )}
       </div>
+
+      {multi && useMulti && (
+        <div className="rounded-md border border-border bg-background/30 p-3 space-y-2">
+          <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.22em]">
+            <span className="text-muted-foreground">
+              multi-start · {multi.candidates.length} starts · seed {matIdx + 1}
+            </span>
+            <span className="text-muted-foreground">
+              basin agreement ·{" "}
+              <span className={multi.basinAgreement ? "text-primary" : "text-accent"}>
+                {multi.basinAgreement ? "yes" : "no"}
+              </span>
+            </span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[10px]">
+            {(["k", "c", "m", "A"] as (keyof ModelParams)[]).map((k) => (
+              <div key={k} className="rounded border border-border/60 px-2 py-1.5">
+                <div className="uppercase tracking-[0.18em] text-muted-foreground">{k} · top-{multi.consensus.n}</div>
+                <div className="font-mono text-foreground/95 tabular-nums">
+                  {multi.consensus.mean[k].toFixed(3)}
+                </div>
+                <div className="text-[9px] text-muted-foreground/80 font-mono">
+                  ± {multi.consensus.std[k].toFixed(3)}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="space-y-1">
+            <div className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+              candidates (rss ascending)
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 max-h-40 overflow-y-auto">
+              {multi.candidates.map((c) => (
+                <div
+                  key={c.index}
+                  className={`flex items-center justify-between rounded border px-2 py-1 text-[10px] font-mono tabular-nums ${
+                    c.best
+                      ? "border-primary/50 bg-primary/10 text-foreground"
+                      : "border-border/40 bg-background/40 text-muted-foreground"
+                  }`}
+                >
+                  <span>#{c.index}{c.best ? " ★" : ""}</span>
+                  <span>rss {c.fit.rss.toExponential(2)}</span>
+                  <span>r² {c.fit.r2.toFixed(3)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Plot */}
       <div className="rounded-md border border-border bg-background/30 p-3">
