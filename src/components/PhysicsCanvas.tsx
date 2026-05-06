@@ -79,6 +79,7 @@ export type SimParams = {
   forceViz: "off" | "vectors" | "heatmap";
   potentialGrad: "analytic" | "finite-diff";
   fieldSampling: "auto" | "clamp" | "wrap" | "none";
+  showFieldArrows: boolean;
 };
 
 type FloatArr = Float32Array | Float64Array;
