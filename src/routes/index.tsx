@@ -27,6 +27,7 @@ import { FractureVisualizationPanel } from "@/components/FractureVisualizationPa
 import { MaterialCheckpointPanel } from "@/components/MaterialCheckpointPanel";
 import { PrecisionPolicyPanel } from "@/components/PrecisionPolicyPanel";
 import { AnomalyAlertsPanel } from "@/components/AnomalyAlertsPanel";
+import { TelemetryUploadPanel } from "@/components/TelemetryUploadPanel";
 import { FederatedPanel } from "@/components/FederatedPanel";
 import { saveSnapshot } from "@/lib/worldMemory";
 
@@ -887,6 +888,7 @@ function Index() {
       <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
         <PrecisionPolicyPanel />
         <AnomalyAlertsPanel />
+        <TelemetryUploadPanel />
       </section>
 
       {/* STEP File Ingestion — parse & normalize ISO-10303-21 into canonical geometry */}
