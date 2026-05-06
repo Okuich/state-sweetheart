@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useRef, useState } from "react";
-import { PhysicsCanvas, type SimParams } from "@/components/PhysicsCanvas";
+import { PhysicsCanvas, type SimParams, type ValidationReport } from "@/components/PhysicsCanvas";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 
@@ -71,6 +71,7 @@ function Index() {
     pairwiseRadius: 50,
   });
   const [resetKey, setResetKey] = useState(0);
+  const [validation, setValidation] = useState<ValidationReport | null>(null);
   const pointerRef = useRef({ x: 0, y: 0, active: false, mode: 1 as 1 | -1 });
 
   const update = <K extends keyof SimParams>(k: K, v: SimParams[K]) =>
@@ -113,15 +114,41 @@ function Index() {
 
       {/* Canvas */}
       <section className="relative z-10 mx-4 lg:mx-10 mb-4 h-[58vh] rounded-xl border border-border bg-card backdrop-blur-sm overflow-hidden">
-        <PhysicsCanvas key={resetKey} params={params} pointerRef={pointerRef} />
+        <PhysicsCanvas key={resetKey} params={params} pointerRef={pointerRef} onValidation={setValidation} />
         {/* HUD */}
         <div className="pointer-events-none absolute left-4 top-4 flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-          <div><span className="text-primary">x</span> [{params.particleCount} × 2]</div>
-          <div><span className="text-primary">v</span> [{params.particleCount} × 2]</div>
-          <div><span className="text-primary">m</span> [{params.particleCount}]</div>
+          <div><span className="text-primary">x</span> [{params.particleCount} × 2] f32</div>
+          <div><span className="text-primary">v</span> [{params.particleCount} × 2] f32</div>
+          <div><span className="text-primary">m</span> [{params.particleCount}] f32</div>
           <div><span className="text-primary">f</span> ← g + attractor + springs</div>
           <div><span className="text-accent">edges</span> ~ {params.particleCount * params.edgesPerNode}</div>
         </div>
+
+        {/* Validation badge */}
+        <div className="pointer-events-none absolute right-4 top-4 max-w-[260px] rounded-md border border-border bg-background/70 px-3 py-2 backdrop-blur-md">
+          <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.22em]">
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${
+                validation?.ok
+                  ? "bg-primary glow-mint animate-pulse"
+                  : validation
+                  ? "bg-destructive"
+                  : "bg-muted-foreground"
+              }`}
+            />
+            <span className={validation?.ok ? "text-primary" : validation ? "text-destructive" : "text-muted-foreground"}>
+              {validation ? (validation.ok ? "assert OK" : `${validation.issues.length} assert fail`) : "checking…"}
+            </span>
+          </div>
+          {validation && !validation.ok && (
+            <ul className="mt-1.5 space-y-0.5 text-[10px] font-mono text-destructive">
+              {validation.issues.slice(0, 3).map((i, k) => (
+                <li key={k}>· {i.field}: {i.expected} ≠ {i.got}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+
         <div className="pointer-events-none absolute right-4 bottom-4 text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
           drag · attract &nbsp;·&nbsp; right-drag · repel
         </div>

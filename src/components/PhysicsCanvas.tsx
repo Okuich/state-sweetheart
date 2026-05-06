@@ -1,4 +1,48 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+
+export type ValidationIssue = { field: string; expected: string; got: string };
+export type ValidationReport = { ok: boolean; issues: ValidationIssue[]; checkedAt: number };
+
+/**
+ * Runtime shape & dtype assertions for PhysicsState tensors.
+ * Mirrors what `assert x.shape == (N, D)` / `x.dtype == float32` would do in PyTorch.
+ */
+function validateState(s: {
+  N: number; D: number;
+  x: unknown; v: unknown; m: unknown; f: unknown;
+}): ValidationReport {
+  const issues: ValidationIssue[] = [];
+  const N = s.N, D = s.D;
+
+  const checkVec = (name: string, arr: unknown, len: number, dtype = "Float32Array") => {
+    if (!(arr instanceof Float32Array)) {
+      issues.push({ field: name, expected: dtype, got: arr?.constructor?.name ?? typeof arr });
+      return;
+    }
+    if (arr.length !== len) {
+      issues.push({ field: name, expected: `length ${len}`, got: `length ${arr.length}` });
+    }
+    // NaN / Inf scan (cheap sample for large arrays)
+    const stride = Math.max(1, Math.floor(arr.length / 256));
+    for (let i = 0; i < arr.length; i += stride) {
+      if (!Number.isFinite(arr[i])) {
+        issues.push({ field: name, expected: "finite values", got: `${arr[i]} at index ${i}` });
+        break;
+      }
+    }
+  };
+
+  if (!Number.isInteger(N) || N <= 0) issues.push({ field: "N", expected: "positive int", got: String(N) });
+  if (D !== 2) issues.push({ field: "D", expected: "2", got: String(D) });
+
+  checkVec("x", s.x, N * D);   // [N, D]
+  checkVec("v", s.v, N * D);   // [N, D]
+  checkVec("m", s.m, N);       // [N]
+  checkVec("f", s.f, N * D);   // [N, D]
+
+  return { ok: issues.length === 0, issues, checkedAt: performance.now() };
+}
+
 
 export type SimParams = {
   gravity: number;
@@ -72,14 +116,19 @@ function initState(N: number, w: number, h: number, perNode: number, rest: numbe
 export function PhysicsCanvas({
   params,
   pointerRef,
+  onValidation,
 }: {
   params: SimParams;
   pointerRef: React.MutableRefObject<{ x: number; y: number; active: boolean; mode: 1 | -1 }>;
+  onValidation?: (r: ValidationReport) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stateRef = useRef<State | null>(null);
   const paramsRef = useRef(params);
   paramsRef.current = params;
+  const lastValidationRef = useRef(0);
+  const onValidationRef = useRef(onValidation);
+  onValidationRef.current = onValidation;
 
   useEffect(() => {
     const canvas = canvasRef.current!;
@@ -118,6 +167,18 @@ export function PhysicsCanvas({
       // Trail fade
       ctx.fillStyle = `oklch(0.16 0.02 260 / ${1 - p.trail})`;
       ctx.fillRect(0, 0, w, h);
+
+      // Runtime shape & dtype guards — verify x, v, m, f BEFORE the step
+      const report = validateState(s);
+      if (now - lastValidationRef.current > 250) {
+        lastValidationRef.current = now;
+        onValidationRef.current?.(report);
+      }
+      if (!report.ok) {
+        // Skip simulation if invariants broken; still render last frame
+        raf = requestAnimationFrame(step);
+        return;
+      }
 
       if (!p.paused) {
         s.f.fill(0);
