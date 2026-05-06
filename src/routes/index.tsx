@@ -290,6 +290,31 @@ function Index() {
           </div>
         </div>
 
+        <div className="space-y-2">
+          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Force viz</div>
+          <div className="grid grid-cols-3 gap-1.5">
+            {(["off", "vectors", "heatmap"] as const).map((opt) => (
+              <Button
+                key={opt}
+                variant={params.forceViz === opt ? "default" : "outline"}
+                className={`uppercase tracking-[0.14em] text-[9px] px-1 ${
+                  params.forceViz === opt ? "bg-accent text-accent-foreground" : ""
+                }`}
+                onClick={() => update("forceViz", opt)}
+                title={
+                  opt === "vectors"
+                    ? "Yellow arrows showing per-particle force direction & magnitude"
+                    : opt === "heatmap"
+                    ? "Color particles by |F| (viridis-style)"
+                    : "Hide force overlay"
+                }
+              >
+                {opt}
+              </Button>
+            ))}
+          </div>
+        </div>
+
         <div className="space-y-2 md:col-span-2 lg:col-span-1">
           <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Integrator</div>
           <div className="grid grid-cols-3 gap-2">
