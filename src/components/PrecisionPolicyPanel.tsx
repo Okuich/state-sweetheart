@@ -3,6 +3,9 @@ import { Button } from "@/components/ui/button";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover, PopoverContent, PopoverTrigger,
+} from "@/components/ui/popover";
 import { getPrecisionPolicy, type PrecisionMode } from "@/lib/precisionPolicy";
 import {
   listKernelPaths,
@@ -11,6 +14,69 @@ import {
 } from "@/lib/kernelCapabilities";
 
 type Dtype = "f32" | "f64";
+
+function WhyThisMatters() {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs">
+          why this matters
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        side="bottom"
+        align="end"
+        className="w-[360px] space-y-3 p-4 text-[12px] leading-relaxed"
+      >
+        <div className="space-y-1">
+          <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+            f32 vs f64 in this simulation
+          </div>
+          <p className="text-muted-foreground">
+            f32 has ~7 decimal digits of precision (ULP ≈ 1.2e-7 at value 1).
+            f64 has ~16 (ULP ≈ 2.2e-16). Every dot-product, cross-product, and
+            time integration step accumulates rounding at this scale.
+          </p>
+        </div>
+
+        <div className="space-y-1">
+          <div className="font-medium text-foreground">Stability</div>
+          <p className="text-muted-foreground">
+            Implicit solvers (CG, Newton) lose orthogonality faster in f32.
+            Stiff materials and small Δt amplify cancellation in
+            <span className="font-mono"> F = I + ∇u</span>; conditioning above
+            ~1e6 typically needs f64 to converge.
+          </p>
+        </div>
+
+        <div className="space-y-1">
+          <div className="font-medium text-foreground">Energy drift</div>
+          <p className="text-muted-foreground">
+            Symplectic integrators conserve energy up to round-off. In f32,
+            drift is ~1e-7 per step and visibly accumulates over thousands of
+            substeps; in f64 it stays at the noise floor for the whole run.
+          </p>
+        </div>
+
+        <div className="space-y-1">
+          <div className="font-medium text-foreground">Determinism</div>
+          <p className="text-muted-foreground">
+            f32 reductions on GPU are non-associative and depend on workgroup
+            scheduling — same inputs, different sums. f64 doesn't fix
+            non-associativity, but the per-op error is small enough that
+            replays match bitwise across runs in practice.
+          </p>
+        </div>
+
+        <div className="rounded border border-border/60 bg-background/40 p-2 text-[11px] text-muted-foreground">
+          WebGPU is f32-only today. When the active kernel can't run f64, the
+          dtype toggle is locked and any f64 inputs are downgraded according
+          to the policy below.
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 export function PrecisionPolicyPanel() {
   const policy = getPrecisionPolicy();
@@ -73,9 +139,12 @@ export function PrecisionPolicyPanel() {
         <h3 className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
           GPU precision policy (f64 → f32)
         </h3>
-        <Button variant="ghost" size="sm" onClick={reset} className="h-7 px-2 text-xs">
-          reset
-        </Button>
+        <div className="flex items-center gap-1">
+          <WhyThisMatters />
+          <Button variant="ghost" size="sm" onClick={reset} className="h-7 px-2 text-xs">
+            reset
+          </Button>
+        </div>
       </div>
 
       {!decision.f64Enabled && (
