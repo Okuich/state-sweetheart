@@ -608,21 +608,38 @@ function syncBoundaries(s: State, partOf: (i: number) => number, idx?: BoundaryI
   const sumV = new Float64Array(s.N * 2);
   const cnt  = new Int32Array(s.N);
 
-  for (let e = 0; e < s.E; e++) {
-    const i = s.edges[e * 2];
-    const j = s.edges[e * 2 + 1];
-    if (partOf(i) === partOf(j)) continue;
-    // i sees j (across the seam) and vice-versa
-    sumX[i * 2]     += s.x[j * 2];
-    sumX[i * 2 + 1] += s.x[j * 2 + 1];
-    sumV[i * 2]     += s.v[j * 2];
-    sumV[i * 2 + 1] += s.v[j * 2 + 1];
-    cnt[i]++;
-    sumX[j * 2]     += s.x[i * 2];
-    sumX[j * 2 + 1] += s.x[i * 2 + 1];
-    sumV[j * 2]     += s.v[i * 2];
-    sumV[j * 2 + 1] += s.v[i * 2 + 1];
-    cnt[j]++;
+  // Fast path: precomputed boundary index iterates only seam pairs.
+  // Each pair is (own, ghost) for partition q, so summing one direction
+  // per partition reproduces the bidirectional accumulation below.
+  if (idx && idx.N === s.N) {
+    for (let q = 0; q < idx.W; q++) {
+      const pr = idx.pairs[q];
+      for (let k = 0; k < pr.length; k += 2) {
+        const i = pr[k], j = pr[k + 1];
+        sumX[i * 2]     += s.x[j * 2];
+        sumX[i * 2 + 1] += s.x[j * 2 + 1];
+        sumV[i * 2]     += s.v[j * 2];
+        sumV[i * 2 + 1] += s.v[j * 2 + 1];
+        cnt[i]++;
+      }
+    }
+  } else {
+    for (let e = 0; e < s.E; e++) {
+      const i = s.edges[e * 2];
+      const j = s.edges[e * 2 + 1];
+      if (partOf(i) === partOf(j)) continue;
+      // i sees j (across the seam) and vice-versa
+      sumX[i * 2]     += s.x[j * 2];
+      sumX[i * 2 + 1] += s.x[j * 2 + 1];
+      sumV[i * 2]     += s.v[j * 2];
+      sumV[i * 2 + 1] += s.v[j * 2 + 1];
+      cnt[i]++;
+      sumX[j * 2]     += s.x[i * 2];
+      sumX[j * 2 + 1] += s.x[i * 2 + 1];
+      sumV[j * 2]     += s.v[i * 2];
+      sumV[j * 2 + 1] += s.v[i * 2 + 1];
+      cnt[j]++;
+    }
   }
 
   // Blend factor — full averaging (=1) jitters; a fraction matches the
