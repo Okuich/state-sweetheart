@@ -449,33 +449,74 @@ export function PhysicsCanvas({
         const r2max = pRad * pRad;
         const norm = pRad * 0.5;
 
+        // ── scheduler.py ──────────────────────────────────────────────
+        // DistributedSimulator.step(partitions): partition nodes across
+        // `workers`, run each worker's local pipeline, then sync_boundaries
+        // by re-projecting edges that cross partition borders. Workers run
+        // sequentially here (single thread) but each sees only its own slice
+        // of state — same data-dependency pattern as the Ray/MPI version.
+        const W = Math.max(1, Math.min(p.workers | 0, s.N));
+        const partOf = (i: number) => Math.min(W - 1, Math.floor((i * W) / s.N));
+        const partStart = (q: number) => Math.floor((q * s.N) / W);
+        const partEnd   = (q: number) => Math.floor(((q + 1) * s.N) / W);
+
         for (let t = 0; t < subSteps; t++) {
           // 1. zero forces — state.f.zero_()
           s.f.fill(0);
 
-          // 2. external + interaction forces
-          // gravity
-          for (let i = 0; i < s.N; i++) {
-            s.f[i * 2 + 1] += p.gravity * s.m[i];
-          }
+          // 2. per-worker local forces (each worker owns nodes [a,b))
+          for (let q = 0; q < W; q++) {
+            const a = partStart(q), b = partEnd(q);
 
-          // pointer attractor
-          if (pointerRef.current.active) {
-            const px = pointerRef.current.x, py = pointerRef.current.y;
-            const sign = pointerRef.current.mode;
-            const G = p.attractor * sign;
-            for (let i = 0; i < s.N; i++) {
-              const dx = px - s.x[i * 2];
-              const dy = py - s.x[i * 2 + 1];
-              const r2 = dx * dx + dy * dy + 400;
-              const inv = 1 / Math.sqrt(r2);
-              const a = (G * s.m[i]) / r2;
-              s.f[i * 2]     += dx * inv * a * 1000;
-              s.f[i * 2 + 1] += dy * inv * a * 1000;
+            // gravity (local)
+            for (let i = a; i < b; i++) {
+              s.f[i * 2 + 1] += p.gravity * s.m[i];
             }
+
+            // pointer attractor (local)
+            if (pointerRef.current.active) {
+              const px = pointerRef.current.x, py = pointerRef.current.y;
+              const sign = pointerRef.current.mode;
+              const G = p.attractor * sign;
+              for (let i = a; i < b; i++) {
+                const dx = px - s.x[i * 2];
+                const dy = py - s.x[i * 2 + 1];
+                const r2 = dx * dx + dy * dy + 400;
+                const inv = 1 / Math.sqrt(r2);
+                const acc = (G * s.m[i]) / r2;
+                s.f[i * 2]     += dx * inv * acc * 1000;
+                s.f[i * 2 + 1] += dy * inv * acc * 1000;
+              }
+            }
+
+            // pairwise within partition (short-range, local interactions)
+            if (pStr !== 0 && pRad > 0) {
+              for (let i = a; i < b; i++) {
+                const xi = s.x[i * 2], yi = s.x[i * 2 + 1];
+                for (let j = i + 1; j < b; j++) {
+                  const dx = xi - s.x[j * 2];
+                  const dy = yi - s.x[j * 2 + 1];
+                  const r2 = dx * dx + dy * dy;
+                  if (r2 > r2max || r2 < 1e-4) continue;
+                  const dist = Math.sqrt(r2);
+                  const fmag = pStr * (norm * norm / r2 - norm / dist);
+                  const fx = (dx / dist) * fmag;
+                  const fy = (dy / dist) * fmag;
+                  s.f[i * 2]     += fx;
+                  s.f[i * 2 + 1] += fy;
+                  s.f[j * 2]     -= fx;
+                  s.f[j * 2 + 1] -= fy;
+                }
+              }
+            }
+
+            // potential field (local)
+            computePotentialForces_range(s, p.field, p.fieldStrength, w, h, a, b);
           }
 
-          // compute_forces — Hooke's law on edges
+          // 3. springs on ALL edges — interior edges are local to one
+          // worker; boundary edges (i,j in different partitions) are the
+          // sync points exchanged between workers.
           for (let e = 0; e < s.E; e++) {
             const i = s.edges[e * 2];
             const j = s.edges[e * 2 + 1];
@@ -491,35 +532,15 @@ export function PhysicsCanvas({
             s.f[j * 2 + 1] -= fy;
           }
 
-          // compute_pairwise_forces (skip in sub-steps when expensive)
-          if (pStr !== 0 && pRad > 0) {
-            for (let i = 0; i < s.N; i++) {
-              const xi = s.x[i * 2], yi = s.x[i * 2 + 1];
-              for (let j = i + 1; j < s.N; j++) {
-                const dx = xi - s.x[j * 2];
-                const dy = yi - s.x[j * 2 + 1];
-                const r2 = dx * dx + dy * dy;
-                if (r2 > r2max || r2 < 1e-4) continue;
-                const dist = Math.sqrt(r2);
-                const fmag = pStr * (norm * norm / r2 - norm / dist);
-                const fx = (dx / dist) * fmag;
-                const fy = (dy / dist) * fmag;
-                s.f[i * 2]     += fx;
-                s.f[i * 2 + 1] += fy;
-                s.f[j * 2]     -= fx;
-                s.f[j * 2 + 1] -= fy;
-              }
-            }
+          // 4. step(state, dt) — each worker integrates its own slice
+          for (let q = 0; q < W; q++) {
+            stepStateRange(s, subDt, p.damping, w, h, p.integrator, partStart(q), partEnd(q));
           }
 
-          // 3. compute_potential_forces — F += -∇Φ
-          computePotentialForces(s, p.field, p.fieldStrength, w, h);
-
-          // 4. step(state, dt) — advance positions & velocities
-          stepState(s, subDt, p.damping, w, h, p.integrator);
-
-          // 5. project_constraints — PBD distance solver
+          // 5. sync_boundaries — re-project cross-partition edges so the
+          // independently-stepped slices stay consistent at the seams.
           projectConstraints(s, p.constraintIters, subDt);
+          syncBoundaries(s, partOf, subDt);
         }
       }
 
