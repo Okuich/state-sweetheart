@@ -1074,11 +1074,11 @@ export function PhysicsCanvas({
             for (let q = 0; q < W; q++) {
               verletKick(s, subDt, p.damping, partStart(q), partEnd(q));
               // still call stepStateRange for boundary handling (verlet branch is a no-op for motion)
-              stepStateRange(s, subDt, p.damping, w, h, p.integrator, partStart(q), partEnd(q), p.boundary);
+              stepStateRange(s, subDt, p.damping, w, h, p.integrator, partStart(q), partEnd(q), p.boundary, p.restitution);
             }
           } else {
             for (let q = 0; q < W; q++) {
-              stepStateRange(s, subDt, p.damping, w, h, p.integrator, partStart(q), partEnd(q), p.boundary);
+              stepStateRange(s, subDt, p.damping, w, h, p.integrator, partStart(q), partEnd(q), p.boundary, p.restitution);
             }
           }
 
