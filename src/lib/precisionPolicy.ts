@@ -136,7 +136,7 @@ export class PrecisionPolicy {
   shouldShowBanner(): boolean {
     if (!this.hostIsF32Only) return false;
     return this.stats.conversions > 0 &&
-      (this.stats.worstRelLoss > 1e-7 || this.stats.anyOverflow);
+      (this.stats.worstRelLoss > 0 || this.stats.anyOverflow);
   }
 
   private freshStats(): PrecisionStats {
