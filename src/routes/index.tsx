@@ -532,6 +532,9 @@ function Index() {
             </Button>
           </div>
         </div>
+
+        <div className="space-y-2">
+          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Boundary</div>
           <div className="grid grid-cols-3 gap-1.5">
             {(["walls", "wrap", "periodic"] as const).map((opt) => (
               <Button
