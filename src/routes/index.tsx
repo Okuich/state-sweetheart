@@ -25,6 +25,7 @@ import { MaterialEditorPanel } from "@/components/MaterialEditorPanel";
 import { MaterialRegionPanel } from "@/components/MaterialRegionPanel";
 import { FractureVisualizationPanel } from "@/components/FractureVisualizationPanel";
 import { MaterialCheckpointPanel } from "@/components/MaterialCheckpointPanel";
+import { PrecisionPolicyPanel } from "@/components/PrecisionPolicyPanel";
 import { FederatedPanel } from "@/components/FederatedPanel";
 import { saveSnapshot } from "@/lib/worldMemory";
 
