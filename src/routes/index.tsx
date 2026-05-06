@@ -391,26 +391,31 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          kernels.cu — apply_gravity (uniform body force, one thread per particle)
+          simulate.cu — per-frame kernel pipeline (host-side launch order)
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`__global__ void apply_gravity(
-    int N,
-    float* fy,
-    float g)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < N) {
-        fy[i] -= g;             // accumulate −g into the y-force channel
-    }
+{`// ── one simulation step ──────────────────────────────────────────────
+reset_forces           <<<ceil(N/256), 256>>>(N, fx, fy, fz);
+compute_spring_forces  <<<ceil(E/256), 256>>>(E, edge_i, edge_j,
+                                              x, y, z, fx, fy, fz,
+                                              rest_length, k);
+apply_gravity          <<<ceil(N/256), 256>>>(N, fy, g);
+integrate              <<<ceil(N/256), 256>>>(N, x, y, z,
+                                              vx, vy, vz,
+                                              fx, fy, fz, m, dt);
+
+// PBD relaxation — Gauss-Seidel sweeps over distance constraints
+for (int k = 0; k < constraint_iters; k++) {
+    project_constraints<<<ceil(E/256), 256>>>(E, edge_i, edge_j,
+                                              x, y, z, rest_length);
 }
 
-// Launch — embarrassingly parallel, one thread per particle, zero atomics
-//   apply_gravity<<<ceil(N/256), 256>>>(N, fy, g);
-//
-// Runs after reset_forces and before pairwise/spring kernels so every
-// integrator step sees gravity already folded into the force buffer.
-// Mass cancels in free-fall: F = m·g divided by m in integrate() ⇒ a = g.`}
+// Order matters:
+//   1. zero the force buffer            (reset_forces)
+//   2. accumulate internal forces       (springs)
+//   3. accumulate external body forces  (gravity)
+//   4. semi-implicit Euler step         (integrate updates v then x)
+//   5. snap positions back onto constraints (PBD post-projection)`}
         </pre>
       </footer>
     </main>
