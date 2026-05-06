@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { compileFieldExpr } from "@/lib/exprCompile";
 import { WorldMemoryPanel } from "@/components/WorldMemoryPanel";
 import { AgentsPanel } from "@/components/AgentsPanel";
+import { EconomicsPanel } from "@/components/EconomicsPanel";
 import { saveSnapshot } from "@/lib/worldMemory";
 
 export const Route = createFileRoute("/")({
