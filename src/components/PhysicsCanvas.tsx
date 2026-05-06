@@ -1115,7 +1115,77 @@ export function PhysicsCanvas({
         }
       }
 
-      // ── differentiable_loop.py ────────────────────────────────────
+      // ── digital_twin.py ───────────────────────────────────────────
+      // Telemetry intake + state assimilation. Synthetic Lissajous
+      // "ground-truth" sensors stream noisy positions; for each sensor
+      // we (a) advance its trajectory, (b) draw a noisy reading, and
+      // (c) blend the bound particle's position toward it with gain g
+      // (Kalman-lite: x ← (1−g)·x + g·z, v gets a corrective impulse).
+      // Anomalies are flagged when |residual|/σ_sensor exceeds twinAnomalyZ.
+      if (p.twinEnabled && !p.paused && s.N > 0) {
+        const M = Math.max(0, Math.min(64, p.twinSensorCount | 0));
+        const sensors = twinSensorsRef.current;
+        // Re-allocate sensors when count or particle pool changes
+        if (sensors.length !== M) {
+          sensors.length = 0;
+          for (let i = 0; i < M; i++) {
+            sensors.push({
+              px: 0, py: 0,
+              bound: i % Math.max(1, s.N),
+              ax: 0.3 + Math.random() * 0.6,
+              ay: 0.3 + Math.random() * 0.6,
+              phx: Math.random() * Math.PI * 2,
+              phy: Math.random() * Math.PI * 2,
+              residual: 0, z: 0,
+            });
+          }
+        }
+        for (let i = 0; i < sensors.length; i++) {
+          const sn = sensors[i];
+          if (sn.bound >= s.N) sn.bound = i % s.N;
+        }
+        const tNow = (now - tStartRef.current) / 1000;
+        const cx = w * 0.5, cy = h * 0.5;
+        const rx = w * 0.38, ry = h * 0.38;
+        const sigS = Math.max(0.1, p.twinSensorNoise);
+        const g = Math.max(0, Math.min(1, p.twinAssimGain));
+        let anomalyN = 0;
+        let resAcc = 0;
+        const tmp: [number, number] = [0, 0];
+        for (let i = 0; i < sensors.length; i++) {
+          const sn = sensors[i];
+          // Synthetic ground truth = Lissajous around canvas center
+          const gx = cx + rx * Math.sin(sn.ax * tNow + sn.phx);
+          const gy = cy + ry * Math.sin(sn.ay * tNow + sn.phy);
+          // Add Gaussian sensor noise
+          randn2(tmp);
+          sn.px = gx + sigS * tmp[0];
+          sn.py = gy + sigS * tmp[1];
+          // Residual vs bound particle (innovation)
+          const i2 = sn.bound * 2;
+          const rxi = sn.px - s.x[i2];
+          const ryi = sn.py - s.x[i2 + 1];
+          const r = Math.hypot(rxi, ryi);
+          sn.residual = r;
+          sn.z = r / sigS;
+          if (sn.z > p.twinAnomalyZ) anomalyN++;
+          resAcc += r;
+          // Assimilate: nudge position by g·innovation, add velocity impulse
+          s.x[i2]     += g * rxi;
+          s.x[i2 + 1] += g * ryi;
+          if (dt > 1e-6) {
+            s.v[i2]     += (g * rxi) / dt * 0.25;
+            s.v[i2 + 1] += (g * ryi) / dt * 0.25;
+          }
+        }
+        twinAnomalyCountRef.current = anomalyN;
+        const meanRes = sensors.length > 0 ? resAcc / sensors.length : 0;
+        twinResidualEmaRef.current = twinResidualEmaRef.current * 0.85 + meanRes * 0.15;
+      } else if (twinSensorsRef.current.length > 0 && !p.twinEnabled) {
+        twinSensorsRef.current.length = 0;
+        twinAnomalyCountRef.current = 0;
+      }
+
       //   loss = objective(final_state); loss.backward()
       // Objective: drive every node toward the canvas center.
       //   L = ½ * mean(||x - target||²)
