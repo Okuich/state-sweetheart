@@ -250,19 +250,16 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          constraints.py — PBD distance solver
+          integrators.py — explicit Euler step
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`def project_constraints(state, constraints, iterations=10):
-    for _ in range(iterations):
-        for c in constraints:                      # Gauss-Seidel sweep
-            i, j = c.nodes
-            diff = state.x[i] - state.x[j]
-            dist = norm(diff) + 1e-8
-            wi, wj = 1 / state.m[i], 1 / state.m[j]
-            corr = (dist - c.rest_length) / dist / (wi + wj) * diff
-            state.x[i] -= wi * corr                # split by inverse mass
-            state.x[j] += wj * corr`}
+{`def step(state, dt):
+    # v_{t+1} = v_t + (F/m) dt
+    state.v += (state.f / state.m.unsqueeze(-1)) * dt
+    # x_{t+1} = x_t + v_{t+1} dt
+    state.x += state.v * dt
+    # reset forces
+    state.f.zero_()`}
         </pre>
       </footer>
     </main>
