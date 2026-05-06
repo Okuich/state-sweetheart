@@ -19,6 +19,7 @@ import { GeometryFeaturePanel } from "@/components/GeometryFeaturePanel";
 import { LearningEnginePanel } from "@/components/LearningEnginePanel";
 import { KnowledgeGraphPanel } from "@/components/KnowledgeGraphPanel";
 import { RagPanel } from "@/components/RagPanel";
+import { FabFeedbackPanel } from "@/components/FabFeedbackPanel";
 import { saveSnapshot } from "@/lib/worldMemory";
 
 export const Route = createFileRoute("/")({
@@ -788,6 +789,11 @@ function Index() {
       {/* Retrieval-Augmented Physics Reasoning — kNN over knowledge graph */}
       <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
         <RagPanel />
+      </section>
+
+      {/* Fabrication Feedback Calibration — online ridge LSQ over measured outcomes */}
+      <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
+        <FabFeedbackPanel />
       </section>
 
       {/* Autonomous Physics Agents — agentic reasoning over current world */}
