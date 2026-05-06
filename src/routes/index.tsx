@@ -142,6 +142,7 @@ function Index() {
     gravityAngle: 90,
     damping: 0.4,
     dragMode: "explicit",
+    airDragK: 0,
     attractor: 1.2,
     particleCount: 400,
     trail: 0.22,
@@ -419,6 +420,7 @@ function Index() {
             ))}
           </div>
         </div>
+        <Field label="Air drag · v² (c)" value={params.airDragK} min={0} max={0.05} step={0.0005} onChange={(v) => update("airDragK", v)} />
         <Field label="Restitution" value={params.restitution} min={0}  max={1}   step={0.01} onChange={(v) => update("restitution", v)} />
         <Field label="Attractor" value={params.attractor} min={0}    max={5}   step={0.1}  onChange={(v) => update("attractor", v)} />
         <Field label="Particles · N" value={params.particleCount} min={50} max={8000} step={50} onChange={(v) => update("particleCount", v)} />
