@@ -1,4 +1,48 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+
+export type ValidationIssue = { field: string; expected: string; got: string };
+export type ValidationReport = { ok: boolean; issues: ValidationIssue[]; checkedAt: number };
+
+/**
+ * Runtime shape & dtype assertions for PhysicsState tensors.
+ * Mirrors what `assert x.shape == (N, D)` / `x.dtype == float32` would do in PyTorch.
+ */
+function validateState(s: {
+  N: number; D: number;
+  x: unknown; v: unknown; m: unknown; f: unknown;
+}): ValidationReport {
+  const issues: ValidationIssue[] = [];
+  const N = s.N, D = s.D;
+
+  const checkVec = (name: string, arr: unknown, len: number, dtype = "Float32Array") => {
+    if (!(arr instanceof Float32Array)) {
+      issues.push({ field: name, expected: dtype, got: arr?.constructor?.name ?? typeof arr });
+      return;
+    }
+    if (arr.length !== len) {
+      issues.push({ field: name, expected: `length ${len}`, got: `length ${arr.length}` });
+    }
+    // NaN / Inf scan (cheap sample for large arrays)
+    const stride = Math.max(1, Math.floor(arr.length / 256));
+    for (let i = 0; i < arr.length; i += stride) {
+      if (!Number.isFinite(arr[i])) {
+        issues.push({ field: name, expected: "finite values", got: `${arr[i]} at index ${i}` });
+        break;
+      }
+    }
+  };
+
+  if (!Number.isInteger(N) || N <= 0) issues.push({ field: "N", expected: "positive int", got: String(N) });
+  if (D !== 2) issues.push({ field: "D", expected: "2", got: String(D) });
+
+  checkVec("x", s.x, N * D);   // [N, D]
+  checkVec("v", s.v, N * D);   // [N, D]
+  checkVec("m", s.m, N);       // [N]
+  checkVec("f", s.f, N * D);   // [N, D]
+
+  return { ok: issues.length === 0, issues, checkedAt: performance.now() };
+}
+
 
 export type SimParams = {
   gravity: number;
