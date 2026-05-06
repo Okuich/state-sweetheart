@@ -610,7 +610,7 @@ export function PhysicsCanvas({
           // 5. sync_boundaries — re-project cross-partition edges so the
           // independently-stepped slices stay consistent at the seams.
           projectConstraints(s, p.constraintIters, subDt);
-          syncBoundaries(s, partOf, subDt);
+          syncBoundaries(s, partOf);
         }
       }
 
