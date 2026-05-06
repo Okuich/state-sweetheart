@@ -321,7 +321,26 @@ function Index() {
                 {opt}
               </Button>
             ))}
+          <div className="grid grid-cols-2 gap-1.5">
+            {(["analytic", "finite-diff"] as const).map((opt) => (
+              <Button
+                key={opt}
+                variant={params.potentialGrad === opt ? "default" : "outline"}
+                className={`uppercase tracking-[0.14em] text-[9px] px-1 ${
+                  params.potentialGrad === opt ? "bg-accent text-accent-foreground" : ""
+                }`}
+                onClick={() => update("potentialGrad", opt)}
+                title={
+                  opt === "analytic"
+                    ? "Closed-form ∇Φ — ~2× faster, no h-tuning, bit-stable"
+                    : "Central finite differences — plug-and-play fallback (h = 0.5 px)"
+                }
+              >
+                ∇Φ {opt === "analytic" ? "analytic" : "fin-diff"}
+              </Button>
+            ))}
           </div>
+        </div>
         </div>
 
         <div className="space-y-2">
