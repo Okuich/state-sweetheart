@@ -75,6 +75,7 @@ function Index() {
     constraintIters: 0,
     field: "none",
     fieldStrength: 0.6,
+    subSteps: 1,
   });
   const [resetKey, setResetKey] = useState(0);
   const [validation, setValidation] = useState<ValidationReport | null>(null);
@@ -175,6 +176,7 @@ function Index() {
         <Field label="Pairwise · ε"  value={params.pairwiseStrength} min={-500} max={1000} step={10} onChange={(v) => update("pairwiseStrength", v)} />
         <Field label="Pairwise radius" value={params.pairwiseRadius} unit="px" min={0} max={200} step={1} onChange={(v) => update("pairwiseRadius", v)} />
         <Field label="Constraint iters" value={params.constraintIters} min={0} max={20} step={1} onChange={(v) => update("constraintIters", v)} />
+        <Field label="Sub-steps / frame" value={params.subSteps} min={1} max={8} step={1} onChange={(v) => update("subSteps", v)} />
         <Field label="Field · strength" value={params.fieldStrength} min={-2} max={2} step={0.05} onChange={(v) => update("fieldStrength", v)} />
 
         <div className="space-y-2">
@@ -271,15 +273,17 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          field_engine.py — autograd potential field
+          simulation.py — full pipeline per frame
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`def compute_potential_forces(state, field_fn):
-    # field_fn: differentiable scalar field  Φ : ℝᴺˣᴰ → ℝ
-    state.x.requires_grad_(True)
-    potential = field_fn(state.x).sum()
-    forces    = -grad(potential, state.x)[0]   # F = -∇Φ
-    state.f  += forces`}
+{`def run_simulation(state, config):
+    for t in range(config.steps):           # config.steps = sub-steps / frame
+        compute_forces(state, config.edges)         # Hooke's law
+        compute_pairwise_forces(state, config.eps)  # short-range interactions
+        compute_potential_forces(state, config.field)
+        step(state, config.dt)              # a = f/m → v, x
+        project_constraints(state, config.constraints)
+    return state`}
         </pre>
       </footer>
     </main>
