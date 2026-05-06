@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { PhysicsCanvas, type SimParams, type ValidationReport } from "@/components/PhysicsCanvas";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { compileFieldExpr } from "@/lib/exprCompile";
 import { WorldMemoryPanel } from "@/components/WorldMemoryPanel";
 import { AgentsPanel } from "@/components/AgentsPanel";
