@@ -349,6 +349,33 @@ function Index() {
         </div>
 
         <div className="space-y-2">
+          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Field sampling at edges</div>
+          <div className="grid grid-cols-4 gap-1.5">
+            {(["auto", "clamp", "wrap", "none"] as const).map((opt) => (
+              <Button
+                key={opt}
+                variant={params.fieldSampling === opt ? "default" : "outline"}
+                className={`uppercase tracking-[0.14em] text-[9px] px-1 ${
+                  params.fieldSampling === opt ? "bg-accent text-accent-foreground" : ""
+                }`}
+                onClick={() => update("fieldSampling", opt)}
+                title={
+                  opt === "auto"
+                    ? "Match boundary mode: walls→clamp, wrap/periodic→wrap"
+                    : opt === "clamp"
+                      ? "Clip sample coords to canvas — no runaway forces just past walls"
+                    : opt === "wrap"
+                      ? "Modulo into canvas (Φ as a torus) — keeps ∇Φ continuous across the seam"
+                      : "Pass coords through untouched (legacy)"
+                }
+              >
+                {opt}
+              </Button>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-2">
           <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Pairwise force</div>
           <div className="grid grid-cols-3 gap-1.5">
             {(["lj", "repel", "attract"] as const).map((opt) => (
