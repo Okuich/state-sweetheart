@@ -601,6 +601,15 @@ export function PhysicsCanvas({
         const partEnd   = (q: number) => Math.floor(((q + 1) * s.N) / W);
 
         for (let t = 0; t < subSteps; t++) {
+          // Velocity-Verlet drift uses the PREVIOUS step's forces (s.fPrev)
+          // for the first half-kick, then advances positions. This must run
+          // BEFORE we recompute forces for the new positions.
+          if (p.integrator === "verlet") {
+            for (let q = 0; q < W; q++) {
+              verletDrift(s, subDt, partStart(q), partEnd(q));
+            }
+          }
+
           // 1. zero forces — state.f.zero_()
           s.f.fill(0);
 
