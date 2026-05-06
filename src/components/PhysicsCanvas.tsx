@@ -801,7 +801,7 @@ export function PhysicsCanvas({
             // (kept here as a no-op slot so the worker pipeline order is preserved)
 
             // potential field (local)
-            computePotentialForces_range(s, p.field, p.fieldStrength, w, h, a, b, p.potentialGrad, p.fieldSampling, p.boundary);
+            computePotentialForces_range(s, p.field, p.fieldStrength, w, h, a, b, p.potentialGrad, p.fieldSampling, p.boundary, customFnRef.current, (now - tStartRef.current) / 1000);
           }
 
           // 2b. pairwise via uniform spatial grid — O(N) instead of O(N²).
