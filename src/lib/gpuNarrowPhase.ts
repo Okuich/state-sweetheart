@@ -347,12 +347,16 @@ async function solvePairsGpu(
     pairBuf[p * 2 + 1] = opts.pairs[p].j;
   }
 
-  const mkStorage = (data: ArrayBufferView<ArrayBuffer>, label: string): GPUBuffer => {
+  const mkStorage = (data: ArrayBufferView, label: string): GPUBuffer => {
     const buf = device.createBuffer({
       label, size: Math.max(16, data.byteLength),
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
-    device.queue.writeBuffer(buf, 0, data);
+    // Copy through a fresh ArrayBuffer-backed view so SharedArrayBuffer-
+    // typed inputs (the default in some lib.dom variants) are accepted.
+    const bytes = new Uint8Array(data.byteLength);
+    bytes.set(new Uint8Array(data.buffer as ArrayBuffer, data.byteOffset, data.byteLength));
+    device.queue.writeBuffer(buf, 0, bytes);
     return buf;
   };
 
