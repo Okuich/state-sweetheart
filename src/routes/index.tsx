@@ -313,21 +313,20 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          kernels.cu — reset_forces &lt;&lt;&lt;blocks, threads&gt;&gt;&gt;
+          launch · reset_forces&lt;&lt;&lt;blocks, threads&gt;&gt;&gt;
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`__global__ void reset_forces(int N,
-                             float* fx, float* fy, float* fz) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < N) {
-        fx[i] = 0.0f;
-        fy[i] = 0.0f;
-        fz[i] = 0.0f;
-    }
-}
+{`// Host-side launch
+const int THREADS = 256;
+const int BLOCKS  = (N + THREADS - 1) / THREADS;
+reset_forces<<<BLOCKS, THREADS>>>(N, fx, fy, fz);
+//                ↑          ↑
+//                |          |
+//                |          ${`__`}threads per block (warp-aligned)
+//                ${`__`}ceil(N / 256) blocks — covers every node
 
-// launch:  reset_forces<<<(N+255)/256, 256>>>(N, fx, fy, fz);
-// JS analog (this build):  s.f.fill(0)   — one coalesced memset per frame`}
+// One thread per particle, fully coalesced writes to fx/fy/fz.
+// JS analog this build runs:  s.f.fill(0)`}
         </pre>
       </footer>
     </main>
