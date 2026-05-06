@@ -196,6 +196,7 @@ function Index() {
   const [resetKey, setResetKey] = useState(0);
   const [validation, setValidation] = useState<ValidationReport | null>(null);
   const [loss, setLoss] = useState<number | null>(null);
+  const energyPlot = useEnergyPlot();
   const pointerRef = useRef({ x: 0, y: 0, active: false, mode: 1 as 1 | -1 });
   const [webgpuStatus, setWebgpuStatus] = useState<"checking" | "available" | "unavailable">("checking");
 
