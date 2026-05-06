@@ -128,6 +128,8 @@ function CustomFieldEditor({
 function Index() {
   const [params, setParams] = useState<SimParams>({
     gravity: 60,
+    gravityMode: "uniform",
+    gravityAngle: 90,
     damping: 0.4,
     attractor: 1.2,
     particleCount: 400,
