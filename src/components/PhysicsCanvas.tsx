@@ -708,7 +708,7 @@ export function PhysicsCanvas({
         const samples = new Float32Array(cols * rows);
         for (let r = 0; r < rows; r++) {
           for (let c = 0; c < cols; c++) {
-            const v = fieldPotential(p.field, c * cell + cell / 2, r * cell + cell / 2, w, h);
+            const v = fieldPotential(p.field, c * cell + cell / 2, r * cell + cell / 2, w, h, customFnRef.current, (now - tStartRef.current) / 1000);
             samples[r * cols + c] = v;
             if (v < pmin) pmin = v;
             if (v > pmax) pmax = v;
