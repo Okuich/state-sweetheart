@@ -258,7 +258,13 @@ function sampleCoords(mode: "clamp" | "wrap" | "none", x: number, y: number, w: 
 }
 
 
-function fieldPotential(name: FieldName, x: number, y: number, w: number, h: number): number {
+// Pluggable, user-defined Φ. The compiler in src/lib/exprCompile.ts produces
+// a pure-JS closure with no globals; we accept it here so the canvas never
+// touches `eval` / `new Function` directly.
+import type { FieldEnv } from "@/lib/exprCompile";
+export type CustomFieldFn = (env: FieldEnv) => number;
+
+function fieldPotential(name: FieldName, x: number, y: number, w: number, h: number, custom?: CustomFieldFn | null, t = 0): number {
   const cx = w * 0.5, cy = h * 0.5;
   const s = Math.max(w, h);
   const nx = (x - cx) / s;
@@ -274,6 +280,18 @@ function fieldPotential(name: FieldName, x: number, y: number, w: number, h: num
     case "ripple": {
       const r = Math.sqrt(nx * nx + ny * ny);
       return Math.cos(r * 28) * Math.exp(-r * 2.5) * 0.4;
+    }
+    case "custom": {
+      if (!custom) return 0;
+      const r = Math.sqrt(nx * nx + ny * ny);
+      const theta = Math.atan2(ny, nx);
+      try {
+        const v = custom({ nx, ny, x, y, w, h, r, theta, t });
+        // Defensive: any NaN/Inf in user code → zero force this frame, no halt.
+        return Number.isFinite(v) ? v : 0;
+      } catch {
+        return 0;
+      }
     }
     default:
       return 0;
