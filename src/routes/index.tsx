@@ -391,31 +391,45 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          simulate.cu — per-frame kernel pipeline (host-side launch order)
+          kernels.cu — shared-memory reduction (coalesce per-edge contributions before global atomicAdd)
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`// ── one simulation step ──────────────────────────────────────────────
-reset_forces           <<<ceil(N/256), 256>>>(N, fx, fy, fz);
-compute_spring_forces  <<<ceil(E/256), 256>>>(E, edge_i, edge_j,
-                                              x, y, z, fx, fy, fz,
-                                              rest_length, k);
-apply_gravity          <<<ceil(N/256), 256>>>(N, fy, g);
-integrate              <<<ceil(N/256), 256>>>(N, x, y, z,
-                                              vx, vy, vz,
-                                              fx, fy, fz, m, dt);
+{`#define BLOCK_SIZE 256
 
-// PBD relaxation — Gauss-Seidel sweeps over distance constraints
-for (int k = 0; k < constraint_iters; k++) {
-    project_constraints<<<ceil(E/256), 256>>>(E, edge_i, edge_j,
-                                              x, y, z, rest_length);
+__global__ void compute_spring_forces_smem(
+    int E,
+    int* edge_i, int* edge_j,
+    float* x, float* y, float* z,
+    float* fx, float* fy, float* fz,
+    float* rest_length, float k)
+{
+    __shared__ float s_fx[BLOCK_SIZE];      // staging buffer in fast SRAM
+    int local_id = threadIdx.x;
+    int e        = blockIdx.x * blockDim.x + local_id;
+
+    s_fx[local_id] = 0.0f;
+    __syncthreads();
+
+    // 1. each thread accumulates its edge's contribution LOCALLY
+    if (e < E) {
+        float value = /* spring force x-component for edge e */;
+        s_fx[local_id] += value;            // shared-memory write, no atomic
+    }
+    __syncthreads();
+
+    // 2. block-level reduction (tree, halving stride)
+    for (int s = BLOCK_SIZE / 2; s > 0; s >>= 1) {
+        if (local_id < s) s_fx[local_id] += s_fx[local_id + s];
+        __syncthreads();
+    }
+
+    // 3. ONE atomicAdd per block to global memory (instead of 256)
+    if (local_id == 0) atomicAdd(&fx[node_of_block], s_fx[0]);
 }
 
-// Order matters:
-//   1. zero the force buffer            (reset_forces)
-//   2. accumulate internal forces       (springs)
-//   3. accumulate external body forces  (gravity)
-//   4. semi-implicit Euler step         (integrate updates v then x)
-//   5. snap positions back onto constraints (PBD post-projection)`}
+// Why: global atomicAdd serializes contention on hot nodes.
+// Staging in __shared__ collapses 256 atomics → 1 per block,
+// turning a memory-bound kernel into a compute-bound one.`}
         </pre>
       </footer>
     </main>
