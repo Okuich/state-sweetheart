@@ -146,12 +146,59 @@ function toDevice(s: State, device: Device, dtype: Dtype): State {
  *      v ← (v + a·dt) · (1 - damping·dt)
  *      x ← x + v·dt
  *
- * integrator = "verlet" → velocity-Verlet (2nd order, energy-stable):
- *      x ← x + v·dt + ½·a·dt²
- *      v ← v + ½·(a + a_new)·dt        (a_new injected by caller next frame)
+ * integrator = "verlet" → velocity-Verlet (2nd order, energy-stable),
+ * split across the force evaluation so the kick really uses (a_old + a_new)/2:
+ *
+ *      // BEFORE recomputing forces (uses a_old from previous step, in s.fPrev)
+ *      v ← v + ½·a_old·dt
+ *      x ← x + v·dt                                         [verletDrift]
+ *
+ *      // recompute forces here → s.f now holds a_new
+ *
+ *      v ← (v + ½·a_new·dt) · (1 - damping·dt)
+ *      s.fPrev ← s.f                                        [verletKick]
  *
  * Walls: elastic-ish reflection with restitution 0.7.
  */
+function verletDrift(
+  s: State,
+  dt: number,
+  a: number,
+  b: number,
+) {
+  // First half-kick using PREVIOUS step's forces (cached in s.fPrev),
+  // then drift positions with the half-updated velocity.
+  for (let i = a; i < b; i++) {
+    const invM = 1 / s.m[i];
+    const axOld = s.fPrev[i * 2]     * invM;
+    const ayOld = s.fPrev[i * 2 + 1] * invM;
+    s.v[i * 2]     += 0.5 * axOld * dt;
+    s.v[i * 2 + 1] += 0.5 * ayOld * dt;
+    s.x[i * 2]     += s.v[i * 2]     * dt;
+    s.x[i * 2 + 1] += s.v[i * 2 + 1] * dt;
+  }
+}
+
+function verletKick(
+  s: State,
+  dt: number,
+  damping: number,
+  a: number,
+  b: number,
+) {
+  // Second half-kick using the NEW forces just computed for this step,
+  // then cache them as fPrev for the next step's drift.
+  const decay = 1 - damping * dt;
+  for (let i = a; i < b; i++) {
+    const invM = 1 / s.m[i];
+    const axNew = s.f[i * 2]     * invM;
+    const ayNew = s.f[i * 2 + 1] * invM;
+    s.v[i * 2]     = (s.v[i * 2]     + 0.5 * axNew * dt) * decay;
+    s.v[i * 2 + 1] = (s.v[i * 2 + 1] + 0.5 * ayNew * dt) * decay;
+    s.fPrev[i * 2]     = s.f[i * 2];
+    s.fPrev[i * 2 + 1] = s.f[i * 2 + 1];
+  }
+}
 /**
  * Differentiable scalar potential fields Φ(x, y) and helpers.
  *
@@ -271,17 +318,9 @@ function stepStateRange(
   boundary: Boundary = "walls",
 ) {
   if (integrator === "verlet") {
-    for (let i = a; i < b; i++) {
-      const invM = 1 / s.m[i];
-      const ax = s.f[i * 2]     * invM;
-      const ay = s.f[i * 2 + 1] * invM;
-      s.x[i * 2]     += s.v[i * 2]     * dt + 0.5 * ax * dt * dt;
-      s.x[i * 2 + 1] += s.v[i * 2 + 1] * dt + 0.5 * ay * dt * dt;
-      s.fPrev[i * 2]     = s.f[i * 2];
-      s.fPrev[i * 2 + 1] = s.f[i * 2 + 1];
-      s.v[i * 2]     = (s.v[i * 2]     + 0.5 * ax * dt) * (1 - damping * dt);
-      s.v[i * 2 + 1] = (s.v[i * 2 + 1] + 0.5 * ay * dt) * (1 - damping * dt);
-    }
+    // Verlet's drift+kick are split around the force evaluation; the
+    // caller invokes verletDrift() BEFORE recomputing forces and
+    // verletKick() AFTER. This branch is now position-only damping wrap-up.
   } else if (integrator === "semi-euler") {
     for (let i = a; i < b; i++) {
       const invM = 1 / s.m[i];
@@ -562,6 +601,15 @@ export function PhysicsCanvas({
         const partEnd   = (q: number) => Math.floor(((q + 1) * s.N) / W);
 
         for (let t = 0; t < subSteps; t++) {
+          // Velocity-Verlet drift uses the PREVIOUS step's forces (s.fPrev)
+          // for the first half-kick, then advances positions. This must run
+          // BEFORE we recompute forces for the new positions.
+          if (p.integrator === "verlet") {
+            for (let q = 0; q < W; q++) {
+              verletDrift(s, subDt, partStart(q), partEnd(q));
+            }
+          }
+
           // 1. zero forces — state.f.zero_()
           s.f.fill(0);
 
@@ -705,9 +753,19 @@ export function PhysicsCanvas({
             s.f[j * 2 + 1] -= fy;
           }
 
-          // 4. step(state, dt) — each worker integrates its own slice
-          for (let q = 0; q < W; q++) {
-            stepStateRange(s, subDt, p.damping, w, h, p.integrator, partStart(q), partEnd(q), p.boundary);
+          // 4. step(state, dt) — each worker integrates its own slice.
+          // For velocity-Verlet, drift already happened above; here we apply
+          // the second half-kick using the NEW forces, then cache f→fPrev.
+          if (p.integrator === "verlet") {
+            for (let q = 0; q < W; q++) {
+              verletKick(s, subDt, p.damping, partStart(q), partEnd(q));
+              // still call stepStateRange for boundary handling (verlet branch is a no-op for motion)
+              stepStateRange(s, subDt, p.damping, w, h, p.integrator, partStart(q), partEnd(q), p.boundary);
+            }
+          } else {
+            for (let q = 0; q < W; q++) {
+              stepStateRange(s, subDt, p.damping, w, h, p.integrator, partStart(q), partEnd(q), p.boundary);
+            }
           }
 
           // 5. sync_boundaries — re-project cross-partition edges so the
