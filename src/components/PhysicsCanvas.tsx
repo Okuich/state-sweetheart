@@ -115,6 +115,13 @@ type State = {
   edges: Int32Array;
   edgeRest: FloatArr;
   E: number;
+  // ── Probabilistic ensemble ────────────────────────────────────────
+  // dx/dy hold K Monte Carlo position OFFSETS per particle (relative to
+  // the deterministic mean x). Layout: [k * N*2 + i*2 + d]. Velocities
+  // for each replica are tracked in dv. K may change at runtime.
+  K: number;
+  ensX: Float32Array;
+  ensV: Float32Array;
 };
 
 /** Allocate a typed array matching `dtype`. */
