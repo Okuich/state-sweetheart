@@ -155,7 +155,9 @@ export function StepIngestionPanel() {
           )}
 
           {tab === "graph" && (
-            <div className="rounded-md border border-border bg-background/30 p-3">
+            <>
+              <StepTopologyGraph report={report} topo={topo} />
+            <div className="rounded-md border border-border bg-background/30 p-3 mt-3">
               <div className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground mb-2">
                 top entity types
               </div>
