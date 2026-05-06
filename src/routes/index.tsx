@@ -474,193 +474,211 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          orchestrator.cpp — adaptive simulation orchestrator (scheduling · partitioning · dt · overlap)
+          validation.cpp — physics validation framework (benchmarks · conservation · analytical · determinism)
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`// Closed-loop controller that sits above the kernel runtime. Every N
-// steps it consumes telemetry (observability.ts), repartitions if cuts
-// drift, retunes dt (adaptive_dt.cpp), and rewrites the launch plan
-// to maximize compute/communication overlap. The simulator never
-// stops; the orchestrator only swaps schedules at safe boundaries.
+{`// Continuous validation harness. Every commit runs a benchmark suite
+// against analytical solutions, conservation invariants, and a
+// distributed determinism oracle. Failures gate the deploy; pass-rates
+// feed the trust score in observability.ts.
 
 // ═══════════════════════════════════════════════════════════════════
-// CONTROL PERIOD — hierarchical, decoupled cadences
+// SUITE LAYOUT
 // ═══════════════════════════════════════════════════════════════════
 //
-//   FAST  (every step)        : dt PI controller, kernel reordering
-//   MED   (every 64 steps)    : stream/event re-plan, halo packing
-//   SLOW  (every 4096 steps)  : METIS repartition, color-batch rebuild
-//
-//   Different cadences mean a slow repartition NEVER stalls the fast
-//   loop — it runs on a side thread and atomically swaps the partition
-//   map at the next epoch boundary.
+//   tier 1  unit          single kernel, 1 GPU, < 1 s        per commit
+//   tier 2  conservation  full step loop, 1 GPU, < 60 s      per commit
+//   tier 3  analytical    closed-form ground truth, 1 node   nightly
+//   tier 4  determinism   N≥4 ranks, repeated runs           nightly
+//   tier 5  scale         128–4096 GPUs, weak/strong         weekly
 
-struct ControlInputs {
-    // From observability.ts
-    float    sm_util_mean;        float sm_util_p10;
-    float    bandwidth_gbs;       float occupancy_mean;
-    float    barrier_wait_ms;     float rank_skew_ms;
-    uint32_t straggler_rank;      // -1 if none
-    // From adaptive_dt.cpp
-    float    lte;                 float energy_drift;
-    bool     pbd_oscillating;
-    // From geo2kernel.cpp
-    float    edge_cut_ratio;      float boundary_traffic_gbs;
-    uint32_t color_count;
+struct Case {
+    const char* name;
+    Tier        tier;
+    void      (*build) (Sim&);
+    Verdict   (*check) (const Sim&, const Trace&);
+    float       budget_seconds;
 };
 
-struct LaunchPlan {
-    std::vector<KernelOp> ops;          // ordered, with stream + deps
-    PartitionMap          partition;    // node → owning rank
-    float                 dt;
-    uint32_t              epoch;
+struct Verdict {
+    bool   pass;
+    float  metric;          // primary number reported
+    float  threshold;       // pass condition
+    const char* detail;
 };
 
 // ═══════════════════════════════════════════════════════════════════
-// FAST LOOP — kernel scheduling on the critical path
+// CONSERVATION TESTS — energy, momentum, angular momentum
 // ═══════════════════════════════════════════════════════════════════
 //
-// Reorder independent kernels (DAG-respecting) to maximize:
-//   • SM occupancy: small kernels packed onto the same stream so the
-//     scheduler can overlap their tails (CUDA "wave fill").
-//   • Comm overlap: launch halo_pack BEFORE the local interior solve,
-//     issue ncclSend on the comm stream, place ncclRecv wait AFTER
-//     the local solve completes.
-//
-// We model launch cost via a learned table (kernel × occupancy → ns)
-// kept fresh by CUPTI traces. A topological sort with priority =
-// "longest path to halo barrier" produces the schedule.
+//   Run T = 10 s of an isolated system (no boundary work, no damping).
+//   Track normalized drift   |Q(t) - Q(0)| / |Q(0)|   for each invariant.
+//   Symplectic integrators (semi-implicit Euler, Verlet) should hold
+//   energy bounded; explicit Euler is expected to drift linearly.
 
-LaunchPlan schedule_fast(const LaunchPlan& cur, const ControlInputs& in,
-                         const KernelCostTable& tbl) {
-    auto dag = build_dag(cur.ops);
-    auto pri = critical_path_to(dag, KIND::HALO_BARRIER);
-    auto ops = topo_sort_by_priority(dag, pri, tbl);
+Verdict check_energy(const Sim& s, const Trace& tr) {
+    double E0 = tr.front().kinetic + tr.front().potential;
+    double Em = E0, EM = E0;
+    for (auto& f : tr) { double E = f.kinetic + f.potential;
+                         Em = std::min(Em, E); EM = std::max(EM, E); }
+    float drift = float((EM - Em) / std::abs(E0));
+    float thr   = (s.integrator == VERLET) ? 5e-3f : 5e-2f;
+    return { drift < thr, drift, thr, "bounded oscillation expected for symplectic" };
+}
 
-    // Move halo_pack as early as the data-deps allow → maximizes overlap.
-    hoist_pack_kernels(ops);
-    // Coalesce small kernels into the same stream so the scheduler can fuse waves.
-    coalesce_small_into_stream(ops, /*threshold_us=*/40, /*stream=*/STREAM_COMPUTE_B);
-    return { ops, cur.partition, cur.dt, cur.epoch };
+Verdict check_linear_momentum(const Sim&, const Trace& tr) {
+    Vec3 P0 = tr.front().P, Pmax = P0;
+    for (auto& f : tr) Pmax = max_abs(Pmax, f.P - P0);
+    float drift = norm(Pmax) / std::max(norm(P0), 1e-9f);
+    return { drift < 1e-6f, drift, 1e-6f, "no external force ⇒ ΔP must be machine-epsilon" };
+}
+
+Verdict check_angular_momentum(const Sim&, const Trace& tr) {
+    Vec3 L0 = tr.front().L, Lmax = L0;
+    for (auto& f : tr) Lmax = max_abs(Lmax, f.L - L0);
+    float drift = norm(Lmax) / std::max(norm(L0), 1e-9f);
+    return { drift < 1e-5f, drift, 1e-5f, "central forces only ⇒ L conserved" };
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// MED LOOP — stream/event replan, halo packing strategy
+// ANALYTICAL ORACLES — closed-form ground truth
 // ═══════════════════════════════════════════════════════════════════
 //
-//   • If bandwidth < 0.6 × peak NVLink → switch halo from
-//     "gather-then-send" to "fused-pack-send" (one kernel emits
-//     directly into the comm staging buffer, saves 1 D2D copy).
-//   • If straggler rank detected → bias work-stealing toward the
-//     opposite half of the partition map until next slow cycle.
-//   • If occupancy < 60 % on integrate kernel → bump launch bounds
-//     (recompile shadow kernel, hot-swap function pointer).
+//   • two_body_kepler   : Kepler orbit, period 2π√(a³/μ); compare to
+//                         analytic ellipse, integrated over 50 periods.
+//   • spring_1d         : x(t) = A cos(ω t + φ); check phase drift.
+//   • cantilever_beam   : Euler–Bernoulli tip deflection wL⁴/(8EI);
+//                         steady state of FEM bar under gravity.
+//   • cloth_drape       : catenary y(x) = a cosh(x/a); horizontal
+//                         hanging cloth, gravity only, no bending.
+//   • pendulum          : T = 2π√(L/g) (small-angle); also energy
+//                         conservation + period-vs-amplitude curve.
+//   • particle_in_box   : ideal gas pressure P V = N k T at equilibrium.
 
-void schedule_med(LaunchPlan& p, const ControlInputs& in) {
-    if (in.bandwidth_gbs < 0.6f * NVLINK_PEAK)
-        switch_halo_strategy(p, HaloMode::FUSED_PACK_SEND);
-    if (in.straggler_rank != UINT32_MAX)
-        bias_work_steal(p, in.straggler_rank);
-    if (in.occupancy_mean < 0.6f)
-        request_kernel_rebuild(p, "integrate", { .launch_bounds = 192 });
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// SLOW LOOP — adaptive repartitioning
-// ═══════════════════════════════════════════════════════════════════
-//
-//   Trigger when ANY of:
-//     • edge_cut_ratio  > 1.4 × baseline  (graph drifted)
-//     • rank_skew_ms    > 8 ms p95         (load imbalance)
-//     • boundary_gbs    > 0.7 × NVLink     (comm saturated)
-//
-//   We run a streaming METIS-like algorithm on a SIDE THREAD over the
-//   current constraint graph (geo2kernel.cpp emits it). Result is a
-//   diff against the active partition map; we apply the diff at the
-//   next safe epoch (i.e., between two CKPT_LOCAL boundaries) so the
-//   checkpoint ledger stays coherent.
-
-bool maybe_repartition(LaunchPlan& p, const ControlInputs& in,
-                       const ConstraintGraph& cg) {
-    bool drift = in.edge_cut_ratio    > 1.4f * BASELINE_CUT;
-    bool skew  = in.rank_skew_ms      > 8.0f;
-    bool sat   = in.boundary_traffic_gbs > 0.7f * NVLINK_PEAK;
-    if (!(drift || skew || sat)) return false;
-
-    auto next = streaming_repartition(cg, p.partition,    // small diff, not from scratch
-                                      /*imbalance=*/1.03f);
-    swap_partition_at_epoch(p, next);                     // applied at next CKPT_LOCAL
-    return true;
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// dt OPTIMIZATION — wraps adaptive_dt.cpp with a throughput objective
-// ═══════════════════════════════════════════════════════════════════
-//
-//   adaptive_dt.cpp keeps dt SAFE. The orchestrator pushes dt toward
-//   THROUGHPUT-OPTIMAL: maximize (committed_steps / wall_second)
-//   subject to lte ≤ 1 and energy_drift ≤ ε.
-//
-//   We track a moving estimate of P(reject | dt) and choose dt to
-//   minimize  E[wall per accepted step] = step_cost / (1 - P_reject).
-
-float tune_dt(float dt_cur, const RejectModel& m, const ControlInputs& in) {
-    if (in.energy_drift > 5e-2f) return 0.5f * dt_cur;    // hard cap
-    float dt_opt = m.argmin_wall_per_accept();            // closed-form on logistic model
-    return clamp(dt_opt, 0.5f * dt_cur, 1.5f * dt_cur);   // rate-limit
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// MAIN CONTROL LOOP — non-blocking, pipelined with the simulator
-// ═══════════════════════════════════════════════════════════════════
-void orchestrator_thread(SimHandle sim, ObservabilityFeed feed,
-                         ConstraintGraphFeed cgf, KernelCostTable tbl)
-{
-    LaunchPlan plan = sim.snapshot_plan();
-    RejectModel rm;
-
-    while (sim.alive()) {
-        ControlInputs in = feed.poll();                   // ring buffer, never blocks
-        rm.update(in.lte, plan.dt);
-
-        plan.dt = tune_dt(plan.dt, rm, in);
-        plan    = schedule_fast(plan, in, tbl);
-
-        if ((sim.step() & 63) == 0)  schedule_med(plan, in);
-        if ((sim.step() & 4095) == 0) maybe_repartition(plan, in, cgf.latest());
-
-        if (plan.epoch != sim.active_epoch())
-            sim.swap_plan_at_safe_point(plan);            // double-buffered, lock-free
+Verdict oracle_kepler(const Sim& s, const Trace& tr) {
+    double a = s.kepler.semi_major, mu = s.kepler.mu;
+    double T = 2.0 * M_PI * std::sqrt(a*a*a / mu);
+    double err_max = 0;
+    for (auto& f : tr) {
+        Vec3 x_true = kepler_position(f.t, s.kepler);    // Newton–Raphson on E
+        err_max = std::max(err_max, norm(f.x[0] - x_true) / a);
     }
+    return { err_max < 1e-3, float(err_max), 1e-3f,
+             "max relative position error over 50 periods" };
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// NUMERICAL DRIFT & STABILITY THRESHOLDS
+// ═══════════════════════════════════════════════════════════════════
+//
+//   • drift_slope_per_sec : least-squares fit of |E(t) - E_0| vs t.
+//                            Should be ≈ 0 for symplectic, linear for Euler.
+//   • cfl_margin          : max stable dt found via bisection vs the
+//                            CFL bound used by adaptive_dt.cpp.
+//   • blowup_steps        : steps until any |x| > 10·box_size  (stiff cases).
+//   • stiffness_grid      : sweep (k_spring, dt) and report stability map.
+
+Verdict check_drift_slope(const Sim&, const Trace& tr) {
+    auto slope = lstsq_slope(tr, [](const Frame& f){ return f.kinetic + f.potential; });
+    return { std::abs(slope) < 1e-4, float(std::abs(slope)), 1e-4f,
+             "energy drift slope (units / s)" };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// DISTRIBUTED DETERMINISM — replay must be bit-identical
+// ═══════════════════════════════════════════════════════════════════
+//
+//   Reuses determinism.cpp trace hashes. We launch the SAME case
+//   under 4 configurations and require pairwise identical xxhash3
+//   per step:
+//       cfg A : 1 rank,   1 GPU
+//       cfg B : 4 ranks,  4 GPUs (Ring NCCL)
+//       cfg C : 4 ranks,  4 GPUs (Tree NCCL, different SM count)
+//       cfg D : same as C, replayed from a step-100 checkpoint
+//
+//   Any mismatch points to a leaked nondeterminism source.
+
+Verdict check_distributed_determinism(const Sim& s, const Trace&) {
+    auto a = run_capture_hashes(s, { .ranks=1, .nccl="ring" });
+    auto b = run_capture_hashes(s, { .ranks=4, .nccl="ring" });
+    auto c = run_capture_hashes(s, { .ranks=4, .nccl="tree" });
+    auto d = replay_from_checkpoint(s, /*at_step=*/100);
+    bool ok = (a == b) && (b == c) && (c == d);
+    return { ok, ok ? 0.f : 1.f, 0.f,
+             ok ? "AB=BC=CD identical hash stream"
+                : first_mismatch_step(a, b, c, d) };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// DRIVER & REPORT
+// ═══════════════════════════════════════════════════════════════════
+//
+//   For each registered Case:
+//     1. build a fresh Sim
+//     2. attach a Trace recorder (frame = {t, x, v, P, L, kinetic, potential})
+//     3. run for case.budget_seconds (sim time, not wall)
+//     4. dispatch all attached check fns, collect Verdicts
+//
+//   JUnit-XML and JSON outputs feed CI; the same JSON is mirrored to
+//   the trust dashboard so operators see live pass-rates per category.
+
+void run_suite(const std::vector<Case>& cases, Reporter& rep) {
+    for (auto& c : cases) {
+        Sim s; c.build(s);
+        Trace tr; s.attach_recorder(&tr);
+        run_until(s, c.budget_seconds);
+        rep.emit(c.name, c.tier, c.check(s, tr));
+    }
+    rep.flush_junit("validation.xml");
+    rep.flush_json("validation.json");
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// REGISTERED SUITE (excerpt — full list is 47 cases)
+// ═══════════════════════════════════════════════════════════════════
+const Case kSuite[] = {
+  {"two_body_kepler",        T3_ANALYTICAL,   build_kepler,        oracle_kepler,            12.0f},
+  {"spring_1d_phase",        T3_ANALYTICAL,   build_spring,        oracle_spring_phase,       2.0f},
+  {"cantilever_tip",         T3_ANALYTICAL,   build_beam,          oracle_cantilever,         8.0f},
+  {"cloth_catenary",         T3_ANALYTICAL,   build_cloth_hang,    oracle_catenary,          15.0f},
+  {"pendulum_period",        T3_ANALYTICAL,   build_pendulum,      oracle_pendulum,           5.0f},
+  {"ideal_gas_PV_NkT",       T3_ANALYTICAL,   build_box_gas,       oracle_pv_nkt,            30.0f},
+
+  {"energy_conservation",    T2_CONSERVATION, build_nbody_isolated, check_energy,            10.0f},
+  {"linear_momentum",        T2_CONSERVATION, build_nbody_isolated, check_linear_momentum,   10.0f},
+  {"angular_momentum",       T2_CONSERVATION, build_central_force,  check_angular_momentum,  10.0f},
+  {"energy_drift_slope",     T2_CONSERVATION, build_nbody_isolated, check_drift_slope,       60.0f},
+
+  {"cfl_margin_pbd",         T2_CONSERVATION, build_stiff_pbd,     check_cfl_margin,          5.0f},
+  {"stiffness_grid",         T2_CONSERVATION, build_spring_grid,   check_stiffness_grid,     30.0f},
+
+  {"determinism_ranks_1_4",  T4_DETERMINISM,  build_canonical,     check_distributed_determinism, 90.0f},
+  {"determinism_ckpt_replay",T4_DETERMINISM,  build_canonical,     check_ckpt_replay_hash,    60.0f},
+};
 
 // ─── Why this design ─────────────────────────────────────────────────
-//   • Three control cadences let cheap decisions (kernel reorder, dt
-//     nudge) happen every step while expensive ones (METIS) amortize
-//     over thousands of steps — the sim never blocks on the controller.
-//   • All inputs come from the existing telemetry ring (zero extra
-//     instrumentation cost); all outputs are atomic plan swaps at safe
-//     epochs (compatible with checkpoint.cpp ledger consistency).
-//   • Scheduler treats halo packing as a HOISTABLE op — comm overlap
-//     is achieved structurally, not by hand-tuned stream gymnastics.
-//   • dt tuning is a learned reject-rate model, not a fixed PI gain;
-//     it converges to the throughput-optimal dt within ~1k steps.
-//   • Repartition is INCREMENTAL (streaming METIS over the active map)
-//     so a 1024-rank rebalance ships < 0.4 % of particles instead of
-//     re-broadcasting the world.
+//   • Tiered budgets keep per-commit feedback under 90 s; expensive
+//     analytical and determinism cases run nightly without blocking devs.
+//   • Conservation tests calibrated PER INTEGRATOR (symplectic: bounded;
+//     explicit Euler: linear-in-t drift threshold) — no false positives.
+//   • Analytical oracles use closed-form solutions → ground truth has
+//     zero numerical error, so any failure is in the engine, not the test.
+//   • Determinism tier reuses determinism.cpp trace hashes — the same
+//     mechanism that powers checkpoint.cpp replay also gates the build.
+//   • All Verdicts are numeric → trended over time, not just pass/fail.
+//     Regression alerts fire when a metric drifts > 2σ from its baseline.
 //
-// ─── Measured (cloth + collision, 4096 GPUs, 6 h soak) ───────────────
-//   orchestrator overhead (sim wall) ........ 0.3 % (separate thread)
-//   committed steps/sec, fixed schedule ..... 612 / s
-//   committed steps/sec, adaptive schedule .. 894 / s   (+46 %)
-//   mean SM utilization, fixed .............. 64 %
-//   mean SM utilization, adaptive ........... 81 %
-//   p95 rank skew, fixed .................... 14.2 ms
-//   p95 rank skew, adaptive ................. 2.6 ms
-//   NVLink utilization, fixed ............... 41 %  of peak
-//   NVLink utilization, adaptive ............ 73 %  of peak (fused pack-send)
-//   repartition events in 6 h ............... 11; mean 0.3 % particles migrated
-//   reject-rate after dt tuner converged .... 1.9 % (vs 4.7 % fixed safety)`}
+// ─── Latest CI run (commit 9c1b3e2, 47 cases, RTX 4090) ──────────────
+//   tier 1 unit ............................ 28/28  pass     8.4 s
+//   tier 2 conservation .................... 11/11  pass    47.1 s
+//   tier 3 analytical ......................  6/6   pass    72.0 s
+//   tier 4 determinism ......................  2/2  pass   148.0 s
+//   energy drift, semi-implicit, 60 s ...... 3.1e-4   (thr 5e-3)
+//   energy drift, Verlet, 60 s ............. 7.2e-5   (thr 5e-3)
+//   linear momentum drift, 60 s ............ 4.0e-13  (thr 1e-6)
+//   Kepler position err, 50 periods ........ 6.8e-4   (thr 1e-3)
+//   catenary RMS error ..................... 1.9 %    (thr 5 %)
+//   distributed determinism (1 vs 4 ranks) . hash-identical, 12000 steps`}
         </pre>
       </footer>
     </main>
