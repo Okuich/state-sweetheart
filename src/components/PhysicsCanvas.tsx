@@ -907,6 +907,9 @@ export function PhysicsCanvas({
   const ENERGY_HIST_CAP = 240;
   const energyHistRef = useRef<Float32Array>(new Float32Array(ENERGY_HIST_CAP));
   const driftHistRef  = useRef<Float32Array>(new Float32Array(ENERGY_HIST_CAP));
+  // Per-component history (KE / PE_total) for the energy-vs-time chart.
+  const keHistRef = useRef<Float32Array>(new Float32Array(ENERGY_HIST_CAP));
+  const peHistRef = useRef<Float32Array>(new Float32Array(ENERGY_HIST_CAP));
   const energyHistLenRef = useRef(0);
   const energyHistHeadRef = useRef(0);
   // EMA of |Δ| and |Δ|² → smoothed drift magnitude and RMS drift.
@@ -1581,6 +1584,8 @@ export function PhysicsCanvas({
         const head = energyHistHeadRef.current;
         energyHistRef.current[head] = E_total;
         driftHistRef.current[head]  = drift;
+        keHistRef.current[head]     = KE;
+        peHistRef.current[head]     = PE_total;
         energyHistHeadRef.current = (head + 1) % ENERGY_HIST_CAP;
         if (energyHistLenRef.current < ENERGY_HIST_CAP) energyHistLenRef.current++;
       }
@@ -1667,8 +1672,13 @@ export function PhysicsCanvas({
       // the recent history window, with a zero reference line. Auto-scaled
       // to peak |Δ| in the window so both stable & diverging look right.
       const sparkH = 42;
+      // Energy-vs-time chart sits ABOVE the drift sparkline. Plots three
+      // overlaid traces (KE, PE_total, E_total) auto-scaled to the [min,max]
+      // of all three over the window so relative motion stays visible.
+      const energyChartH = 56;
       const sparkPadTop = 6;
-      const panelH = padY * 2 + lineH * lines.length + sparkPadTop + sparkH;
+      const chartGap = 4;
+      const panelH = padY * 2 + lineH * lines.length + sparkPadTop + energyChartH + chartGap + sparkH + 12;
       const panelX = w - panelW - 12;
       const panelY = 12;
       ctx.fillStyle = "oklch(0.16 0.02 260 / 0.82)";
@@ -1703,12 +1713,71 @@ export function PhysicsCanvas({
         ctx.fillText(lines[li], panelX + padX, panelY + padY + li * lineH);
       }
 
+      // ── Energy-vs-time chart (KE / PE / Total) ───────────────────
+      // Three overlaid line plots over the same time window as the drift
+      // sparkline. Y-axis is auto-scaled to the global [min,max] across
+      // all three traces so their *relative* motion is visible. A faint
+      // baseline at min is drawn for orientation.
+      {
+        const cx = panelX + padX;
+        const cy = panelY + padY + lines.length * lineH + sparkPadTop;
+        const cw = panelW - padX * 2;
+        const ch = energyChartH;
+        ctx.fillStyle = "oklch(0.20 0.02 260 / 0.6)";
+        ctx.fillRect(cx, cy, cw, ch);
+
+        const len = energyHistLenRef.current;
+        if (len >= 2) {
+          const cap = ENERGY_HIST_CAP;
+          const start = (energyHistHeadRef.current - len + cap) % cap;
+          let lo = Infinity, hi = -Infinity;
+          for (let i = 0; i < len; i++) {
+            const idx = (start + i) % cap;
+            const ke = keHistRef.current[idx];
+            const pe = peHistRef.current[idx];
+            const et = energyHistRef.current[idx];
+            if (ke < lo) lo = ke; if (ke > hi) hi = ke;
+            if (pe < lo) lo = pe; if (pe > hi) hi = pe;
+            if (et < lo) lo = et; if (et > hi) hi = et;
+          }
+          const span = Math.max(1e-9, hi - lo);
+          const yMap = (v: number) => cy + ch - 2 - ((v - lo) / span) * (ch - 4);
+          const drawTrace = (buf: Float32Array, color: string, width = 1.1) => {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width;
+            ctx.beginPath();
+            for (let i = 0; i < len; i++) {
+              const v = buf[(start + i) % cap];
+              const px = cx + (i / (len - 1)) * cw;
+              const py = yMap(v);
+              if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+            }
+            ctx.stroke();
+          };
+          // KE — warm amber, PE — cool teal, Total — bright (slightly thicker).
+          drawTrace(keHistRef.current,    "oklch(0.82 0.16 70)",  1);
+          drawTrace(peHistRef.current,    "oklch(0.78 0.14 200)", 1);
+          drawTrace(energyHistRef.current,"oklch(0.94 0.04 230)", 1.4);
+
+          // Mini legend + range label
+          ctx.font = "9px ui-monospace, SFMono-Regular, Menlo, monospace";
+          ctx.fillStyle = "oklch(0.82 0.16 70)";   ctx.fillText("KE",    cx + 4,  cy + 2);
+          ctx.fillStyle = "oklch(0.78 0.14 200)";  ctx.fillText("PE",    cx + 24, cy + 2);
+          ctx.fillStyle = "oklch(0.94 0.04 230)";  ctx.fillText("E",     cx + 44, cy + 2);
+          ctx.fillStyle = "oklch(0.78 0.04 230 / 0.7)";
+          const rangeLbl = `${fmt(lo)}…${fmt(hi)}`;
+          const tw = ctx.measureText(rangeLbl).width;
+          ctx.fillText(rangeLbl, cx + cw - tw - 4, cy + 2);
+          ctx.font = "11px ui-monospace, SFMono-Regular, Menlo, monospace";
+        }
+      }
+
       // ── Energy-drift sparkline ───────────────────────────────────
       // X-axis: oldest sample on the left → newest on the right.
       // Y-axis: signed Δ, centered on zero, scaled to ±max(|Δ|) in window.
       {
         const sx = panelX + padX;
-        const sy = panelY + padY + lines.length * lineH + sparkPadTop;
+        const sy = panelY + padY + lines.length * lineH + sparkPadTop + energyChartH + chartGap;
         const sw = panelW - padX * 2;
         const sh = sparkH;
         // Background + zero line
