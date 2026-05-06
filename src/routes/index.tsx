@@ -391,36 +391,41 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          kernels.cu — integrate (semi-implicit Euler, one thread per particle)
+          kernels.cu — project_constraints (PBD distance constraint, one thread per edge)
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`__global__ void integrate(
-    int N,
-    float* x,  float* y,  float* z,
-    float* vx, float* vy, float* vz,
-    float* fx, float* fy, float* fz,
-    float* m, float dt)
+{`__global__ void project_constraints(
+    int E,
+    int* edge_i, int* edge_j,
+    float* x, float* y, float* z,
+    float* rest_length)
 {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= N) return;
+    int e = blockIdx.x * blockDim.x + threadIdx.x;
+    if (e >= E) return;
 
-    float inv_m = 1.0f / m[i];
-    vx[i] += fx[i] * inv_m * dt;        // v ← v + (F/m) dt
-    vy[i] += fy[i] * inv_m * dt;
-    vz[i] += fz[i] * inv_m * dt;
-    x[i]  += vx[i] * dt;                // x ← x + v dt   (uses NEW v)
-    y[i]  += vy[i] * dt;
-    z[i]  += vz[i] * dt;
+    int i = edge_i[e];
+    int j = edge_j[e];
+
+    float dx = x[i] - x[j];
+    float dy = y[i] - y[j];
+    float dz = z[i] - z[j];
+    float dist = sqrtf(dx*dx + dy*dy + dz*dz) + 1e-6f;
+
+    float diff = (dist - rest_length[e]) / dist;   // fractional stretch
+    float cx = 0.5f * dx * diff;                   // equal-mass split
+    float cy = 0.5f * dy * diff;
+    float cz = 0.5f * dz * diff;
+
+    atomicAdd(&x[i], -cx);   atomicAdd(&y[i], -cy);   atomicAdd(&z[i], -cz);
+    atomicAdd(&x[j],  cx);   atomicAdd(&y[j],  cy);   atomicAdd(&z[j],  cz);
 }
 
-// Launch — one warp-aligned thread per particle, no atomics needed
-//   integrate<<<${Math.ceil(params.particleCount / 256)}, 256>>>(N, x,y,z, vx,vy,vz, fx,fy,fz, m, dt);
-//             ↑   ↑
-//             ${`__`} ceil(${params.particleCount} / 256) blocks  × 256 threads = ${Math.ceil(params.particleCount / 256) * 256} threads
+// Launch — one thread per edge; atomics resolve shared-vertex contention
+//   project_constraints<<<ceil(E/256), 256>>>(E, edge_i, edge_j, x,y,z, rest_length);
 //
-// JS analog this build runs (semi-impl. Euler, current default integrator):
-//   s.v[i*2]   += s.f[i*2]   / s.m[i] * dt;
-//   s.x[i*2]   += s.v[i*2] * dt;`}
+// Position-Based Dynamics: snap endpoints back onto the rest-length sphere
+// directly in position space (no force, no dt). Iterate several times per
+// frame for stiffer constraints — convergence ≈ Gauss-Seidel relaxation.`}
         </pre>
       </footer>
     </main>
