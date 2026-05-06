@@ -76,6 +76,7 @@ export type SimParams = {
   objectiveLR: number;
   pairwiseMode: "lj" | "repel" | "attract";
   boundary: "walls" | "wrap" | "periodic";
+  restitution: number;
   forceViz: "off" | "vectors" | "heatmap";
   potentialGrad: "analytic" | "finite-diff";
   fieldSampling: "auto" | "clamp" | "wrap" | "none";
