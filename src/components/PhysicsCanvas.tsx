@@ -773,7 +773,7 @@ function initState(
   const edgeRest = emptyLike(E, dtype);
   edgeRest.fill(rest);
   // Ensemble starts at K=0 (off); allocated lazily when stochastic mode flips on.
-  return { N, D: 2, dtype, device, x, v, m, f, fPrev, hue, edges, edgeRest, E, K: 0, ensX: new Float32Array(0), ensV: new Float32Array(0) };
+  return { N, D: 2, dtype, device, x, v, m, f, fPrev, hue, edges, edgeRest, E, verletPrimed: false, K: 0, ensX: new Float32Array(0), ensV: new Float32Array(0) };
 }
 
 /** (Re)allocate the Monte Carlo ensemble in-place. Replicas start at the
