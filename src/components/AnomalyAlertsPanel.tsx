@@ -105,8 +105,9 @@ export function AnomalyAlertsPanel({ sample }: AnomalyAlertsPanelProps) {
   return (
     <div className="space-y-4 rounded-lg border border-border bg-card p-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+        <h3 className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
           Anomaly alert rules
+          <StreamBadge status={stream.status} count={stream.count} />
         </h3>
         <div className="flex items-center gap-1">
           <Button variant="outline" size="sm" onClick={addRule} className="h-7 px-2 text-xs">
