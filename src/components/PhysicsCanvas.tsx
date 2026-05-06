@@ -64,6 +64,7 @@ export type SimParams = {
   integrator: "euler" | "verlet";
   dtype: Dtype;
   device: Device;
+  constraintIters: number;
 };
 
 type FloatArr = Float32Array | Float64Array;
