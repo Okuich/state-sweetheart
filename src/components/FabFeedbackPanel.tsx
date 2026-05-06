@@ -46,6 +46,14 @@ export function FabFeedbackPanel() {
     };
   }, [streaming, seed]);
 
+  // ingest observations imported from external scan/quality reports
+  useEffect(() => {
+    return scanImportBridge.subscribe((batch) => {
+      setObs((prev) => [...prev.slice(-1500), ...batch]);
+      setState((prev) => ingestBatch(prev, batch));
+    });
+  }, []);
+
   const ingest = () => {
     const b = generateBatch(batchSize, seed + obs.length);
     setObs((prev) => [...prev.slice(-1500), ...b]);
