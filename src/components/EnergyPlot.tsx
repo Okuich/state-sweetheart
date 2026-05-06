@@ -1,6 +1,6 @@
 // Real-time energy plots — verifies gravity transfers PE↔KE and that
 // damping monotonically dissipates total mechanical energy.
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { EnergySample } from "./PhysicsCanvas";
 
 const CAP = 480; // ~8s at 60fps
