@@ -282,7 +282,7 @@ function fabVector(desc: GeomDescriptor, topo: TopologyDescriptor, curv: Curvatu
   const dims = bboxDims(desc);
   const dmax = Math.max(...dims, 1e-9);
   const v = [
-    Math.min(desc.counts.holes ?? 0, 1),                       // placeholder
+    Math.min((desc.features.holes ?? 0) / 10, 1),
     curv.planar, curv.cylindrical, curv.conical,
     curv.spherical, curv.toroidal, curv.spline,
     Math.min(topo.edgeFaceRatio / 12, 1),
