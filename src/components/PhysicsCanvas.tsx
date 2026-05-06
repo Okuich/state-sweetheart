@@ -1724,7 +1724,7 @@ export function PhysicsCanvas({
         `anomalies ${p.twinEnabled ? twinAnomalyCountRef.current : "—"}`,
       ];
       const padX = 10, padY = 8, lineH = 14;
-      const panelW = 200;
+      const panelW = 230;
       // Sparkline plotted under the text lines: shows Δ vs. baseline over
       // the recent history window, with a zero reference line. Auto-scaled
       // to peak |Δ| in the window so both stable & diverging look right.
