@@ -133,6 +133,8 @@ function Index() {
     particleCount: 400,
     trail: 0.22,
     paused: false,
+    dtScale: 1,
+    stepOnce: 0,
     springK: 80,
     restLength: 40,
     edgesPerNode: 2,
