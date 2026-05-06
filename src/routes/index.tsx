@@ -311,8 +311,8 @@ function Index() {
 
         <div className="space-y-2">
           <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Potential field</div>
-          <div className="grid grid-cols-4 gap-1.5">
-            {(["none", "swirl", "wells", "ripple"] as const).map((opt) => (
+          <div className="grid grid-cols-5 gap-1.5">
+            {(["none", "swirl", "wells", "ripple", "custom"] as const).map((opt) => (
               <Button
                 key={opt}
                 variant={params.field === opt ? "default" : "outline"}
@@ -325,6 +325,11 @@ function Index() {
               </Button>
             ))}
           </div>
+          <CustomFieldEditor
+            value={params.customFieldSrc}
+            onChange={(v) => update("customFieldSrc", v)}
+            active={params.field === "custom"}
+          />
         </div>
 
         <div className="space-y-2">
