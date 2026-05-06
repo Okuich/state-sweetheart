@@ -121,7 +121,28 @@ export function RagPanel() {
         ))}
       </div>
 
-      {/* summary line */}
+      {/* retrieval weight sliders */}
+      <div className="rounded-lg border border-border bg-background/40 p-3">
+        <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+          <div className="text-[9px] uppercase tracking-[0.22em] text-muted-foreground">
+            retrieval weights · re-rank scores per channel
+          </div>
+          <button
+            type="button"
+            onClick={() => setWeights(DEFAULT_WEIGHTS)}
+            className="text-[9px] uppercase tracking-[0.16em] text-muted-foreground hover:text-foreground"
+          >
+            reset
+          </button>
+        </div>
+        <div className="grid gap-3 md:grid-cols-4">
+          <WeightSlider label="geometry"    value={weights.geometry} onChange={(v) => setWeights((w) => ({ ...w, geometry: v }))} />
+          <WeightSlider label="topology"    value={weights.topology} onChange={(v) => setWeights((w) => ({ ...w, topology: v }))} />
+          <WeightSlider label="failure"     value={weights.failure}  onChange={(v) => setWeights((w) => ({ ...w, failure:  v }))} />
+          <WeightSlider label="optimization" value={weights.optim}    onChange={(v) => setWeights((w) => ({ ...w, optim:    v }))} />
+        </div>
+      </div>
+
       <div className="rounded-md border border-border bg-background/40 px-3 py-2 text-[11px] font-mono text-foreground/80">
         {ctx.summary || "no context yet"}
       </div>
