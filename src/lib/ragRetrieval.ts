@@ -93,14 +93,43 @@ function topoSignature(n: GraphNode): string[] {
 
 // ─── public retrievers ───────────────────────────────────────
 
+function cosineBreakdown(q: number[], n: number[]): { value: number; dims: number[] } {
+  const value = cosine(q, n);
+  const len = Math.min(q.length, n.length);
+  const raw = new Array(len).fill(0).map((_, i) => q[i] * n[i]);
+  const sumAbs = raw.reduce((a, x) => a + Math.abs(x), 0) || 1;
+  const dims = raw.map((x) => x / sumAbs);
+  return { value, dims };
+}
+
+function tokenSets(qTokens: string[], cTokens: string[]) {
+  const Q = new Set(qTokens);
+  const C = new Set(cTokens);
+  const overlap: string[] = [];
+  const onlyQuery: string[] = [];
+  const onlyCandidate: string[] = [];
+  for (const t of Q) (C.has(t) ? overlap : onlyQuery).push(t);
+  for (const t of C) if (!Q.has(t)) onlyCandidate.push(t);
+  return { overlap, onlyQuery, onlyCandidate };
+}
+
 export function geometryKNN(q: RagQuery, g: Graph, k = 5): Retrieved<GraphNode>[] {
   return g.nodes
     .filter((n) => n.kind === "geometry")
-    .map((n) => ({
-      item: n,
-      score: cosine(q.embedding, n.embedding),
-      reason: "cosine over 8-dim geometry embedding",
-    }))
+    .map((n) => {
+      const cb = cosineBreakdown(q.embedding, n.embedding);
+      return {
+        item: n,
+        score: cb.value,
+        reason: "cosine over 8-dim geometry embedding",
+        breakdown: {
+          components: [{ label: "cosine", value: cb.value }],
+          cosine: cb.value,
+          cosineDims: cb.dims,
+          formula: "score = cos(q.embedding, node.embedding)",
+        },
+      };
+    })
     .sort((a, b) => b.score - a.score)
     .slice(0, k);
 }
@@ -108,11 +137,21 @@ export function geometryKNN(q: RagQuery, g: Graph, k = 5): Retrieved<GraphNode>[
 export function topologyMatch(q: RagQuery, g: Graph, k = 5): Retrieved<GraphNode>[] {
   return g.nodes
     .filter((n) => n.kind === "geometry")
-    .map((n) => ({
-      item: n,
-      score: jaccard(q.topology, topoSignature(n)),
-      reason: "Jaccard over topology tokens",
-    }))
+    .map((n) => {
+      const sig = topoSignature(n);
+      const j = jaccard(q.topology, sig);
+      const sets = tokenSets(q.topology, sig);
+      return {
+        item: n,
+        score: j,
+        reason: "Jaccard over topology tokens",
+        breakdown: {
+          components: [{ label: "jaccard", value: j }],
+          ...sets,
+          formula: "score = |Q ∩ C| / |Q ∪ C|",
+        },
+      };
+    })
     .filter((r) => r.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, k);
@@ -123,8 +162,6 @@ export function failureLookup(q: RagQuery, g: Graph, k = 5): Retrieved<GraphNode
   const failures = g.nodes.filter(
     (n) => n.kind === "outcome" && Number(n.attrs.pass ?? 1) === 0
   );
-  // re-rank by similarity of upstream sim's stress to target, then by
-  // embedding cosine. Use causal edges to find linked sim node.
   return failures
     .map((f) => {
       const causalIn = g.edges.filter(
@@ -139,15 +176,25 @@ export function failureLookup(q: RagQuery, g: Graph, k = 5): Retrieved<GraphNode
         const s = Number(linkedSim.attrs.maxStress ?? 0);
         stressTerm = 1 / (1 + Math.abs(s - q.context.targetStress) / 100);
       }
-      const cosTerm = cosine(q.embedding, f.embedding);
+      const cb = cosineBreakdown(q.embedding, f.embedding);
       const defectTerm = Math.min(1, Number(f.attrs.defectRate ?? 0));
-      const score = 0.5 * cosTerm + 0.3 * stressTerm + 0.2 * defectTerm;
+      const score = 0.5 * cb.value + 0.3 * stressTerm + 0.2 * defectTerm;
       return {
         item: f,
         score,
         reason: linkedSim
           ? `sim=${linkedSim.label} σ=${linkedSim.attrs.maxStress}MPa, defect=${f.attrs.defectRate}`
           : "no upstream sim",
+        breakdown: {
+          components: [
+            { label: "cosine",      value: cb.value,    weight: 0.5 },
+            { label: "stress-prox", value: stressTerm,  weight: 0.3 },
+            { label: "defect-rate", value: defectTerm,  weight: 0.2 },
+          ],
+          cosine: cb.value,
+          cosineDims: cb.dims,
+          formula: "score = 0.5·cos + 0.3·stressProximity + 0.2·defectRate",
+        },
       };
     })
     .sort((a, b) => b.score - a.score)
@@ -168,11 +215,21 @@ export function optimMemory(q: RagQuery, g: Graph, k = 5): Retrieved<OptimRecord
     const parent = g.nodes.find((n) => n.id === e.from);
     const child  = g.nodes.find((n) => n.id === e.to);
     if (!parent || !child) continue;
-    const sim = cosine(q.embedding, parent.embedding);
+    const cb = cosineBreakdown(q.embedding, parent.embedding);
+    const score = 0.7 * cb.value + 0.3 * e.weight;
     recs.push({
       item: { parent, child, note: e.note ?? "", weight: e.weight },
-      score: 0.7 * sim + 0.3 * e.weight,
-      reason: `parent-sim=${sim.toFixed(2)} edge-w=${e.weight.toFixed(2)}`,
+      score,
+      reason: `parent-sim=${cb.value.toFixed(2)} edge-w=${e.weight.toFixed(2)}`,
+      breakdown: {
+        components: [
+          { label: "parent-cosine", value: cb.value, weight: 0.7 },
+          { label: "edge-weight",   value: e.weight, weight: 0.3 },
+        ],
+        cosine: cb.value,
+        cosineDims: cb.dims,
+        formula: "score = 0.7·cos(q, parent) + 0.3·edge.weight",
+      },
     });
   }
   return recs.sort((a, b) => b.score - a.score).slice(0, k);
