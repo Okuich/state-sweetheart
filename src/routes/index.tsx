@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PhysicsCanvas, type SimParams, type ValidationReport } from "@/components/PhysicsCanvas";
+import { useEnergyPlot } from "@/components/EnergyPlot";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -195,6 +196,7 @@ function Index() {
   const [resetKey, setResetKey] = useState(0);
   const [validation, setValidation] = useState<ValidationReport | null>(null);
   const [loss, setLoss] = useState<number | null>(null);
+  const energyPlot = useEnergyPlot();
   const pointerRef = useRef({ x: 0, y: 0, active: false, mode: 1 as 1 | -1 });
   const [webgpuStatus, setWebgpuStatus] = useState<"checking" | "available" | "unavailable">("checking");
 
@@ -322,7 +324,14 @@ function Index() {
 
       {/* Canvas */}
       <section className="relative z-10 mx-4 lg:mx-10 mb-4 h-[58vh] rounded-xl border border-border bg-card backdrop-blur-sm overflow-hidden">
-        <PhysicsCanvas key={resetKey} params={params} pointerRef={pointerRef} onValidation={setValidation} onLoss={setLoss} />
+        <PhysicsCanvas
+          key={resetKey}
+          params={params}
+          pointerRef={pointerRef}
+          onValidation={setValidation}
+          onLoss={setLoss}
+          onEnergy={(s) => energyPlot.handleRef.current?.push(s)}
+        />
         {/* HUD — SoA memory layout */}
         <div className="pointer-events-none absolute left-4 top-4 flex flex-col gap-0.5 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
           <div className="text-accent/80 mb-1">struct PhysicsState · SoA</div>
@@ -368,7 +377,10 @@ function Index() {
         </div>
       </section>
 
-      {/* Controls */}
+      {/* Live energy plots — verifies gravity (PE↔KE exchange) and damping (E ↘) */}
+      <section className="relative z-10 mx-4 lg:mx-10 mb-4">
+        <energyPlot.Plot height={200} />
+      </section>
       <section className="relative z-10 mx-4 lg:mx-10 mb-10 grid gap-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm md:grid-cols-2 lg:grid-cols-3">
         <Field label="dt scale"  value={params.dtScale}   min={0.05} max={3}   step={0.05} onChange={(v) => update("dtScale", v)} />
         <Field label="Gravity"   value={params.gravity}   min={-200} max={400} step={1}    onChange={(v) => update("gravity", v)} />
