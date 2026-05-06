@@ -161,6 +161,7 @@ function Index() {
     potentialGrad: "analytic",
     fieldSampling: "auto",
     showFieldArrows: false,
+    debugForces: false,
     adaptiveSubSteps: false,
     maxSubSteps: 8,
     pairwiseAlgo: "grid",
