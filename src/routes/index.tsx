@@ -78,6 +78,8 @@ function Index() {
     subSteps: 1,
     workers: 4,
     showPartitions: true,
+    optimize: false,
+    objectiveLR: 0.05,
   });
   const [resetKey, setResetKey] = useState(0);
   const [validation, setValidation] = useState<ValidationReport | null>(null);
