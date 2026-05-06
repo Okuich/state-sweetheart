@@ -603,17 +603,23 @@ export function PhysicsCanvas({
         ctx.stroke();
       }
 
-      // Render nodes
+      // Render nodes — tinted by partition when showPartitions is on
+      const W = Math.max(1, Math.min(p.workers | 0, s.N));
       for (let i = 0; i < s.N; i++) {
         const sp = Math.hypot(s.v[i * 2], s.v[i * 2 + 1]);
         const radius = 1.5 + s.m[i] * 1.6;
-        const hueDeg = (s.hue[i] * 80 + 140) % 360;
+        const q = Math.min(W - 1, Math.floor((i * W) / s.N));
+        const hueDeg = p.showPartitions
+          ? (q * 360) / Math.max(1, W)
+          : (s.hue[i] * 80 + 140) % 360;
+        const chroma = p.showPartitions ? 0.22 : 0.18;
         const light = Math.min(0.92, 0.55 + sp / 600);
         ctx.beginPath();
         ctx.arc(s.x[i * 2], s.x[i * 2 + 1], radius, 0, Math.PI * 2);
-        ctx.fillStyle = `oklch(${light} 0.18 ${hueDeg})`;
+        ctx.fillStyle = `oklch(${light} ${chroma} ${hueDeg})`;
         ctx.fill();
       }
+
 
       if (pointerRef.current.active) {
         const sign = pointerRef.current.mode;
