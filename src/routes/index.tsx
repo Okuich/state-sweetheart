@@ -21,6 +21,7 @@ import { LearningEnginePanel } from "@/components/LearningEnginePanel";
 import { KnowledgeGraphPanel } from "@/components/KnowledgeGraphPanel";
 import { RagPanel } from "@/components/RagPanel";
 import { FabFeedbackPanel } from "@/components/FabFeedbackPanel";
+import { MaterialEditorPanel } from "@/components/MaterialEditorPanel";
 import { FederatedPanel } from "@/components/FederatedPanel";
 import { saveSnapshot } from "@/lib/worldMemory";
 
