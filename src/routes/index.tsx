@@ -391,38 +391,36 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          kernels.cu — compute_spring_forces (one thread per edge)
+          kernels.cu — integrate (semi-implicit Euler, one thread per particle)
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`__global__ void compute_spring_forces(
-    int E,
-    int* edge_i, int* edge_j,
+{`__global__ void integrate(
+    int N,
     float* x,  float* y,  float* z,
+    float* vx, float* vy, float* vz,
     float* fx, float* fy, float* fz,
-    float* rest_length, float k)
+    float* m, float dt)
 {
-    int e = blockIdx.x * blockDim.x + threadIdx.x;
-    if (e >= E) return;
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= N) return;
 
-    int i = edge_i[e], j = edge_j[e];
-    float dx = x[i] - x[j];
-    float dy = y[i] - y[j];
-    float dz = z[i] - z[j];
-    float dist = sqrtf(dx*dx + dy*dy + dz*dz) + 1e-6f;
-    float fmag = -k * (dist - rest_length[e]);
-    float fx_ = fmag * dx / dist;
-    float fy_ = fmag * dy / dist;
-    float fz_ = fmag * dz / dist;
-
-    // Two endpoints can be touched by many threads — atomicAdd avoids the
-    // write race. With ~ ${params.particleCount * params.edgesPerNode} edges this build launches
-    // <<<${Math.ceil((params.particleCount * params.edgesPerNode) / 256)}, 256>>>  (ceil(E/256) blocks × 256 threads).
-    atomicAdd(&fx[i],  fx_); atomicAdd(&fy[i],  fy_); atomicAdd(&fz[i],  fz_);
-    atomicAdd(&fx[j], -fx_); atomicAdd(&fy[j], -fy_); atomicAdd(&fz[j], -fz_);
+    float inv_m = 1.0f / m[i];
+    vx[i] += fx[i] * inv_m * dt;        // v ← v + (F/m) dt
+    vy[i] += fy[i] * inv_m * dt;
+    vz[i] += fz[i] * inv_m * dt;
+    x[i]  += vx[i] * dt;                // x ← x + v dt   (uses NEW v)
+    y[i]  += vy[i] * dt;
+    z[i]  += vz[i] * dt;
 }
 
-// JS analog this build runs (single-thread, no atomics needed):
-//   for (let e = 0; e < s.E; e++) { ... s.f[i*2] += fx; s.f[j*2] -= fx; ... }`}
+// Launch — one warp-aligned thread per particle, no atomics needed
+//   integrate<<<${Math.ceil(params.particleCount / 256)}, 256>>>(N, x,y,z, vx,vy,vz, fx,fy,fz, m, dt);
+//             ↑   ↑
+//             ${`__`} ceil(${params.particleCount} / 256) blocks  × 256 threads = ${Math.ceil(params.particleCount / 256) * 256} threads
+//
+// JS analog this build runs (semi-impl. Euler, current default integrator):
+//   s.v[i*2]   += s.f[i*2]   / s.m[i] * dt;
+//   s.x[i*2]   += s.v[i*2] * dt;`}
         </pre>
       </footer>
     </main>
