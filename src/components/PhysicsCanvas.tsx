@@ -51,6 +51,8 @@ export type Device = "cpu" | "webgpu";
 
 export type SimParams = {
   gravity: number;
+  gravityMode: "uniform" | "directional" | "zero";
+  gravityAngle: number; // degrees, 0 = +x (right), 90 = +y (down)
   damping: number;
   attractor: number;
   particleCount: number;
