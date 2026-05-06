@@ -496,6 +496,8 @@ export function PhysicsCanvas({
   const onLossRef = useRef(onLoss);
   onLossRef.current = onLoss;
   const lossEmaRef = useRef(0);
+  const energyBaselineRef = useRef<number | null>(null);
+  const energyBaselineNRef = useRef(0);
 
   useEffect(() => {
     const canvas = canvasRef.current!;
