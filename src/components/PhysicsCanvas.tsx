@@ -1700,6 +1700,7 @@ export function PhysicsCanvas({
         `PE grav   ${fmt(PE_grav)}`,
         `PE spring ${fmt(PE_spring)}`,
         `PE field  ${fmt(PE_field)}`,
+        `PE pair   ${fmt(PE_pair)}`,
         `── total  ${fmt(E_total)}`,
         `Δ since   ${drift >= 0 ? "+" : ""}${fmt(drift)}`,
         `Δ/E₀      ${(relDrift >= 0 ? "+" : "")}${(relDrift * 100).toFixed(3)}%`,
