@@ -165,6 +165,37 @@ function Index() {
         </div>
       </header>
 
+      {/* float64 perf warning — WGSL has no native f64; CPU f64 is also slower than f32 */}
+      {params.dtype === "float64" && (
+        <div className="relative z-10 mx-6 lg:mx-10 mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-2.5 text-xs text-foreground/90">
+          <div className="flex items-start gap-2">
+            <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-destructive animate-pulse" />
+            <div className="space-y-1">
+              <div className="uppercase tracking-[0.22em] text-[10px] text-destructive">
+                float64 · performance warning
+              </div>
+              <div className="text-muted-foreground leading-relaxed">
+                {params.device === "webgpu" ? (
+                  <>
+                    WGSL has <span className="text-foreground">no native <code className="text-primary">f64</code></span> type — the kernel
+                    emulates double precision via paired <code className="text-primary">f32</code> limbs.
+                    Expect <span className="text-foreground">~8–20× slower</span> step time, ~2× memory traffic, and
+                    reduced occupancy from extra registers. Use <code className="text-primary">float32</code> unless
+                    you need long-horizon energy conservation.
+                  </>
+                ) : (
+                  <>
+                    CPU <code className="text-primary">f64</code> doubles buffer size and halves SIMD width — expect
+                    <span className="text-foreground"> ~2× slower</span> step time vs <code className="text-primary">f32</code>.
+                    Recommended only for stiff systems or determinism studies.
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Hero / Title */}
       <section className="relative z-10 px-6 lg:px-10 pb-6 max-w-4xl">
         <h1 className="font-display text-4xl md:text-6xl font-bold leading-[0.95] text-glow">
