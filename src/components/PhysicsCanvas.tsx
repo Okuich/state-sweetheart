@@ -277,7 +277,11 @@ export function PhysicsCanvas({
 
       let s = stateRef.current!;
       if (s.N !== p.particleCount) {
-        s = initState(p.particleCount, w, h, p.edgesPerNode, p.restLength);
+        s = initState(p.particleCount, w, h, p.edgesPerNode, p.restLength, p.dtype, p.device);
+        stateRef.current = s;
+      } else if (s.dtype !== p.dtype || s.device !== p.device) {
+        // PhysicsState.to(device, dtype) — re-cast all tensors, re-init f
+        s = toDevice(s, p.device, p.dtype);
         stateRef.current = s;
       }
 
