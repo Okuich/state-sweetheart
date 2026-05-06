@@ -641,7 +641,72 @@ function syncBoundaries(s: State, partOf: (i: number) => number) {
   }
 }
 
-function buildEdges(N: number, perNode: number) {
+/**
+ * BoundaryIndex — preprocessed ghost/halo overlap descriptor per partition.
+ *
+ * For a partitioning into W workers (=GPUs), every cross-partition edge
+ * (i,j) with partOf(i) ≠ partOf(j) creates a *ghost dependency*: worker
+ * partOf(i) must read j's state, and partOf(j) must read i's state.
+ *
+ * Per worker q we precompute three flat Int32Arrays:
+ *   • local[q]  — nodes OWNED by q that are referenced from another partition
+ *                 (i.e. the "boundary nodes" that need to be SENT outward).
+ *   • ghost[q]  — nodes OWNED by other partitions but referenced from q
+ *                 (i.e. the halo cells q must RECEIVE before its kernel runs).
+ *   • pairs[q]  — flat pairs (own, ghost) that q must reduce/average against.
+ *
+ * Built once per (N, W, edges) tuple and cached in a ref so the per-frame
+ * sync_boundaries kernel iterates only over the seam, not all E edges.
+ */
+type BoundaryIndex = {
+  W: number;
+  N: number;
+  edgeSig: number;
+  local: Int32Array[];   // length W
+  ghost: Int32Array[];   // length W
+  pairs: Int32Array[];   // length W, flat [own0, ghost0, own1, ghost1, ...]
+  totalLocal: number;
+  totalGhost: number;
+};
+
+function buildBoundaryIndices(s: State, W: number): BoundaryIndex {
+  const partOf = (i: number) => Math.min(W - 1, Math.floor((i * W) / s.N));
+  const localSets: Set<number>[] = Array.from({ length: W }, () => new Set());
+  const ghostSets: Set<number>[] = Array.from({ length: W }, () => new Set());
+  const pairBuf:   number[][]    = Array.from({ length: W }, () => []);
+
+  for (let e = 0; e < s.E; e++) {
+    const i = s.edges[e * 2];
+    const j = s.edges[e * 2 + 1];
+    const pi = partOf(i), pj = partOf(j);
+    if (pi === pj) continue;
+    // i is owned by pi; from pi's POV, i is a LOCAL boundary node and j is a GHOST.
+    localSets[pi].add(i); ghostSets[pi].add(j); pairBuf[pi].push(i, j);
+    localSets[pj].add(j); ghostSets[pj].add(i); pairBuf[pj].push(j, i);
+  }
+
+  const local: Int32Array[] = [];
+  const ghost: Int32Array[] = [];
+  const pairs: Int32Array[] = [];
+  let totalLocal = 0, totalGhost = 0;
+  for (let q = 0; q < W; q++) {
+    const lo = Int32Array.from(localSets[q]); lo.sort();
+    const gh = Int32Array.from(ghostSets[q]); gh.sort();
+    local.push(lo);
+    ghost.push(gh);
+    pairs.push(Int32Array.from(pairBuf[q]));
+    totalLocal += lo.length;
+    totalGhost += gh.length;
+  }
+
+  // Cheap structural fingerprint of the edge list — used as a cache key so
+  // we rebuild only when topology actually changes (count + first/last node).
+  const edgeSig = s.E === 0
+    ? 0
+    : (s.E * 1_000_003) ^ (s.edges[0] | 0) ^ ((s.edges[s.E * 2 - 1] | 0) << 13);
+
+  return { W, N: s.N, edgeSig, local, ghost, pairs, totalLocal, totalGhost };
+}
   // Random sparse graph: each node connects to `perNode` neighbors
   const set = new Set<number>();
   const list: number[] = [];
