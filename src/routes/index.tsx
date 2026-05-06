@@ -133,6 +133,8 @@ function Index() {
     particleCount: 400,
     trail: 0.22,
     paused: false,
+    dtScale: 1,
+    stepOnce: 0,
     springK: 80,
     restLength: 40,
     edgesPerNode: 2,
@@ -353,6 +355,7 @@ function Index() {
 
       {/* Controls */}
       <section className="relative z-10 mx-4 lg:mx-10 mb-10 grid gap-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm md:grid-cols-2 lg:grid-cols-3">
+        <Field label="dt scale"  value={params.dtScale}   min={0.05} max={3}   step={0.05} onChange={(v) => update("dtScale", v)} />
         <Field label="Gravity"   value={params.gravity}   min={-200} max={400} step={1}    onChange={(v) => update("gravity", v)} />
         <Field label="Damping"   value={params.damping}   min={0}    max={1}   step={0.01} onChange={(v) => update("damping", v)} />
         <Field label="Restitution" value={params.restitution} min={0}  max={1}   step={0.01} onChange={(v) => update("restitution", v)} />
@@ -725,6 +728,15 @@ function Index() {
             onClick={() => update("paused", !params.paused)}
           >
             {params.paused ? "Resume" : "Pause"}
+          </Button>
+          <Button
+            variant="outline"
+            className="flex-1 uppercase tracking-[0.18em] text-xs border-primary/40 text-primary hover:bg-primary/10 disabled:opacity-40"
+            onClick={() => update("stepOnce", (params.stepOnce ?? 0) + 1)}
+            disabled={!params.paused}
+            title="Advance one frame (paused only)"
+          >
+            Step
           </Button>
           <Button
             variant="outline"

@@ -56,6 +56,8 @@ export type SimParams = {
   particleCount: number;
   trail: number;
   paused: boolean;
+  dtScale: number;
+  stepOnce: number;
   springK: number;
   restLength: number;
   edgesPerNode: number;
@@ -713,6 +715,7 @@ export function PhysicsCanvas({
   const paramsRef = useRef(params);
   paramsRef.current = params;
   const lastValidationRef = useRef(0);
+  const stepOnceRef = useRef(0);
   const onValidationRef = useRef(onValidation);
   onValidationRef.current = onValidation;
   const onLossRef = useRef(onLoss);
@@ -767,7 +770,9 @@ export function PhysicsCanvas({
     ro.observe(canvas);
 
     const step = (now: number) => {
-      const dt = Math.min(0.033, (now - last) / 1000);
+      const p0 = paramsRef.current;
+      const rawDt = p0.paused ? 1 / 60 : Math.min(0.033, (now - last) / 1000);
+      const dt = rawDt * (p0.dtScale ?? 1);
       last = now;
       const p = paramsRef.current;
       const r = canvas.getBoundingClientRect();
@@ -827,7 +832,9 @@ export function PhysicsCanvas({
         return;
       }
 
-      if (!p.paused) {
+      const stepRequested = (p.stepOnce ?? 0) > stepOnceRef.current;
+      if (stepRequested) stepOnceRef.current = p.stepOnce ?? 0;
+      if (!p.paused || stepRequested) {
         // run_simulation(state, config): for t in range(config.steps): ...
         // Adaptive sub-stepping: when edges are stretched well past their
         // rest length OR particles are moving fast enough that one Euler
