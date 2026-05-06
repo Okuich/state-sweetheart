@@ -797,6 +797,11 @@ function Index() {
         <FabFeedbackPanel />
       </section>
 
+      {/* Federated Industrial Learning — DP-noised secret-shared FedAvg across companies */}
+      <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
+        <FederatedPanel />
+      </section>
+
       {/* Autonomous Physics Agents — agentic reasoning over current world */}
       <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
         <AgentsPanel
