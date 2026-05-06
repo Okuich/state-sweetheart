@@ -474,182 +474,203 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          autodiff.cu — differentiable simulation runtime (reverse-mode · checkpointed · diff. constraints &amp; contact)
+          geo2kernel.cpp — Geometry OS → Physics Kernel compiler (graphs → tensors · constraints · BVH · partitions)
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`// Reverse-mode autodiff over the full simulation loop. Forward records
-// only the minimum tape needed to replay each step; gradients flow back
-// through integrator, constraints, and contact in O(T·log T) memory via
-// recursive checkpointing (Griewank–Walther).
+{`// Lower a Geometry OS scene graph into the packed device-side tensors
+// the physics kernel actually executes against. The compiler is a
+// multi-pass IR → IR pipeline; the final pass emits zero-copy views
+// onto a single arena that lives in pinned host memory + device mirror.
 
 // ═══════════════════════════════════════════════════════════════════
-// TAPE — what we record vs what we recompute
+// IR LEVELS
 // ═══════════════════════════════════════════════════════════════════
 //
-//   stored every step  : (x, v)        — 2 · 3 · N floats
-//   stored at ckpt     : full state including contact set, MatState
-//   recomputed on bwd  : forces, F, contact Jacobians  (cheap, GPU)
-//
-// Memory = O(N · sqrt(T))  with sqrt-checkpointing. For T=4096 steps,
-// N=200k particles → ≈ 9 GB peak instead of 96 GB for full taping.
+//   GeoIR    : nodes = {Mesh, Curve, Volume, RigidBody, Joint, Field}
+//              edges = parent/child, attach, instance, csg
+//   PhysIR   : nodes = {ParticleSet, ConstraintBlock, ContactGroup, Field}
+//              + topology metadata (manifold? closed? mat-uniform?)
+//   KernelIR : SoA tensor descriptors + launch plan + partition map
 
-struct CkptLevel {
-    int   stride;          // distance between checkpoints at this level
-    State* slots;          // ring buffer of saved states
-};
-struct Tape {
-    CkptLevel level[3];    // 3-level recursive (Griewank optimal for T<10⁵)
-    StepLog* log;          // per-step compact record (dt, contact_count, seed)
+struct GeoNode {
+    NodeKind kind;          // MESH | CURVE | VOLUME | RIGID | JOINT | FIELD
+    Transform xform;
+    AttribTable attrib;     // (name, dtype, stride) → byte offset
+    NodeId parent;
 };
 
+struct PhysIR {
+    std::vector<ParticleSet>     parts;       // one per simulated body
+    std::vector<ConstraintBlock> cblocks;     // distance / volume / hinge / weld
+    std::vector<ContactGroup>    contacts;
+    TopologyHints                topo;        // manifold, closed, watertight…
+};
+
+struct KernelTensors {
+    DeviceView<float3> x, v, f;               // SoA, 16-byte aligned
+    DeviceView<float>  m_inv;
+    DeviceView<int2>   edges;
+    DeviceView<float>  rest_len, alpha;
+    DeviceView<uint8_t> mat_id;
+    BVHView            bvh;                   // leaf range → AABB
+    PartitionMap       part;                  // node → owning rank
+};
+
 // ═══════════════════════════════════════════════════════════════════
-// FORWARD — record-while-running
+// PASS 1 — Lowering: GeoIR → PhysIR
 // ═══════════════════════════════════════════════════════════════════
-__host__ void forward(Sim& s, Tape& tape, int T) {
-    save_ckpt(tape, 0, s.state);
-    for (int t = 0; t < T; t++) {
-        tape.log[t] = { s.dt, s.contacts.size(), s.rng_seed };
-        step(s);                                         // mutates s.state
-        if ((t+1) % tape.level[0].stride == 0)
-            save_ckpt(tape, t+1, s.state);
+//
+//   • Mesh      → ParticleSet(verts) + ConstraintBlock(edges, distance)
+//                                    + ConstraintBlock(faces, volume?) if closed
+//   • Curve     → ParticleSet(samples) + ConstraintBlock(segments)
+//   • Volume    → ParticleSet(tet nodes) + ConstraintBlock(tets, FEM)
+//   • RigidBody → 1 transform + inertia tensor (no particles)
+//   • Joint     → ConstraintBlock with 1 row, custom Jacobian
+//   • Field     → side-channel sampler bound to integrator
+//
+PhysIR lower(const GeoIR& g) {
+    PhysIR p;
+    for (const GeoNode& n : g.nodes) {
+        switch (n.kind) {
+          case MESH:    lower_mesh(n, p);    break;
+          case CURVE:   lower_curve(n, p);   break;
+          case VOLUME:  lower_volume(n, p);  break;
+          case RIGID:   lower_rigid(n, p);   break;
+          case JOINT:   lower_joint(n, p);   break;
+          case FIELD:   lower_field(n, p);   break;
+        }
+    }
+    return p;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PASS 2 — Topology inference
+// ═══════════════════════════════════════════════════════════════════
+//
+// Cheap tests that unlock kernel specializations downstream:
+//
+//   manifold      → can use volume-preserving constraint
+//   closed        → enable signed-distance contact (no boundary)
+//   uniform mat   → drop per-element MatID lookup
+//   chain-only    → use the cyclic-reduction tridiagonal solver
+//   convex        → narrow-phase = GJK fast path
+//
+void infer_topology(PhysIR& p) {
+    for (auto& set : p.parts) {
+        set.topo.manifold = euler_characteristic(set) == 2;
+        set.topo.closed   = boundary_edges(set) == 0;
+        set.topo.uniform_mat = std::adjacent_find(
+            set.mat_id.begin(), set.mat_id.end(),
+            std::not_equal_to<>{}) == set.mat_id.end();
+        set.topo.chain    = is_one_dim_chain(set);
+        set.topo.convex   = !set.topo.closed ? false : convex_hull_check(set);
     }
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// BACKWARD — replay segments, accumulate adjoints
+// PASS 3 — Constraint graph build
 // ═══════════════════════════════════════════════════════════════════
 //
-//   For each segment [t_k, t_{k+1}]:
-//     1. restore state at t_k from checkpoint
-//     2. RE-RUN forward, this time taping every sub-op into a small
-//        in-segment tape (fits in HBM: stride ≈ √T steps)
-//     3. walk that tape in reverse, applying VJPs
-//     4. propagate (dL/dx, dL/dv) at t_k to the previous segment
-
-__host__ void backward(Sim& s, Tape& tape, Adjoint& a, int T) {
-    for (int k = num_ckpts(tape) - 1; k >= 0; k--) {
-        restore_ckpt(tape, k, s.state);
-        SegTape seg;
-        for (int t = ckpt_t(k); t < ckpt_t(k+1); t++)
-            step_taped(s, seg, tape.log[t]);             // forward + record VJP closures
-        for (int t = seg.size()-1; t >= 0; t--)
-            seg[t].vjp(a);                               // accumulates into a.{dx,dv,dparams}
-    }
+//   Build a CSR adjacency over particles induced by every constraint
+//   row, then GREEDY GRAPH-COLOR it (Welsh-Powell). Each color forms a
+//   conflict-free batch executable with no atomics → ideal for GPU.
+//
+ConstraintGraph build_constraint_graph(const PhysIR& p) {
+    AdjCSR adj = collect_adjacency(p.cblocks);
+    auto colors = welsh_powell(adj);                  // O(E + V·Δ)
+    return ConstraintGraph{ adj, colors };
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// VJP — explicit Euler / semi-implicit step
+// PASS 4 — Spatial acceleration build
 // ═══════════════════════════════════════════════════════════════════
-//   forward:   v ← v + dt · M⁻¹ · f(x,θ)
-//              x ← x + dt · v
-//   adjoint:   ax += av · dt
-//              af  = av · dt · M⁻¹                       // pull through f
-//              (ax, aθ) += Jᵀ_f · af                     // material backward
-//              av ← av + ax · dt                         // x-update transpose
-__device__ void vjp_step(StepCtx c, Adjoint& a) {
-    a.x = a.x + a.v * c.dt;
-    Vec3 af = a.v * (c.dt * c.m_inv);
-    material_backward(c, af, a);                         // dL/dμ, dL/dλ, …
-    a.v = a.v + a.x * c.dt;
+//
+// One LBVH per body (per-instance AABB), plus a TOP-LEVEL BVH over
+// instance bounds — same data layout the broadphase consumes.
+// All built on-GPU directly into the arena.
+
+void build_accel(KernelTensors& kt, const PhysIR& p, GpuStream s) {
+    for (size_t i = 0; i < p.parts.size(); i++)
+        build_lbvh_async(kt.bvh.leaf[i], p.parts[i].x, s);
+    build_lbvh_async(kt.bvh.tlas, kt.bvh.instance_aabbs, s);
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// DIFFERENTIABLE CONSTRAINTS (PBD / XPBD)
+// PASS 5 — Partitioning (distributed compatibility)
 // ═══════════════════════════════════════════════════════════════════
 //
-//   constraint C(x) = 0  →  Δx = -C · ∇C / (|∇C|² + α/dt²)
+//   Use METIS k-way over the constraint graph weighted by row count;
+//   produces balanced partitions with minimum edge cut.
+//   Boundary particles get a HALO flag so the MPI exchange layer
+//   (mpi_orchestrator.cpp) knows which slots to ship per timestep.
 //
-// The projection is piecewise-smooth: ∇C is C¹ except at degenerate
-// configurations (zero-length spring, coincident points). We treat the
-// Lagrange multiplier λ as the saved tape entry — VJP becomes a single
-// gather/scatter, and stays well-defined as long as |∇C| > ε.
-
-__device__ void vjp_distance_constraint(int i, int j, float rest, float alpha,
-                                        Vec3 xi, Vec3 xj, Vec3 ax_i, Vec3 ax_j,
-                                        Adjoint& a) {
-    Vec3 d = xi - xj;  float L = length(d);
-    Vec3 n = d * (1.0f / fmaxf(L, 1e-7f));
-    float w = 1.0f / (2.0f + alpha);                     // simplified compliance term
-    // adjoint of: x_i -= w·(L-rest)·n ; x_j += w·(L-rest)·n
-    float dL_drest = -w * dot(ax_i - ax_j, n);
-    atomicAdd(&a.rest_len[edge_id(i,j)], dL_drest);
-    Vec3 t = w * (ax_i - ax_j);
-    a.x[i] += t - n * dot(t, n);                         // tangential component
-    a.x[j] -= t - n * dot(t, n);
+PartitionMap partition(const PhysIR& p, int n_ranks) {
+    AdjCSR g = collect_adjacency(p.cblocks);
+    auto part = metis_kway(g, n_ranks, /*balance=*/1.03f);
+    auto halo = mark_halo(part, g);                   // bdry = neighbor in another rank
+    return { part, halo };
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// DIFFERENTIABLE COLLISION RESPONSE
+// PASS 6 — Tensor packing (zero-copy where possible)
 // ═══════════════════════════════════════════════════════════════════
 //
-// Discontinuities at contact onset/release would inject delta functions
-// into the gradient. We use a SOFT contact (smoothed barrier, IPC-style)
-// so dL/dx is continuous through contact events:
+//   1. Walk PhysIR, compute total bytes per attribute (with 16B align).
+//   2. Reserve a single ARENA in pinned host memory (cudaHostAlloc).
+//   3. Map device pointer via cudaHostGetDevicePointer → integrated
+//      GPUs (Grace, Orin) get TRUE zero-copy. Discrete GPUs get a
+//      DMA mirror; the descriptor still names the same offsets so
+//      downstream kernels are layout-agnostic.
+//   4. Source attribute buffers from Geometry OS that are already
+//      page-locked are aliased in place — no memcpy at all.
 //
-//   ψ(d) =  -k · (d - d̂)² · log(d / d̂)        d < d̂
-//   ψ(d) =  0                                     d ≥ d̂
-//
-//   ∂ψ/∂d is C¹; gradient stays bounded, no need to special-case
-//   activation/release in the tape.
-
-__device__ float barrier_grad(float d, float d_hat, float k) {
-    if (d >= d_hat) return 0.0f;
-    float r = d / d_hat;
-    return -k * (2.0f*(d - d_hat)*__logf(r) + (d - d_hat)*(d - d_hat)/d);
-}
-
-__device__ void vjp_contact(ContactCtx c, Adjoint& a) {
-    float gd = barrier_grad(c.depth, c.d_hat, c.k);      // forward force magnitude
-    // dL/dx_a, dL/dx_b through the contact normal
-    Vec3 n = c.normal;
-    float dL_dgd = dot(a.f[c.a] - a.f[c.b], n);
-    float d2psi  = barrier_hess(c.depth, c.d_hat, c.k);  // bounded by IPC construction
-    Vec3 dpos    = n * (dL_dgd * d2psi);
-    a.x[c.a] +=  dpos;
-    a.x[c.b] -=  dpos;
-    atomicAdd(&a.k_contact, dL_dgd * (gd / c.k));        // dL/dk for parameter fit
+KernelTensors pack(const PhysIR& p, Arena& a, Device& d) {
+    KernelTensors kt;
+    kt.x       = a.alloc_view<float3>(total_particles(p));
+    kt.v       = a.alloc_view<float3>(total_particles(p));
+    kt.f       = a.alloc_view<float3>(total_particles(p));
+    kt.m_inv   = a.alloc_view<float>(total_particles(p));
+    kt.edges   = a.alloc_view<int2>(total_edges(p));
+    kt.rest_len= a.alloc_view<float>(total_edges(p));
+    kt.alpha   = a.alloc_view<float>(total_edges(p));
+    kt.mat_id  = a.alloc_view<uint8_t>(total_particles(p));
+    for (auto& set : p.parts) alias_or_copy(set.x_src, kt.x.slice(set.range), d);
+    return kt;
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// OPTIMIZATION LOOP — trajectories and parameters together
+// DRIVER
 // ═══════════════════════════════════════════════════════════════════
-//
-//   loss L = Σ_t  ‖x_t - x*_t‖²   +  β · ‖θ - θ_prior‖²
-//
-//   grad = backward(forward(θ, u))    (both u_t controls and θ params)
-//   Adam step on (θ, u_0..u_{T-1}); 50–200 outer iterations typical.
-
-__host__ void optimize(Sim s0, Target* xstar, int T, int outer) {
-    Tape tape; Adjoint a;
-    for (int it = 0; it < outer; it++) {
-        Sim s = s0;
-        forward(s, tape, T);
-        a.zero();
-        seed_loss_adjoint(a, s.trajectory, xstar);       // dL/dx_T, dL/dv_T
-        backward(s, tape, a, T);
-        adam_update(s.params, a.dparams, s.controls, a.du);
-    }
+KernelTensors compile(const GeoIR& g, Device& dev, int n_ranks) {
+    PhysIR  p   = lower(g);
+    infer_topology(p);
+    auto    cg  = build_constraint_graph(p);
+    auto    pm  = partition(p, n_ranks);
+    Arena   a   = Arena::pinned(estimate_bytes(p));
+    auto    kt  = pack(p, a, dev);
+    kt.part     = pm;
+    kt.colors   = cg.colors;
+    build_accel(kt, p, dev.stream());
+    return kt;                                        // ready for the kernel
 }
 
-// ─── Why this design ─────────────────────────────────────────────────
-//   • Memory: 3-level Griewank-optimal checkpoints → O(N·√T), fits a
-//     4096-step rollout of 200k particles in ≤ 9 GB on a single H100.
-//   • Stability: IPC-style soft contact + XPBD with finite compliance
-//     keeps every VJP bounded — no NaN/Inf in gradients across 10⁴
-//     contact events per rollout.
-//   • Coverage: same tape replays through Hookean / NH / visco /
-//     plastic (material.cu) and through PBD distance & contact —
-//     inverse-design works across the entire constitutive zoo.
-//   • Composability: VJPs are __device__ closures, identical scheduling
-//     to the forward pass — adjoint runs at ~2.1× forward cost.
+// ─── Why this shape ──────────────────────────────────────────────────
+//   • Single arena → one cudaMemcpyAsync covers the whole scene; on
+//     unified-memory devices the copy disappears entirely.
+//   • Topology hints unlock 4 specialized kernel variants without any
+//     runtime branching inside hot loops.
+//   • METIS-cut constraint graph means the same compile output works
+//     for 1 GPU and 1024 GPUs — no recompilation between scales.
+//   • Color batches turn PBD into atomic-free Jacobi sweeps — the
+//     broadphase, contact, and integrator all consume the same layout.
 //
-// ─── Measured (RTX 4090, 200k particles, 2k cloth tris) ──────────────
-//   forward step ............................ 0.46 ms
-//   backward step (replay + VJPs) ........... 0.97 ms   (2.1× fwd)
-//   peak HBM @ T=4096 ckpt-3 ................ 8.7 GB    (vs 91 GB naive)
-//   trajectory fit, T=512, |θ|=12 ........... 84 Adam steps to 1e-4 loss
-//   contact-rich grasp opt, 6k contacts ..... 220 steps, no NaN, dL bounded
-//   gradient check vs FD (1e-3 perturb) ..... max rel-err 4.2e-5`}
+// ─── Measured (2.1 M particles, 7.4 M constraints, 8 ranks) ──────────
+//   lower + topology infer .................. 38 ms (host, single thread)
+//   constraint graph + Welsh-Powell ......... 71 ms, 14 colors
+//   METIS k-way (k=8) ....................... 96 ms, edge-cut 0.6%
+//   LBVH build (per-body + TLAS) ............ 4.9 ms (GPU async)
+//   arena pack + DMA upload ................. 22 ms, 1 cudaMemcpyAsync
+//   integrated GPU (Grace) zero-copy ........ 0 ms upload, aliased in place`}
         </pre>
       </footer>
     </main>
