@@ -141,6 +141,41 @@ function toDevice(s: State, device: Device, dtype: Dtype): State {
  *
  * Walls: elastic-ish reflection with restitution 0.7.
  */
+/**
+ * project_constraints — Position-Based Dynamics (Gauss-Seidel) distance solver.
+ *
+ * For each iteration, every edge constraint pulls its two endpoints back to
+ * `rest_length`, splitting the correction by inverse-mass. Velocities are
+ * implicitly updated next integrator step (positions changed under them).
+ */
+function projectConstraints(s: State, iterations: number, dt: number) {
+  if (iterations <= 0 || s.E === 0) return;
+  const invDt = dt > 0 ? 1 / dt : 0;
+  for (let it = 0; it < iterations; it++) {
+    for (let e = 0; e < s.E; e++) {
+      const i = s.edges[e * 2];
+      const j = s.edges[e * 2 + 1];
+      const dx = s.x[i * 2]     - s.x[j * 2];
+      const dy = s.x[i * 2 + 1] - s.x[j * 2 + 1];
+      const dist = Math.sqrt(dx * dx + dy * dy) + 1e-8;
+      const rest = s.edgeRest[e];
+      const wi = 1 / s.m[i], wj = 1 / s.m[j];
+      const wsum = wi + wj;
+      const c = (dist - rest) / dist / wsum;
+      const cx = c * dx, cy = c * dy;
+      s.x[i * 2]     -= wi * cx;
+      s.x[i * 2 + 1] -= wi * cy;
+      s.x[j * 2]     += wj * cx;
+      s.x[j * 2 + 1] += wj * cy;
+      // Reflect correction into velocity so motion stays consistent
+      s.v[i * 2]     -= wi * cx * invDt * 0.5;
+      s.v[i * 2 + 1] -= wi * cy * invDt * 0.5;
+      s.v[j * 2]     += wj * cx * invDt * 0.5;
+      s.v[j * 2 + 1] += wj * cy * invDt * 0.5;
+    }
+  }
+}
+
 function stepState(
   s: State,
   dt: number,
