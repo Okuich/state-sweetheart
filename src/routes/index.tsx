@@ -142,6 +142,7 @@ function Index() {
     gravityAngle: 90,
     damping: 0.4,
     dragMode: "explicit",
+    airDragK: 0,
     attractor: 1.2,
     particleCount: 400,
     trail: 0.22,
