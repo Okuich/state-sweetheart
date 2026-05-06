@@ -10,6 +10,7 @@ import { EconomicsPanel } from "@/components/EconomicsPanel";
 import { GatewayPanel } from "@/components/GatewayPanel";
 import { TemplatesPanel } from "@/components/TemplatesPanel";
 import { GoalOptPanel } from "@/components/GoalOptPanel";
+import { StreamRuntimePanel } from "@/components/StreamRuntimePanel";
 import { saveSnapshot } from "@/lib/worldMemory";
 
 export const Route = createFileRoute("/")({
