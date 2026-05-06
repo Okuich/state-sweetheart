@@ -377,7 +377,10 @@ function Index() {
         </div>
       </section>
 
-      {/* Controls */}
+      {/* Live energy plots — verifies gravity (PE↔KE exchange) and damping (E ↘) */}
+      <section className="relative z-10 mx-4 lg:mx-10 mb-4">
+        <energyPlot.Plot height={200} />
+      </section>
       <section className="relative z-10 mx-4 lg:mx-10 mb-10 grid gap-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm md:grid-cols-2 lg:grid-cols-3">
         <Field label="dt scale"  value={params.dtScale}   min={0.05} max={3}   step={0.05} onChange={(v) => update("dtScale", v)} />
         <Field label="Gravity"   value={params.gravity}   min={-200} max={400} step={1}    onChange={(v) => update("gravity", v)} />
