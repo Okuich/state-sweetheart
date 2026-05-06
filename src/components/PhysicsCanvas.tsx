@@ -1674,6 +1674,16 @@ export function PhysicsCanvas({
         if (energyHistLenRef.current < ENERGY_HIST_CAP) energyHistLenRef.current++;
       }
 
+      // emit energy sample for downstream React plots
+      onEnergyRef.current?.({
+        t: now,
+        KE,
+        PE: PE_total,
+        E: E_total,
+        baseline,
+        drift,
+      });
+
       const fmt = (n: number) => {
         const a = Math.abs(n);
         if (a >= 1e6) return (n / 1e6).toFixed(2) + "M";
