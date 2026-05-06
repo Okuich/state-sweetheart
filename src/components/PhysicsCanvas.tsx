@@ -566,26 +566,8 @@ export function PhysicsCanvas({
               }
             }
 
-            // pairwise within partition (short-range, local interactions)
-            if (pStr !== 0 && pRad > 0) {
-              for (let i = a; i < b; i++) {
-                const xi = s.x[i * 2], yi = s.x[i * 2 + 1];
-                for (let j = i + 1; j < b; j++) {
-                  const dx = xi - s.x[j * 2];
-                  const dy = yi - s.x[j * 2 + 1];
-                  const r2 = dx * dx + dy * dy;
-                  if (r2 > r2max || r2 < 1e-4) continue;
-                  const dist = Math.sqrt(r2);
-                  const fmag = pStr * (norm * norm / r2 - norm / dist);
-                  const fx = (dx / dist) * fmag;
-                  const fy = (dy / dist) * fmag;
-                  s.f[i * 2]     += fx;
-                  s.f[i * 2 + 1] += fy;
-                  s.f[j * 2]     -= fx;
-                  s.f[j * 2 + 1] -= fy;
-                }
-              }
-            }
+            // pairwise: handled globally below via uniform spatial grid
+            // (kept here as a no-op slot so the worker pipeline order is preserved)
 
             // potential field (local)
             computePotentialForces_range(s, p.field, p.fieldStrength, w, h, a, b);
