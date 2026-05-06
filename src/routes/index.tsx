@@ -391,45 +391,45 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          kernels.cu — shared-memory reduction (coalesce per-edge contributions before global atomicAdd)
+          multi_gpu.cu — domain decomposition with halo exchange (overlapping ghost regions)
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`#define BLOCK_SIZE 256
+{`// ── partition: split N=20000 nodes across 2 GPUs with a 1000-node halo ──
+//
+//                 owned by GPU 1            owned by GPU 2
+//             ┌──────────────────────┐ ┌──────────────────────┐
+//   nodes:    0 ............. 8999  9000 ............. 19999
+//                              └────── halo (ghost) ──────┘
+//                              shared region: 9000–9999
+//
+//   GPU 1: nodes [0    – 9999]   // owns 0–8999, ghosts 9000–9999
+//   GPU 2: nodes [9000 – 19999]  // owns 10000–19999, ghosts 9000–9999
 
-__global__ void compute_spring_forces_smem(
-    int E,
-    int* edge_i, int* edge_j,
-    float* x, float* y, float* z,
-    float* fx, float* fy, float* fz,
-    float* rest_length, float k)
-{
-    __shared__ float s_fx[BLOCK_SIZE];      // staging buffer in fast SRAM
-    int local_id = threadIdx.x;
-    int e        = blockIdx.x * blockDim.x + local_id;
+// per-step pipeline on each GPU
+for (int step = 0; step < steps; step++) {
+    // 1. compute forces on OWNED + GHOST nodes (ghosts give correct edge sums)
+    compute_spring_forces<<<...>>>(E_local, ...);
+    apply_gravity        <<<...>>>(N_local, fy, g);
+    integrate            <<<...>>>(N_owned, ...);   // only integrate what we own
 
-    s_fx[local_id] = 0.0f;
-    __syncthreads();
-
-    // 1. each thread accumulates its edge's contribution LOCALLY
-    if (e < E) {
-        float value = /* spring force x-component for edge e */;
-        s_fx[local_id] += value;            // shared-memory write, no atomic
-    }
-    __syncthreads();
-
-    // 2. block-level reduction (tree, halving stride)
-    for (int s = BLOCK_SIZE / 2; s > 0; s >>= 1) {
-        if (local_id < s) s_fx[local_id] += s_fx[local_id + s];
-        __syncthreads();
-    }
-
-    // 3. ONE atomicAdd per block to global memory (instead of 256)
-    if (local_id == 0) atomicAdd(&fx[node_of_block], s_fx[0]);
+    // 2. halo exchange — swap updated positions of overlap region
+    cudaMemcpyPeerAsync(gpu2.x + 9000, gpu2.id,
+                        gpu1.x + 9000, gpu1.id,
+                        1000 * sizeof(float), stream);
+    cudaMemcpyPeerAsync(gpu1.x + 9000, gpu1.id,
+                        gpu2.x + 9000, gpu2.id,
+                        1000 * sizeof(float), stream);
+    cudaStreamSynchronize(stream);                  // barrier before next step
 }
 
-// Why: global atomicAdd serializes contention on hot nodes.
-// Staging in __shared__ collapses 256 atomics → 1 per block,
-// turning a memory-bound kernel into a compute-bound one.`}
+// Why overlap?
+//   Edges crossing the cut (i<9000, j>9000) need both endpoints resident.
+//   The halo width must be ≥ the longest cross-partition edge stencil.
+//   Without it, boundary nodes see stale forces and the cloth tears.
+//
+// Trade-off: wider halo = more redundant compute + bigger transfers,
+//            narrower halo = more frequent syncs. Tune to the graph's
+//            edge cut (METIS minimises it for you).`}
         </pre>
       </footer>
     </main>
