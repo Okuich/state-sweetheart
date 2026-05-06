@@ -310,16 +310,21 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          differentiable_loop.py — loss.backward() through the simulator
+          state.h — struct-of-arrays memory layout
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`def loss_fn(initial_state):
-    final_state = run_simulation(initial_state, config)
-    return objective(final_state)        # ½ ‖x - target‖²
-
-loss = loss_fn(state)
-loss.backward()                          # ∂L/∂x  flows back through every step
-optimizer.step()                         # x ← x - lr · ∂L/∂x`}
+{`// positions
+float* x;   float* y;   float* z;     // [N]
+// velocities
+float* vx;  float* vy;  float* vz;    // [N]
+// forces
+float* fx;  float* fy;  float* fz;    // [N]
+// mass
+float* m;                              // [N]
+// edges (constraints / springs)
+int*   edge_i;                         // [E]
+int*   edge_j;                         // [E]
+float* rest_length;                    // [E]`}
         </pre>
       </footer>
     </main>
