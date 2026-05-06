@@ -779,6 +779,7 @@ export function PhysicsCanvas({
           subSteps = Math.min(Math.max(p.maxSubSteps | 0, subSteps), Math.max(subSteps, need));
         }
         const subDt = dt / subSteps;
+        lastSubStepsRef.current = subSteps;
         const k = p.springK;
         const pStr = p.pairwiseStrength;
         const pRad = p.pairwiseRadius;
