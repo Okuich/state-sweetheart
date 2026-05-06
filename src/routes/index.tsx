@@ -190,6 +190,43 @@ function Index() {
           </div>
         </div>
 
+        <div className="space-y-2">
+          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Dtype</div>
+          <div className="flex gap-2">
+            {(["float32", "float64"] as const).map((opt) => (
+              <Button
+                key={opt}
+                variant={params.dtype === opt ? "default" : "outline"}
+                className={`flex-1 uppercase tracking-[0.18em] text-[10px] ${
+                  params.dtype === opt ? "bg-primary text-primary-foreground glow-mint" : ""
+                }`}
+                onClick={() => update("dtype", opt)}
+              >
+                {opt}
+              </Button>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Device</div>
+          <div className="flex gap-2">
+            {(["cpu", "webgpu"] as const).map((opt) => (
+              <Button
+                key={opt}
+                variant={params.device === opt ? "default" : "outline"}
+                className={`flex-1 uppercase tracking-[0.18em] text-[10px] ${
+                  params.device === opt ? "bg-secondary text-secondary-foreground glow-coral" : ""
+                }`}
+                onClick={() => update("device", opt)}
+                title={opt === "webgpu" ? "Logical device tag — falls back to CPU when navigator.gpu is absent" : undefined}
+              >
+                {opt}
+              </Button>
+            ))}
+          </div>
+        </div>
+
         <div className="flex items-end gap-3 md:col-span-2 lg:col-span-1">
           <Button
             variant="default"
