@@ -1247,6 +1247,9 @@ export function PhysicsCanvas({
         `subSteps  ${subStepsEff}${p.adaptiveSubSteps ? " (auto)" : ""}`,
         `cIters    ${p.constraintIters | 0}`,
         `fps       ${fps.toFixed(1)}`,
+        `MC K      ${s.K}`,
+        `σ̄ (px)    ${s.K > 0 ? sigMean.toFixed(2) : "—"}`,
+        `P(c≤${(p.constraintTol*100).toFixed(1)}%)  ${s.K > 0 ? (pConstraint*100).toFixed(1)+"%" : "—"}`,
       ];
       const padX = 10, padY = 8, lineH = 14;
       const panelW = 188;
