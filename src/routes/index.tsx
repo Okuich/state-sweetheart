@@ -501,8 +501,37 @@ function Index() {
           </div>
         </div>
 
-        <div className="space-y-2">
-          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Boundary</div>
+        <div className="space-y-2 rounded border border-border/40 p-2">
+          <div className="flex items-center justify-between">
+            <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Probabilistic runtime</div>
+            <Button
+              variant={params.stochastic ? "default" : "outline"}
+              className={`uppercase tracking-[0.14em] text-[9px] h-6 px-2 ${params.stochastic ? "bg-accent text-accent-foreground" : ""}`}
+              onClick={() => update("stochastic", !params.stochastic)}
+              title="Monte Carlo ensemble + Langevin noise for uncertainty propagation"
+            >
+              {params.stochastic ? "on" : "off"}
+            </Button>
+          </div>
+          <Field label="Noise σ" value={params.noiseSigma} min={0} max={60} step={1} unit="px/√s"
+                 onChange={(v) => update("noiseSigma", v)} />
+          <Field label="Ensemble K" value={params.ensembleK} min={2} max={64} step={1}
+                 onChange={(v) => update("ensembleK", v)} />
+          <Field label="Confidence z" value={params.confidenceZ} min={0.5} max={3} step={0.1}
+                 onChange={(v) => update("confidenceZ", v)} />
+          <Field label="Constraint tol" value={params.constraintTol} min={0.005} max={0.5} step={0.005}
+                 onChange={(v) => update("constraintTol", v)} />
+          <div className="flex items-center justify-between pt-1">
+            <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Confidence ellipses</span>
+            <Button
+              variant={params.showConfidence ? "default" : "outline"}
+              className={`uppercase tracking-[0.14em] text-[9px] h-6 px-2 ${params.showConfidence ? "bg-secondary text-secondary-foreground" : ""}`}
+              onClick={() => update("showConfidence", !params.showConfidence)}
+            >
+              {params.showConfidence ? "shown" : "hidden"}
+            </Button>
+          </div>
+        </div>
           <div className="grid grid-cols-3 gap-1.5">
             {(["walls", "wrap", "periodic"] as const).map((opt) => (
               <Button
