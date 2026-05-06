@@ -707,6 +707,8 @@ function buildBoundaryIndices(s: State, W: number): BoundaryIndex {
 
   return { W, N: s.N, edgeSig, local, ghost, pairs, totalLocal, totalGhost };
 }
+
+function buildEdges(N: number, perNode: number) {
   // Random sparse graph: each node connects to `perNode` neighbors
   const set = new Set<number>();
   const list: number[] = [];
