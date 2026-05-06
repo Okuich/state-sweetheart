@@ -24,14 +24,20 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Upload, FileText, Play, Square, AlertTriangle, CheckCircle2 } from "lucide-react";
-import type { TelemetrySample } from "@/lib/anomalyAlerts";
+import type { TelemetrySample as BaseSample } from "@/lib/anomalyAlerts";
+
+type TelemetrySample = BaseSample & { source?: string };
+
+type SampleKey =
+  | "t" | "energy_drift_pct" | "constraint_l2"
+  | "divergence_risk" | "velocity_max" | "nan_count" | "source";
 
 const NUMERIC_KEYS = [
   "t", "energy_drift_pct", "constraint_l2",
   "divergence_risk", "velocity_max", "nan_count",
 ] as const;
 
-const ALIASES: Record<string, keyof TelemetrySample> = {
+const ALIASES: Record<string, SampleKey> = {
   t: "t", time: "t", timestamp: "t", ts: "t",
   energy_drift_pct: "energy_drift_pct", drift: "energy_drift_pct", energy_drift: "energy_drift_pct",
   constraint_l2: "constraint_l2", constraint: "constraint_l2", l2: "constraint_l2",
