@@ -1146,6 +1146,54 @@ export function PhysicsCanvas({
         ctx.stroke();
       }
 
+      // Field-direction arrows: −∇Φ sampled at each particle, independent of
+      // the resultant force shown by forceViz=="vectors".
+      if (p.showFieldArrows && p.field !== "none") {
+        const tNow = (now - tStartRef.current) / 1000;
+        const samp = resolveSampling(p.fieldSampling, p.boundary);
+        const eps = 0.5 * (Math.max(w, h) / 800);
+        // First pass: compute gradients & find max magnitude for normalization
+        const gx = new Float32Array(s.N);
+        const gy = new Float32Array(s.N);
+        let gmax = 1e-6;
+        for (let i = 0; i < s.N; i++) {
+          const [px, py] = sampleCoords(samp, s.x[i * 2], s.x[i * 2 + 1], w, h);
+          let dx: number, dy: number;
+          const ga = fieldGradAnalytic(p.field, px, py, w, h);
+          if (ga) {
+            dx = ga[0]; dy = ga[1];
+          } else {
+            dx = (fieldPotential(p.field, px + eps, py, w, h, customFnRef.current, tNow) - fieldPotential(p.field, px - eps, py, w, h, customFnRef.current, tNow)) / (2 * eps);
+            dy = (fieldPotential(p.field, px, py + eps, w, h, customFnRef.current, tNow) - fieldPotential(p.field, px, py - eps, w, h, customFnRef.current, tNow)) / (2 * eps);
+          }
+          // arrow points along −∇Φ (descent direction = force direction)
+          gx[i] = -dx;
+          gy[i] = -dy;
+          const m = Math.hypot(gx[i], gy[i]);
+          if (m > gmax) gmax = m;
+        }
+        const VEC_PX = 18;
+        ctx.strokeStyle = "oklch(0.82 0.20 200 / 0.75)";
+        ctx.lineWidth = 0.7;
+        ctx.beginPath();
+        for (let i = 0; i < s.N; i++) {
+          const m = Math.hypot(gx[i], gy[i]);
+          if (m < 1e-6) continue;
+          const k2 = (VEC_PX * (m / gmax)) / m;
+          const x0 = s.x[i * 2], y0 = s.x[i * 2 + 1];
+          const x1 = x0 + gx[i] * k2, y1 = y0 + gy[i] * k2;
+          ctx.moveTo(x0, y0);
+          ctx.lineTo(x1, y1);
+          const ang = Math.atan2(y1 - y0, x1 - x0);
+          const ah = 3;
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x1 - ah * Math.cos(ang - 0.4), y1 - ah * Math.sin(ang - 0.4));
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x1 - ah * Math.cos(ang + 0.4), y1 - ah * Math.sin(ang + 0.4));
+        }
+        ctx.stroke();
+      }
+
 
       if (pointerRef.current.active) {
         const sign = pointerRef.current.mode;
