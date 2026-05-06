@@ -139,6 +139,9 @@ function Index() {
           <div><span className="text-accent">edge_i,j</span> int* [{params.particleCount * params.edgesPerNode}]</div>
           <div><span className="text-accent">rest_len</span> float* [{params.particleCount * params.edgesPerNode}]</div>
           <div className="text-muted-foreground/60 mt-1">{params.dtype === "float64" ? "f64" : "f32"} · {params.device}</div>
+          <div className="mt-2 text-accent/80">launch · reset_forces</div>
+          <div className="text-foreground/70">&lt;&lt;&lt;{Math.ceil(params.particleCount / 256)}, 256&gt;&gt;&gt;</div>
+          <div className="text-muted-foreground/60">grid · {Math.ceil(params.particleCount / 256)} blk × 256 thr = {Math.ceil(params.particleCount / 256) * 256} threads</div>
         </div>
 
         {/* Validation badge */}
@@ -310,21 +313,20 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          kernels.cu — reset_forces &lt;&lt;&lt;blocks, threads&gt;&gt;&gt;
+          launch · reset_forces&lt;&lt;&lt;blocks, threads&gt;&gt;&gt;
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`__global__ void reset_forces(int N,
-                             float* fx, float* fy, float* fz) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < N) {
-        fx[i] = 0.0f;
-        fy[i] = 0.0f;
-        fz[i] = 0.0f;
-    }
-}
+{`// Host-side launch
+const int THREADS = 256;
+const int BLOCKS  = (N + THREADS - 1) / THREADS;
+reset_forces<<<BLOCKS, THREADS>>>(N, fx, fy, fz);
+//                ↑          ↑
+//                |          |
+//                |          ${`__`}threads per block (warp-aligned)
+//                ${`__`}ceil(N / 256) blocks — covers every node
 
-// launch:  reset_forces<<<(N+255)/256, 256>>>(N, fx, fy, fz);
-// JS analog (this build):  s.f.fill(0)   — one coalesced memset per frame`}
+// One thread per particle, fully coalesced writes to fx/fy/fz.
+// JS analog this build runs:  s.f.fill(0)`}
         </pre>
       </footer>
     </main>
