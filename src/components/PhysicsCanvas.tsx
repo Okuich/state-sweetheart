@@ -351,6 +351,9 @@ function fieldGradAnalytic(
       const dny = dPhi_dr * ny / r;
       return [dnx * inv, dny * inv];
     }
+    case "custom":
+      // No closed form for user expressions → tell caller to use FD.
+      return null;
     default:
       return [0, 0];
   }
