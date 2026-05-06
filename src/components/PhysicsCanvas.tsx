@@ -54,6 +54,7 @@ export type SimParams = {
   gravityMode: "uniform" | "directional" | "zero";
   gravityAngle: number; // degrees, 0 = +x (right), 90 = +y (down)
   damping: number;
+  dragMode: "explicit" | "exponential" | "force";
   attractor: number;
   particleCount: number;
   trail: number;
