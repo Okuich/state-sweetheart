@@ -198,6 +198,9 @@ function computePotentialForces(s: State, name: FieldName, strength: number, w: 
 }
 
 
+/**
+ * project_constraints — Position-Based Dynamics (Gauss-Seidel) distance solver.
+ *
  * For each iteration, every edge constraint pulls its two endpoints back to
  * `rest_length`, splitting the correction by inverse-mass. Velocities are
  * implicitly updated next integrator step (positions changed under them).
