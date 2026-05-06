@@ -30,6 +30,7 @@ export function RagPanel() {
   const [target, setTarget] = useState(280);
   const [proc, setProc] = useState("mill-5ax");
   const [k, setK] = useState(5);
+  const [weights, setWeights] = useState<RetrievalWeights>(DEFAULT_WEIGHTS);
 
   // re-load graph on mount + when window storage changes (other panel writes)
   useEffect(() => {
@@ -44,8 +45,8 @@ export function RagPanel() {
       targetStress: target,
       process: proc,
     });
-    return retrieveAll(q, graph, k);
-  }, [text, target, proc, k, graph]);
+    return retrieveAll(q, graph, k, weights);
+  }, [text, target, proc, k, graph, weights]);
 
   const [reco, setReco] = useState<Recommendation | null>(null);
   const [reasoning, setReasoning] = useState(false);
