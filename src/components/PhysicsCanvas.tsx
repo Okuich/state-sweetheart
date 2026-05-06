@@ -54,6 +54,7 @@ export type SimParams = {
   gravityMode: "uniform" | "directional" | "zero";
   gravityAngle: number; // degrees, 0 = +x (right), 90 = +y (down)
   damping: number;
+  dragMode: "explicit" | "exponential" | "force";
   attractor: number;
   particleCount: number;
   trail: number;
@@ -233,10 +234,14 @@ function verletKick(
   damping: number,
   a: number,
   b: number,
+  dragMode: "explicit" | "exponential" | "force" = "explicit",
 ) {
   // Second half-kick using the NEW forces just computed for this step,
   // then cache them as fPrev for the next step's drift.
-  const decay = 1 - damping * dt;
+  const decay =
+    dragMode === "force"        ? 1 :
+    dragMode === "exponential"  ? Math.exp(-damping * dt) :
+                                  Math.max(0, 1 - damping * dt);
   for (let i = a; i < b; i++) {
     const invM = 1 / s.m[i];
     const axNew = s.f[i * 2]     * invM;
@@ -496,8 +501,9 @@ function stepState(
   integrator: "euler" | "semi-euler" | "verlet" = "semi-euler",
   boundary: Boundary = "walls",
   restitution: number = 0.7,
+  dragMode: "explicit" | "exponential" | "force" = "explicit",
 ) {
-  stepStateRange(s, dt, damping, w, h, integrator, 0, s.N, boundary, restitution);
+  stepStateRange(s, dt, damping, w, h, integrator, 0, s.N, boundary, restitution, dragMode);
 }
 
 function stepStateRange(
@@ -511,7 +517,18 @@ function stepStateRange(
   b = s.N,
   boundary: Boundary = "walls",
   restitution: number = 0.7,
+  dragMode: "explicit" | "exponential" | "force" = "explicit",
 ) {
+  // Linear-drag decay factor applied to velocity each sub-step:
+  //   "explicit"    → (1 − k·dt)        — cheap, classical, blows up if k·dt > 1
+  //   "exponential" → exp(−k·dt)        — unconditionally stable, exact for the
+  //                                        ODE  dv/dt = −k·v
+  //   "force"       → drag is already in s.f as −k·m·v (added in the force
+  //                   pipeline), so DO NOT decay velocity here (factor = 1)
+  const decay =
+    dragMode === "force"        ? 1 :
+    dragMode === "exponential"  ? Math.exp(-damping * dt) :
+                                  Math.max(0, 1 - damping * dt);
   if (integrator === "verlet") {
     // Verlet drift+kick are split across the force evaluation; see
     // verletKick() AFTER. This branch is now position-only damping wrap-up.
@@ -520,8 +537,8 @@ function stepStateRange(
       const invM = 1 / s.m[i];
       const ax = s.f[i * 2]     * invM;
       const ay = s.f[i * 2 + 1] * invM;
-      s.v[i * 2]     = (s.v[i * 2]     + ax * dt) * (1 - damping * dt);
-      s.v[i * 2 + 1] = (s.v[i * 2 + 1] + ay * dt) * (1 - damping * dt);
+      s.v[i * 2]     = (s.v[i * 2]     + ax * dt) * decay;
+      s.v[i * 2 + 1] = (s.v[i * 2 + 1] + ay * dt) * decay;
       s.x[i * 2]     += s.v[i * 2]     * dt;
       s.x[i * 2 + 1] += s.v[i * 2 + 1] * dt;
     }
@@ -531,8 +548,8 @@ function stepStateRange(
       const ax = s.f[i * 2]     * invM;
       const ay = s.f[i * 2 + 1] * invM;
       const vx0 = s.v[i * 2], vy0 = s.v[i * 2 + 1];
-      s.v[i * 2]     = (vx0 + ax * dt) * (1 - damping * dt);
-      s.v[i * 2 + 1] = (vy0 + ay * dt) * (1 - damping * dt);
+      s.v[i * 2]     = (vx0 + ax * dt) * decay;
+      s.v[i * 2 + 1] = (vy0 + ay * dt) * decay;
       s.x[i * 2]     += vx0 * dt;
       s.x[i * 2 + 1] += vy0 * dt;
     }
@@ -930,6 +947,18 @@ export function PhysicsCanvas({
               }
             }
 
+            // linear drag as a body force: F_drag = −k · m · v
+            // Only active when dragMode === "force"; the integrator's velocity
+            // decay is disabled in that case so we don't double-count.
+            if (p.dragMode === "force" && p.damping > 0) {
+              const kDrag = p.damping;
+              for (let i = a; i < b; i++) {
+                const m = s.m[i];
+                s.f[i * 2]     -= kDrag * m * s.v[i * 2];
+                s.f[i * 2 + 1] -= kDrag * m * s.v[i * 2 + 1];
+              }
+            }
+
             // pointer attractor (local)
             if (pointerRef.current.active) {
               const px = pointerRef.current.x, py = pointerRef.current.y;
@@ -1098,13 +1127,13 @@ export function PhysicsCanvas({
           // the second half-kick using the NEW forces, then cache f→fPrev.
           if (p.integrator === "verlet") {
             for (let q = 0; q < W; q++) {
-              verletKick(s, subDt, p.damping, partStart(q), partEnd(q));
+              verletKick(s, subDt, p.damping, partStart(q), partEnd(q), p.dragMode);
               // still call stepStateRange for boundary handling (verlet branch is a no-op for motion)
-              stepStateRange(s, subDt, p.damping, w, h, p.integrator, partStart(q), partEnd(q), p.boundary, p.restitution);
+              stepStateRange(s, subDt, p.damping, w, h, p.integrator, partStart(q), partEnd(q), p.boundary, p.restitution, p.dragMode);
             }
           } else {
             for (let q = 0; q < W; q++) {
-              stepStateRange(s, subDt, p.damping, w, h, p.integrator, partStart(q), partEnd(q), p.boundary, p.restitution);
+              stepStateRange(s, subDt, p.damping, w, h, p.integrator, partStart(q), partEnd(q), p.boundary, p.restitution, p.dragMode);
             }
           }
 
