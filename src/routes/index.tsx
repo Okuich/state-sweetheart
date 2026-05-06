@@ -15,6 +15,7 @@ import { BenchmarkPanel } from "@/components/BenchmarkPanel";
 import { GuardrailsPanel } from "@/components/GuardrailsPanel";
 import { CalibrationPanel } from "@/components/CalibrationPanel";
 import { StepIngestionPanel } from "@/components/StepIngestionPanel";
+import { GeometryFeaturePanel } from "@/components/GeometryFeaturePanel";
 import { saveSnapshot } from "@/lib/worldMemory";
 
 export const Route = createFileRoute("/")({
@@ -764,6 +765,11 @@ function Index() {
       {/* STEP File Ingestion — parse & normalize ISO-10303-21 into canonical geometry */}
       <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
         <StepIngestionPanel />
+      </section>
+
+      {/* Geometry Feature Intelligence — physical features from CAD */}
+      <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
+        <GeometryFeaturePanel />
       </section>
 
       {/* Autonomous Physics Agents — agentic reasoning over current world */}
