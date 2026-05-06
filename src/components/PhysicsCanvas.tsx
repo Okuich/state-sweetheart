@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { compileFieldExpr } from "@/lib/exprCompile";
 
 export type ValidationIssue = { field: string; expected: string; got: string };
 export type ValidationReport = { ok: boolean; issues: ValidationIssue[]; checkedAt: number };
@@ -65,8 +66,9 @@ export type SimParams = {
   dtype: Dtype;
   device: Device;
   constraintIters: number;
-  field: "none" | "swirl" | "wells" | "ripple";
+  field: "none" | "swirl" | "wells" | "ripple" | "custom";
   fieldStrength: number;
+  customFieldSrc: string;
   subSteps: number;
   workers: number;
   showPartitions: boolean;
@@ -214,7 +216,7 @@ function verletKick(
  *   • "finite-diff"  — central differences. Plug-and-play fallback for any
  *                      Φ that doesn't ship an analytic gradient.
  */
-type FieldName = "none" | "swirl" | "wells" | "ripple";
+type FieldName = "none" | "swirl" | "wells" | "ripple" | "custom";
 export type PotentialGrad = "analytic" | "finite-diff";
 export type FieldSampling = "auto" | "clamp" | "wrap" | "none";
 
@@ -257,7 +259,13 @@ function sampleCoords(mode: "clamp" | "wrap" | "none", x: number, y: number, w: 
 }
 
 
-function fieldPotential(name: FieldName, x: number, y: number, w: number, h: number): number {
+// Pluggable, user-defined Φ. The compiler in src/lib/exprCompile.ts produces
+// a pure-JS closure with no globals; we accept it here so the canvas never
+// touches `eval` / `new Function` directly.
+import type { FieldEnv } from "@/lib/exprCompile";
+export type CustomFieldFn = (env: FieldEnv) => number;
+
+function fieldPotential(name: FieldName, x: number, y: number, w: number, h: number, custom?: CustomFieldFn | null, t = 0): number {
   const cx = w * 0.5, cy = h * 0.5;
   const s = Math.max(w, h);
   const nx = (x - cx) / s;
@@ -273,6 +281,18 @@ function fieldPotential(name: FieldName, x: number, y: number, w: number, h: num
     case "ripple": {
       const r = Math.sqrt(nx * nx + ny * ny);
       return Math.cos(r * 28) * Math.exp(-r * 2.5) * 0.4;
+    }
+    case "custom": {
+      if (!custom) return 0;
+      const r = Math.sqrt(nx * nx + ny * ny);
+      const theta = Math.atan2(ny, nx);
+      try {
+        const v = custom({ nx, ny, x, y, w, h, r, theta, t });
+        // Defensive: any NaN/Inf in user code → zero force this frame, no halt.
+        return Number.isFinite(v) ? v : 0;
+      } catch {
+        return 0;
+      }
     }
     default:
       return 0;
@@ -332,6 +352,9 @@ function fieldGradAnalytic(
       const dny = dPhi_dr * ny / r;
       return [dnx * inv, dny * inv];
     }
+    case "custom":
+      // No closed form for user expressions → tell caller to use FD.
+      return null;
     default:
       return [0, 0];
   }
@@ -343,12 +366,13 @@ function fieldGradAnalytic(
  * central finite differences when requested or when an analytic gradient
  * is not registered for the active field.
  */
-function computePotentialForces(s: State, name: FieldName, strength: number, w: number, h: number, mode: PotentialGrad = "analytic", sampling: FieldSampling = "auto", boundary: Boundary = "walls") {
-  computePotentialForces_range(s, name, strength, w, h, 0, s.N, mode, sampling, boundary);
+function computePotentialForces(s: State, name: FieldName, strength: number, w: number, h: number, mode: PotentialGrad = "analytic", sampling: FieldSampling = "auto", boundary: Boundary = "walls", custom: CustomFieldFn | null = null, t = 0) {
+  computePotentialForces_range(s, name, strength, w, h, 0, s.N, mode, sampling, boundary, custom, t);
 }
 
-function computePotentialForces_range(s: State, name: FieldName, strength: number, w: number, h: number, a: number, b: number, mode: PotentialGrad = "analytic", sampling: FieldSampling = "auto", boundary: Boundary = "walls") {
+function computePotentialForces_range(s: State, name: FieldName, strength: number, w: number, h: number, a: number, b: number, mode: PotentialGrad = "analytic", sampling: FieldSampling = "auto", boundary: Boundary = "walls", custom: CustomFieldFn | null = null, t = 0) {
   if (name === "none" || strength === 0) return;
+  if (name === "custom" && !custom) return; // no compiled fn → no-op
   const REF = 800;
   const sizeFactor = (Math.max(w, h) / REF) ** 2;
   const meanMass = 1.2;
@@ -360,8 +384,8 @@ function computePotentialForces_range(s: State, name: FieldName, strength: numbe
       const g = fieldGradAnalytic(name, x, y, w, h);
       if (g === null) {
         const eps = 0.5 * (Math.max(w, h) / REF);
-        const dphidx = (fieldPotential(name, x + eps, y, w, h) - fieldPotential(name, x - eps, y, w, h)) / (2 * eps);
-        const dphidy = (fieldPotential(name, x, y + eps, w, h) - fieldPotential(name, x, y - eps, w, h)) / (2 * eps);
+        const dphidx = (fieldPotential(name, x + eps, y, w, h, custom, t) - fieldPotential(name, x - eps, y, w, h, custom, t)) / (2 * eps);
+        const dphidy = (fieldPotential(name, x, y + eps, w, h, custom, t) - fieldPotential(name, x, y - eps, w, h, custom, t)) / (2 * eps);
         s.f[i * 2]     += -dphidx * scale;
         s.f[i * 2 + 1] += -dphidy * scale;
       } else {
@@ -374,8 +398,8 @@ function computePotentialForces_range(s: State, name: FieldName, strength: numbe
   const eps = 0.5 * (Math.max(w, h) / REF);
   for (let i = a; i < b; i++) {
     const [x, y] = sampleCoords(samp, s.x[i * 2], s.x[i * 2 + 1], w, h);
-    const dphidx = (fieldPotential(name, x + eps, y, w, h) - fieldPotential(name, x - eps, y, w, h)) / (2 * eps);
-    const dphidy = (fieldPotential(name, x, y + eps, w, h) - fieldPotential(name, x, y - eps, w, h)) / (2 * eps);
+    const dphidx = (fieldPotential(name, x + eps, y, w, h, custom, t) - fieldPotential(name, x - eps, y, w, h, custom, t)) / (2 * eps);
+    const dphidy = (fieldPotential(name, x, y + eps, w, h, custom, t) - fieldPotential(name, x, y - eps, w, h, custom, t)) / (2 * eps);
     s.f[i * 2]     += -dphidx * scale;
     s.f[i * 2 + 1] += -dphidy * scale;
   }
@@ -624,6 +648,14 @@ export function PhysicsCanvas({
   const energyBaselineRef = useRef<number | null>(null);
   const energyBaselineNRef = useRef(0);
 
+  // Compile the user-provided Φ exactly when the source string changes.
+  // useMemo gives us a stable reference per source (cheap, parse is < 1 ms),
+  // and a ref keeps it readable from the rAF loop without re-subscribing.
+  const compiled = useMemo(() => compileFieldExpr(params.customFieldSrc || "0"), [params.customFieldSrc]);
+  const customFnRef = useRef<((env: import("@/lib/exprCompile").FieldEnv) => number) | null>(null);
+  customFnRef.current = compiled.ok ? compiled.fn : null;
+  const tStartRef = useRef(performance.now());
+
   useEffect(() => {
     const canvas = canvasRef.current!;
     const ctx = canvas.getContext("2d")!;
@@ -676,7 +708,7 @@ export function PhysicsCanvas({
         const samples = new Float32Array(cols * rows);
         for (let r = 0; r < rows; r++) {
           for (let c = 0; c < cols; c++) {
-            const v = fieldPotential(p.field, c * cell + cell / 2, r * cell + cell / 2, w, h);
+            const v = fieldPotential(p.field, c * cell + cell / 2, r * cell + cell / 2, w, h, customFnRef.current, (now - tStartRef.current) / 1000);
             samples[r * cols + c] = v;
             if (v < pmin) pmin = v;
             if (v > pmax) pmax = v;
@@ -769,7 +801,7 @@ export function PhysicsCanvas({
             // (kept here as a no-op slot so the worker pipeline order is preserved)
 
             // potential field (local)
-            computePotentialForces_range(s, p.field, p.fieldStrength, w, h, a, b, p.potentialGrad, p.fieldSampling, p.boundary);
+            computePotentialForces_range(s, p.field, p.fieldStrength, w, h, a, b, p.potentialGrad, p.fieldSampling, p.boundary, customFnRef.current, (now - tStartRef.current) / 1000);
           }
 
           // 2b. pairwise via uniform spatial grid — O(N) instead of O(N²).
@@ -985,7 +1017,7 @@ export function PhysicsCanvas({
         const samp = resolveSampling(p.fieldSampling, p.boundary);
         for (let i = 0; i < s.N; i++) {
           const [px, py] = sampleCoords(samp, s.x[i * 2], s.x[i * 2 + 1], w, h);
-          PE_field += sc * fieldPotential(p.field, px, py, w, h);
+          PE_field += sc * fieldPotential(p.field, px, py, w, h, customFnRef.current, (now - tStartRef.current) / 1000);
         }
       }
       const PE_total = PE_grav + PE_spring + PE_field;
