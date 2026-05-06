@@ -282,15 +282,69 @@ export interface SolveOptions {
   rigidScale?: number;
   clothScale?: number;
   particleScale?: number;
+  /**
+   * Dedup policy applied to `pairs` BEFORE the narrow-phase.
+   *   "auto"  (default) → always dedup; pairs are normalized (i<j),
+   *           uniquified, sorted canonically, and saturation is
+   *           reported via SolveResult.dedup.
+   *   "skip"  → caller guarantees the input is already canonical and
+   *           unique. Use this only for hand-built fixtures and tests.
+   * `maxPairs` defaults to `bodies.N * (bodies.N - 1) / 2` clamped to
+   * 1<<22 — large enough that real broad-phases never saturate, but
+   * still bounded so a runaway emitter can't eat all memory.
+   */
+  dedup?: "auto" | "skip";
+  maxPairs?: number;
+}
+
+import { dedupPairs, type DedupResult } from "./pairDedup";
+
+const DEFAULT_MAX_PAIRS = 1 << 22;
+
+function runDedup(opts: SolveOptions): { pairs: CandidatePair[]; result: DedupResult; ms: number } | null {
+  if (opts.dedup === "skip") return null;
+  const t0 = (typeof performance !== "undefined" ? performance : Date).now();
+  const N = opts.bodies.N;
+  const triCap = N > 1 ? Math.floor((N * (N - 1)) / 2) : 0;
+  const maxPairs = Math.max(0, opts.maxPairs ?? Math.min(DEFAULT_MAX_PAIRS, Math.max(triCap, opts.pairs.length)));
+  const result = dedupPairs(opts.pairs as ReadonlyArray<{ i: number; j: number }>, { N, maxPairs });
+  // Re-pack into CandidatePair[] in canonical order for downstream paths.
+  const out: CandidatePair[] = new Array(result.count);
+  for (let k = 0; k < result.count; k++) {
+    out[k] = { i: result.pairs[k * 2], j: result.pairs[k * 2 + 1] };
+  }
+  const t1 = (typeof performance !== "undefined" ? performance : Date).now();
+  return { pairs: out, result, ms: t1 - t0 };
+}
+
+function attachDedup(sr: SolveResult, d: ReturnType<typeof runDedup>, inputCount: number): SolveResult {
+  if (!d) return sr;
+  const r = d.result;
+  return {
+    ...sr,
+    dedup: {
+      inputCount,
+      uniqueCount: r.count,
+      duplicates: r.overflow.duplicates,
+      invalid: r.overflow.invalid,
+      dropped: r.overflow.dropped,
+      saturated: r.saturated,
+      ms: d.ms,
+    },
+  };
 }
 
 export async function solvePairs(np: NarrowPhase, opts: SolveOptions): Promise<SolveResult> {
   const t0 = (typeof performance !== "undefined" ? performance : Date).now();
-  const maxContacts = opts.maxContacts ?? Math.max(64, opts.pairs.length);
-  if (np.mode === "gpu") {
-    return await solvePairsGpu(np, opts, maxContacts, t0);
-  }
-  return solvePairsCpu(opts, maxContacts, t0);
+  const inputCount = opts.pairs.length;
+  const dedup = runDedup(opts);
+  const effectivePairs = dedup ? dedup.pairs : (opts.pairs as ReadonlyArray<CandidatePair>);
+  const innerOpts: SolveOptions = dedup ? { ...opts, pairs: effectivePairs, dedup: "skip" } : opts;
+  const maxContacts = opts.maxContacts ?? Math.max(64, effectivePairs.length);
+  const sr = np.mode === "gpu"
+    ? await solvePairsGpu(np, innerOpts, maxContacts, t0)
+    : solvePairsCpu(innerOpts, maxContacts, t0);
+  return attachDedup(sr, dedup, inputCount);
 }
 
 // ── CPU mirror — bit-equivalent to the WGSL kernel ───────────────────────
@@ -301,6 +355,11 @@ export function solvePairsCpu(
   t0?: number,
 ): SolveResult {
   const start = t0 ?? (typeof performance !== "undefined" ? performance : Date).now();
+  // Standalone use: callers may invoke solvePairsCpu directly. Run dedup
+  // here too unless explicitly skipped (the wrapper above passes "skip").
+  const inputCount = opts.pairs.length;
+  const dedup = opts.dedup === "skip" ? null : runDedup(opts);
+  const effectivePairs = dedup ? dedup.pairs : opts.pairs;
   const b = opts.bodies;
   const rs = opts.rigidScale    ?? 1;
   const cs = opts.clothScale    ?? 1;
