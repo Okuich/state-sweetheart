@@ -579,6 +579,7 @@ function syncBoundaries(s: State, partOf: (i: number) => number) {
     s.v[i * 2]     = (1 - a) * s.v[i * 2]     + a * mvx;
     s.v[i * 2 + 1] = (1 - a) * s.v[i * 2 + 1] + a * mvy;
   }
+}
 
 function buildEdges(N: number, perNode: number) {
   // Random sparse graph: each node connects to `perNode` neighbors
