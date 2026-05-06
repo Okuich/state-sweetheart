@@ -94,8 +94,10 @@ function Index() {
           </div>
         </div>
         <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-          <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-          <span>Device · CPU canvas2d</span>
+          <span className={`h-1.5 w-1.5 rounded-full ${params.device === "webgpu" ? "bg-accent" : "bg-primary"}`} />
+          <span>device · {params.device}</span>
+          <span className="text-muted-foreground/50">/</span>
+          <span>dtype · {params.dtype}</span>
         </div>
       </header>
 
