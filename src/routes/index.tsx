@@ -175,6 +175,25 @@ function Index() {
         <Field label="Pairwise · ε"  value={params.pairwiseStrength} min={-500} max={1000} step={10} onChange={(v) => update("pairwiseStrength", v)} />
         <Field label="Pairwise radius" value={params.pairwiseRadius} unit="px" min={0} max={200} step={1} onChange={(v) => update("pairwiseRadius", v)} />
         <Field label="Constraint iters" value={params.constraintIters} min={0} max={20} step={1} onChange={(v) => update("constraintIters", v)} />
+        <Field label="Field · strength" value={params.fieldStrength} min={-2} max={2} step={0.05} onChange={(v) => update("fieldStrength", v)} />
+
+        <div className="space-y-2">
+          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Potential field</div>
+          <div className="grid grid-cols-4 gap-1.5">
+            {(["none", "swirl", "wells", "ripple"] as const).map((opt) => (
+              <Button
+                key={opt}
+                variant={params.field === opt ? "default" : "outline"}
+                className={`uppercase tracking-[0.14em] text-[9px] px-1 ${
+                  params.field === opt ? "bg-accent text-accent-foreground" : ""
+                }`}
+                onClick={() => update("field", opt)}
+              >
+                {opt}
+              </Button>
+            ))}
+          </div>
+        </div>
 
         <div className="space-y-2 md:col-span-2 lg:col-span-1">
           <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Integrator</div>
