@@ -464,6 +464,24 @@ function Index() {
             {params.adaptiveSubSteps ? "on" : "off"}
           </Button>
         </div>
+        <div className="space-y-2">
+          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Contact solver</div>
+          <Button
+            variant={params.contactsEnabled ? "default" : "outline"}
+            className={`w-full uppercase tracking-[0.14em] text-[10px] ${
+              params.contactsEnabled ? "bg-accent text-accent-foreground" : ""
+            }`}
+            onClick={() => update("contactsEnabled", !params.contactsEnabled)}
+            title="Sequential-impulse + Baumgarte position correction on overlapping particle pairs (runs each sub-step)"
+          >
+            {params.contactsEnabled ? "on" : "off"}
+          </Button>
+        </div>
+        <Field label="Contact radius" value={params.contactRadius} unit="px" min={0} max={40} step={0.5} onChange={(v) => update("contactRadius", v)} />
+        <Field label="Contact iters" value={params.contactIters} min={1} max={10} step={1} onChange={(v) => update("contactIters", v)} />
+        <Field label="Contact restitution" value={params.contactRestitution} min={0} max={1} step={0.01} onChange={(v) => update("contactRestitution", v)} />
+        <Field label="Contact β (pos corr)" value={params.contactBeta} min={0} max={1} step={0.05} onChange={(v) => update("contactBeta", v)} />
+        <Field label="Contact slop" value={params.contactSlop} unit="px" min={0} max={4} step={0.05} onChange={(v) => update("contactSlop", v)} />
         <Field label="Workers" value={params.workers} min={1} max={8} step={1} onChange={(v) => update("workers", v)} />
         <Field label="Field · strength" value={params.fieldStrength} min={-2} max={2} step={0.05} onChange={(v) => update("fieldStrength", v)} />
         <Field label="∂L/∂x · lr" value={params.objectiveLR} min={0} max={0.5} step={0.005} onChange={(v) => update("objectiveLR", v)} />
