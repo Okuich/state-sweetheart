@@ -477,6 +477,9 @@ export function PhysicsCanvas({
             }
           }
         }
+
+        // compute_potential_forces(state, field_fn) — adds -∇Φ to f
+        computePotentialForces(s, p.field, p.fieldStrength, w, h);
         // Integrate — PhysicsState.step(dt): a = f/m, advance v and x
         stepState(s, dt, p.damping, w, h, p.integrator);
         // project_constraints — PBD distance solver on edges
