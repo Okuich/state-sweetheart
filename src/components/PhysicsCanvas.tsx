@@ -83,6 +83,20 @@ export type SimParams = {
   adaptiveSubSteps: boolean;
   maxSubSteps: number;
   pairwiseAlgo: "grid" | "all-pairs";
+  // ── Probabilistic runtime ─────────────────────────────────────────
+  // stochastic: inject Gaussian noise into the force step (Langevin),
+  //   advect a Monte Carlo ensemble of K position-offset replicas
+  //   alongside the main state, and use the ensemble spread as a live
+  //   estimate of σ_x(t). Cost is O(N·K) per sub-step.
+  // confidenceZ: z-score for the rendered ellipse (1≈68%, 2≈95%).
+  // constraintTol: probabilistic edge-stretch tolerance — diagnostics
+  //   report P(|edge-rest|/rest < tol) under the Gaussian σ assumption.
+  stochastic: boolean;
+  noiseSigma: number;
+  ensembleK: number;
+  confidenceZ: number;
+  constraintTol: number;
+  showConfidence: boolean;
 };
 
 type FloatArr = Float32Array | Float64Array;
