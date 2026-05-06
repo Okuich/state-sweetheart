@@ -80,6 +80,7 @@ function Index() {
     showPartitions: true,
     optimize: false,
     objectiveLR: 0.05,
+    pairwiseMode: "lj",
   });
   const [resetKey, setResetKey] = useState(0);
   const [validation, setValidation] = useState<ValidationReport | null>(null);
@@ -232,6 +233,31 @@ function Index() {
                 onClick={() => update("field", opt)}
               >
                 {opt}
+              </Button>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Pairwise force</div>
+          <div className="grid grid-cols-3 gap-1.5">
+            {(["lj", "repel", "attract"] as const).map((opt) => (
+              <Button
+                key={opt}
+                variant={params.pairwiseMode === opt ? "default" : "outline"}
+                className={`uppercase tracking-[0.14em] text-[9px] px-1 ${
+                  params.pairwiseMode === opt ? "bg-primary text-primary-foreground glow-mint" : ""
+                }`}
+                onClick={() => update("pairwiseMode", opt)}
+                title={
+                  opt === "lj"
+                    ? "Lennard-Jones-like: short-range repulsion + medium-range attraction"
+                    : opt === "repel"
+                    ? "Soft-core repulsion only"
+                    : "Linear attractive well"
+                }
+              >
+                {opt === "lj" ? "L-J" : opt}
               </Button>
             ))}
           </div>
