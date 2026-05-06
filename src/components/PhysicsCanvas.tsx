@@ -65,8 +65,9 @@ export type SimParams = {
   dtype: Dtype;
   device: Device;
   constraintIters: number;
-  field: "none" | "swirl" | "wells" | "ripple";
+  field: "none" | "swirl" | "wells" | "ripple" | "custom";
   fieldStrength: number;
+  customFieldSrc: string;
   subSteps: number;
   workers: number;
   showPartitions: boolean;
