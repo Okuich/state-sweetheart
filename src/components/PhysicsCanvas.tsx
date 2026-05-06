@@ -55,6 +55,9 @@ export type SimParams = {
   gravityAngle: number; // degrees, 0 = +x (right), 90 = +y (down)
   damping: number;
   dragMode: "explicit" | "exponential" | "force";
+  // Quadratic air drag: F_air = −c_air · |v| · v   (independent of dragMode).
+  // Scales with v² so fast particles slow down disproportionately faster.
+  airDragK: number;
   attractor: number;
   particleCount: number;
   trail: number;
