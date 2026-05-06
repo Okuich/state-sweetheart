@@ -116,14 +116,19 @@ function initState(N: number, w: number, h: number, perNode: number, rest: numbe
 export function PhysicsCanvas({
   params,
   pointerRef,
+  onValidation,
 }: {
   params: SimParams;
   pointerRef: React.MutableRefObject<{ x: number; y: number; active: boolean; mode: 1 | -1 }>;
+  onValidation?: (r: ValidationReport) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stateRef = useRef<State | null>(null);
   const paramsRef = useRef(params);
   paramsRef.current = params;
+  const lastValidationRef = useRef(0);
+  const onValidationRef = useRef(onValidation);
+  onValidationRef.current = onValidation;
 
   useEffect(() => {
     const canvas = canvasRef.current!;
@@ -162,6 +167,18 @@ export function PhysicsCanvas({
       // Trail fade
       ctx.fillStyle = `oklch(0.16 0.02 260 / ${1 - p.trail})`;
       ctx.fillRect(0, 0, w, h);
+
+      // Runtime shape & dtype guards — verify x, v, m, f BEFORE the step
+      const report = validateState(s);
+      if (now - lastValidationRef.current > 250) {
+        lastValidationRef.current = now;
+        onValidationRef.current?.(report);
+      }
+      if (!report.ok) {
+        // Skip simulation if invariants broken; still render last frame
+        raf = requestAnimationFrame(step);
+        return;
+      }
 
       if (!p.paused) {
         s.f.fill(0);
