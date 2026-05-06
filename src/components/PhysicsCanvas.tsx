@@ -293,10 +293,11 @@ function verletKick(
 ) {
   // Second half-kick using the NEW forces just computed for this step,
   // then cache them as fPrev for the next step's drift.
-  const decay =
-    dragMode === "force"        ? 1 :
-    dragMode === "exponential"  ? Math.exp(-damping * dt) :
-                                  Math.max(0, 1 - damping * dt);
+  // Frame-rate independent decay: exact solution of dv/dt = −k·v over dt.
+  // Both "explicit" and "exponential" use exp(−k·dt) so that the result is
+  // identical regardless of subdivision (consistent under dt → dt/2, twice).
+  // "force" leaves velocity untouched because drag is already in s.f.
+  const decay = dragMode === "force" ? 1 : Math.exp(-damping * dt);
   for (let i = a; i < b; i++) {
     const invM = 1 / s.m[i];
     const axNew = s.f[i * 2]     * invM;
