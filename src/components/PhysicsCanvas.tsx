@@ -947,6 +947,18 @@ export function PhysicsCanvas({
               }
             }
 
+            // linear drag as a body force: F_drag = −k · m · v
+            // Only active when dragMode === "force"; the integrator's velocity
+            // decay is disabled in that case so we don't double-count.
+            if (p.dragMode === "force" && p.damping > 0) {
+              const kDrag = p.damping;
+              for (let i = a; i < b; i++) {
+                const m = s.m[i];
+                s.f[i * 2]     -= kDrag * m * s.v[i * 2];
+                s.f[i * 2 + 1] -= kDrag * m * s.v[i * 2 + 1];
+              }
+            }
+
             // pointer attractor (local)
             if (pointerRef.current.active) {
               const px = pointerRef.current.x, py = pointerRef.current.y;
