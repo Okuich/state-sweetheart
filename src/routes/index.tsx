@@ -152,6 +152,7 @@ function Index() {
     objectiveLR: 0.05,
     pairwiseMode: "lj",
     boundary: "walls",
+    restitution: 0.7,
     forceViz: "off",
     potentialGrad: "analytic",
     fieldSampling: "auto",
