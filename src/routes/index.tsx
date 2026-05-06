@@ -128,7 +128,7 @@ function Index() {
 
       {/* Canvas */}
       <section className="relative z-10 mx-4 lg:mx-10 mb-4 h-[58vh] rounded-xl border border-border bg-card backdrop-blur-sm overflow-hidden">
-        <PhysicsCanvas key={resetKey} params={params} pointerRef={pointerRef} onValidation={setValidation} />
+        <PhysicsCanvas key={resetKey} params={params} pointerRef={pointerRef} onValidation={setValidation} onLoss={setLoss} />
         {/* HUD */}
         <div className="pointer-events-none absolute left-4 top-4 flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
           <div><span className="text-primary">x</span> [{params.particleCount} × 2] {params.dtype === "float64" ? "f64" : "f32"}</div>
