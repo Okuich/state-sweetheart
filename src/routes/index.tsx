@@ -324,7 +324,14 @@ function Index() {
 
       {/* Canvas */}
       <section className="relative z-10 mx-4 lg:mx-10 mb-4 h-[58vh] rounded-xl border border-border bg-card backdrop-blur-sm overflow-hidden">
-        <PhysicsCanvas key={resetKey} params={params} pointerRef={pointerRef} onValidation={setValidation} onLoss={setLoss} />
+        <PhysicsCanvas
+          key={resetKey}
+          params={params}
+          pointerRef={pointerRef}
+          onValidation={setValidation}
+          onLoss={setLoss}
+          onEnergy={(s) => energyPlot.handleRef.current?.push(s)}
+        />
         {/* HUD — SoA memory layout */}
         <div className="pointer-events-none absolute left-4 top-4 flex flex-col gap-0.5 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
           <div className="text-accent/80 mb-1">struct PhysicsState · SoA</div>
