@@ -66,7 +66,9 @@ function RiskBar({ label, value }: { label: string; value: number }) {
 export function GeometryFeaturePanel() {
   const [variant, setVariant] = useState(0);
   const [intel, setIntel] = useState<FeatureIntelligence | null>(null);
+  const [desc, setDesc] = useState<ReturnType<typeof describe> | null>(null);
   const [running, setRunning] = useState(false);
+  const [pushed, setPushed] = useState<number | null>(null);
 
   const run = (idx = variant) => {
     setRunning(true);
@@ -74,9 +76,25 @@ export function GeometryFeaturePanel() {
       const r = parseStep(VARIANTS[idx].src);
       const t = buildTopology(r);
       const d = describe(r, t);
+      setDesc(d);
       setIntel(analyzeGeometry(r, t, d));
       setRunning(false);
     });
+  };
+
+  const mapped = useMemo(
+    () => (intel && desc ? mapGeometryToLearningVector(intel, desc) : null),
+    [intel, desc],
+  );
+
+  const sendToLearningEngine = () => {
+    if (!mapped) return;
+    designBridge.publish({
+      ...mapped,
+      ts: Date.now(),
+      variantName: VARIANTS[variant].label,
+    });
+    setPushed(Date.now());
   };
 
   const embView = useMemo(() => {
