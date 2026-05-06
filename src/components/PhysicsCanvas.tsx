@@ -261,7 +261,7 @@ export function PhysicsCanvas({
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       if (!stateRef.current) {
         const p = paramsRef.current;
-        stateRef.current = initState(p.particleCount, r.width, r.height, p.edgesPerNode, p.restLength);
+        stateRef.current = initState(p.particleCount, r.width, r.height, p.edgesPerNode, p.restLength, p.dtype, p.device);
       }
     };
     resize();

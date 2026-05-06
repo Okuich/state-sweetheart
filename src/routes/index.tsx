@@ -70,6 +70,8 @@ function Index() {
     pairwiseStrength: 200,
     pairwiseRadius: 50,
     integrator: "euler",
+    dtype: "float32",
+    device: "cpu",
   });
   const [resetKey, setResetKey] = useState(0);
   const [validation, setValidation] = useState<ValidationReport | null>(null);
