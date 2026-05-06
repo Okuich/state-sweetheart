@@ -27,6 +27,7 @@ import { FractureVisualizationPanel } from "@/components/FractureVisualizationPa
 import { MaterialCheckpointPanel } from "@/components/MaterialCheckpointPanel";
 import { PrecisionPolicyPanel } from "@/components/PrecisionPolicyPanel";
 import { AnomalyAlertsPanel } from "@/components/AnomalyAlertsPanel";
+import { TelemetryUploadPanel } from "@/components/TelemetryUploadPanel";
 import { FederatedPanel } from "@/components/FederatedPanel";
 import { saveSnapshot } from "@/lib/worldMemory";
 
