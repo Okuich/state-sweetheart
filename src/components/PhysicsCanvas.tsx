@@ -676,75 +676,7 @@ export function PhysicsCanvas({
         ctx.arc(s.x[i * 2], s.x[i * 2 + 1], radius, 0, Math.PI * 2);
         ctx.fillStyle = `oklch(${light} ${chroma} ${hueDeg})`;
         ctx.fill();
-          }
-
-          // 2b. pairwise via uniform spatial grid — O(N) instead of O(N²).
-          // Bin every node into a cell of size = pairwiseRadius. Each pair is
-          // only tested against neighbors in the same or 4 forward cells
-          // (each unordered pair visited exactly once). 5–20× faster for
-          // typical N=400-2500 with pRad ~ 50px; lets the sim scale past 5k.
-          if (pStr !== 0 && pRad > 0) {
-            const cell = pRad;
-            const gw = Math.max(1, Math.ceil(w / cell));
-            const gh = Math.max(1, Math.ceil(h / cell));
-            const nCells = gw * gh;
-            const cellCount = new Int32Array(nCells);
-            const cellOf = new Int32Array(s.N);
-            for (let i = 0; i < s.N; i++) {
-              const cxi = Math.min(gw - 1, Math.max(0, (s.x[i * 2] / cell) | 0));
-              const cyi = Math.min(gh - 1, Math.max(0, (s.x[i * 2 + 1] / cell) | 0));
-              const c = cyi * gw + cxi;
-              cellOf[i] = c;
-              cellCount[c]++;
-            }
-            // Counting-sort prefix-sum → contiguous per-cell ranges in `order`.
-            const cellStart = new Int32Array(nCells + 1);
-            for (let c = 0; c < nCells; c++) cellStart[c + 1] = cellStart[c] + cellCount[c];
-            const cursor = new Int32Array(nCells);
-            const order = new Int32Array(s.N);
-            for (let i = 0; i < s.N; i++) {
-              const c = cellOf[i];
-              order[cellStart[c] + cursor[c]++] = i;
-            }
-            for (let cy = 0; cy < gh; cy++) {
-              for (let cx = 0; cx < gw; cx++) {
-                const c = cy * gw + cx;
-                const aS = cellStart[c], aE = cellStart[c + 1];
-                if (aS === aE) continue;
-                for (let dyc = 0; dyc <= 1; dyc++) {
-                  for (let dxc = -1; dxc <= 1; dxc++) {
-                    if (dyc === 0 && dxc < 0) continue; // dedupe pairs
-                    const nxi = cx + dxc, nyi = cy + dyc;
-                    if (nxi < 0 || nxi >= gw || nyi >= gh) continue;
-                    const cn = nyi * gw + nxi;
-                    const bS = cellStart[cn], bE = cellStart[cn + 1];
-                    if (bS === bE) continue;
-                    const same = c === cn;
-                    for (let ai = aS; ai < aE; ai++) {
-                      const i = order[ai];
-                      const xi = s.x[i * 2], yi = s.x[i * 2 + 1];
-                      const startB = same ? ai + 1 : bS;
-                      for (let bi = startB; bi < bE; bi++) {
-                        const j = order[bi];
-                        const dx = xi - s.x[j * 2];
-                        const dy = yi - s.x[j * 2 + 1];
-                        const r2 = dx * dx + dy * dy;
-                        if (r2 > r2max || r2 < 1e-4) continue;
-                        const dist = Math.sqrt(r2);
-                        const fmag = pStr * (norm * norm / r2 - norm / dist);
-                        const fx = (dx / dist) * fmag;
-                        const fy = (dy / dist) * fmag;
-                        s.f[i * 2]     += fx;
-                        s.f[i * 2 + 1] += fy;
-                        s.f[j * 2]     -= fx;
-                        s.f[j * 2 + 1] -= fy;
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
+      }
 
 
       if (pointerRef.current.active) {
