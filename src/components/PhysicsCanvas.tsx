@@ -76,6 +76,7 @@ export type SimParams = {
   boundary: "walls" | "wrap" | "periodic";
   forceViz: "off" | "vectors" | "heatmap";
   potentialGrad: "analytic" | "finite-diff";
+  fieldSampling: "auto" | "clamp" | "wrap" | "none";
 };
 
 type FloatArr = Float32Array | Float64Array;
