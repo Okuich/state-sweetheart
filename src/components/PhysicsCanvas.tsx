@@ -715,6 +715,7 @@ export function PhysicsCanvas({
   const paramsRef = useRef(params);
   paramsRef.current = params;
   const lastValidationRef = useRef(0);
+  const stepOnceRef = useRef(0);
   const onValidationRef = useRef(onValidation);
   onValidationRef.current = onValidation;
   const onLossRef = useRef(onLoss);
