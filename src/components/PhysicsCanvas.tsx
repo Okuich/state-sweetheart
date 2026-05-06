@@ -70,6 +70,8 @@ export type SimParams = {
   subSteps: number;
   workers: number;
   showPartitions: boolean;
+  optimize: boolean;
+  objectiveLR: number;
 };
 
 type FloatArr = Float32Array | Float64Array;
