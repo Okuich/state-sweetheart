@@ -4,6 +4,7 @@ import { PhysicsCanvas, type SimParams, type ValidationReport } from "@/componen
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { compileFieldExpr } from "@/lib/exprCompile";
+import { WorldMemoryPanel } from "@/components/WorldMemoryPanel";
 
 export const Route = createFileRoute("/")({
   component: Index,
@@ -673,6 +674,15 @@ function Index() {
             Reset
           </Button>
         </div>
+      </section>
+
+      {/* Persistent World Model — long-term memory of past runs */}
+      <section className="relative z-10 mx-4 lg:mx-10 mb-10 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
+        <WorldMemoryPanel
+          params={params}
+          loss={loss}
+          onRestore={(p) => { setParams(p); setResetKey((k) => k + 1); }}
+        />
       </section>
 
       {/* Footer / code echo */}
