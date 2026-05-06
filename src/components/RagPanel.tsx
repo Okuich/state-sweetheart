@@ -1,12 +1,18 @@
 // Retrieval-Augmented Physics Reasoning — UI panel
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Sparkles, AlertTriangle, Loader2 } from "lucide-react";
 import { loadGraph, type Graph } from "@/lib/knowledgeGraph";
 import {
   retrieveAll,
   synthesizeQuery,
   type RagContext,
 } from "@/lib/ragRetrieval";
+import {
+  recommendSimulationParameters,
+  type Recommendation,
+} from "@/server/physicsReasoner.functions";
 
 const PRESETS = [
   "thin-wall bracket high stress aluminum",
