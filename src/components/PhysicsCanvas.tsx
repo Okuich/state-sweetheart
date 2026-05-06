@@ -846,7 +846,7 @@ export function PhysicsCanvas({
           // is only tested against neighbors in the same or 4 forward
           // cells (so each unordered pair is visited once). 5–20× faster
           // than all-pairs for typical pRad — the sim now scales past 5k.
-          if (pStr !== 0 && pRad > 0) {
+          if (pStr !== 0 && pRad > 0 && p.pairwiseAlgo === "grid") {
             const cell = pRad;
             const gw = Math.max(1, Math.ceil(w / cell));
             const gh = Math.max(1, Math.ceil(h / cell));
