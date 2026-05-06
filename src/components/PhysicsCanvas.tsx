@@ -488,10 +488,11 @@ function stepState(
   damping: number,
   w: number,
   h: number,
-  integrator: "euler" | "semi-euler" | "verlet",
+  integrator: "euler" | "semi-euler" | "verlet" = "semi-euler",
   boundary: Boundary = "walls",
+  restitution: number = 0.7,
 ) {
-  stepStateRange(s, dt, damping, w, h, integrator, 0, s.N, boundary);
+  stepStateRange(s, dt, damping, w, h, integrator, 0, s.N, boundary, restitution);
 }
 
 function stepStateRange(
@@ -500,14 +501,14 @@ function stepStateRange(
   damping: number,
   w: number,
   h: number,
-  integrator: "euler" | "semi-euler" | "verlet",
-  a: number,
-  b: number,
+  integrator: "euler" | "semi-euler" | "verlet" = "semi-euler",
+  a = 0,
+  b = s.N,
   boundary: Boundary = "walls",
+  restitution: number = 0.7,
 ) {
   if (integrator === "verlet") {
-    // Verlet's drift+kick are split around the force evaluation; the
-    // caller invokes verletDrift() BEFORE recomputing forces and
+    // Verlet drift+kick are split across the force evaluation; see
     // verletKick() AFTER. This branch is now position-only damping wrap-up.
   } else if (integrator === "semi-euler") {
     for (let i = a; i < b; i++) {
@@ -532,18 +533,20 @@ function stepStateRange(
     }
   }
   // Boundary handling — three modes:
-  //   walls:    elastic-ish reflection at the box edges (restitution 0.7)
+  //   walls:    inelastic reflection at the box edges with user-set
+  //             restitution e ∈ [0,1] (0 = perfectly plastic, 1 = elastic).
+  //             Tangential velocity is preserved; normal component flips
+  //             and is scaled by -e.
   //   wrap:     positions teleport across edges; velocity unchanged
-  //             (useful to see flux without bouncing artifacts)
   //   periodic: same wrap, AND pairwise forces use the minimum-image
-  //             convention so particles interact across the seam — this
-  //             is the standard MD periodic-box setup.
+  //             convention so particles interact across the seam.
   if (boundary === "walls") {
+    const e = restitution < 0 ? 0 : restitution > 1 ? 1 : restitution;
     for (let i = a; i < b; i++) {
-      if (s.x[i * 2] < 0)         { s.x[i * 2] = 0; s.v[i * 2] *= -0.7; }
-      else if (s.x[i * 2] > w)    { s.x[i * 2] = w; s.v[i * 2] *= -0.7; }
-      if (s.x[i * 2 + 1] < 0)     { s.x[i * 2 + 1] = 0; s.v[i * 2 + 1] *= -0.7; }
-      else if (s.x[i * 2 + 1] > h){ s.x[i * 2 + 1] = h; s.v[i * 2 + 1] *= -0.7; }
+      if (s.x[i * 2] < 0)         { s.x[i * 2] = 0; if (s.v[i * 2]     < 0) s.v[i * 2]     = -s.v[i * 2]     * e; }
+      else if (s.x[i * 2] > w)    { s.x[i * 2] = w; if (s.v[i * 2]     > 0) s.v[i * 2]     = -s.v[i * 2]     * e; }
+      if (s.x[i * 2 + 1] < 0)     { s.x[i * 2 + 1] = 0; if (s.v[i * 2 + 1] < 0) s.v[i * 2 + 1] = -s.v[i * 2 + 1] * e; }
+      else if (s.x[i * 2 + 1] > h){ s.x[i * 2 + 1] = h; if (s.v[i * 2 + 1] > 0) s.v[i * 2 + 1] = -s.v[i * 2 + 1] * e; }
     }
   } else {
     // wrap & periodic both use modular position remapping
