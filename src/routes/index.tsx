@@ -722,6 +722,11 @@ function Index() {
         </div>
       </section>
 
+      {/* Domain Simulation Templates — high-level abstractions */}
+      <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
+        <TemplatesPanel onApply={(patch) => { setParams((p) => ({ ...p, ...patch })); setResetKey((k) => k + 1); }} />
+      </section>
+
       {/* Autonomous Physics Agents — agentic reasoning over current world */}
       <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
         <AgentsPanel
