@@ -1141,7 +1141,24 @@ export function PhysicsCanvas({
                 const m = s.m[i];
                 s.f[i * 2]     -= kDrag * m * s.v[i * 2];
                 s.f[i * 2 + 1] -= kDrag * m * s.v[i * 2 + 1];
+            }
+
+            // quadratic air drag: F_air = −c_air · m · |v| · v
+            // Always active (independent of dragMode) — scales with v² so
+            // fast particles decelerate disproportionately faster.
+            if (p.airDragK > 0) {
+              const c = p.airDragK;
+              for (let i = a; i < b; i++) {
+                const vx = s.v[i * 2];
+                const vy = s.v[i * 2 + 1];
+                const speed = Math.sqrt(vx * vx + vy * vy);
+                if (speed > 0) {
+                  const k = c * s.m[i] * speed;
+                  s.f[i * 2]     -= k * vx;
+                  s.f[i * 2 + 1] -= k * vy;
+                }
               }
+            }
             }
 
             // pointer attractor (local)
