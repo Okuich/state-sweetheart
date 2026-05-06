@@ -4,11 +4,40 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { getPrecisionPolicy, type PrecisionMode } from "@/lib/precisionPolicy";
+import {
+  listKernelPaths,
+  decideDtypeToggle,
+  type KernelF64Status,
+} from "@/lib/kernelCapabilities";
+
+type Dtype = "f32" | "f64";
 
 export function PrecisionPolicyPanel() {
   const policy = getPrecisionPolicy();
   const [, force] = useState(0);
   const refresh = () => force((n) => n + 1);
+
+  // Active kernel paths the simulator currently uses. In a real app this
+  // would come from the simulator config; we let the user toggle them so
+  // the gating behaviour is observable.
+  const allPaths = useMemo(() => listKernelPaths(), []);
+  const [activeIds, setActiveIds] = useState<string[]>([
+    "cpu-reference",
+    "webgpu-spatial-hash",
+  ]);
+  const decision = useMemo(() => decideDtypeToggle(activeIds), [activeIds]);
+
+  const [dtype, setDtype] = useState<Dtype>("f32");
+  // If support is removed (kernel path activated), force back to f32.
+  useEffect(() => {
+    if (!decision.f64Enabled && dtype === "f64") setDtype("f32");
+  }, [decision.f64Enabled, dtype]);
+
+  const toggleActive = (id: string) => {
+    setActiveIds((cur) =>
+      cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]
+    );
+  };
 
   // Demo buttons: simulate the rest of the app handing arrays to the GPU.
   const pushSafe = () => {
@@ -49,6 +78,20 @@ export function PrecisionPolicyPanel() {
         </Button>
       </div>
 
+      {!decision.f64Enabled && (
+        <div className="rounded border border-amber-500/40 bg-amber-500/10 p-3 text-[12px] text-amber-300">
+          <div className="flex items-start gap-2">
+            <span aria-hidden className="text-base leading-none">⚠</span>
+            <div className="space-y-1">
+              <div className="font-medium">
+                f64 dtype unavailable on the current kernel path.
+              </div>
+              <div className="opacity-90">{decision.reason}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {banner && (
         <div className="rounded border border-amber-500/40 bg-amber-500/10 p-3 text-[12px] text-amber-300">
           <div className="flex items-start gap-2">
@@ -71,6 +114,36 @@ export function PrecisionPolicyPanel() {
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <div className="space-y-3">
+          <div className="space-y-1">
+            <div className="text-[11px] text-muted-foreground">simulation dtype</div>
+            <Select
+              value={dtype}
+              onValueChange={(v) => setDtype(v as Dtype)}
+              disabled={!decision.f64Enabled && dtype === "f32"
+                ? false
+                : !decision.f64Enabled}
+            >
+              <SelectTrigger
+                className="h-9 text-xs"
+                disabled={!decision.f64Enabled}
+                title={decision.f64Enabled ? undefined : decision.reason}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="f32" className="text-xs">f32 (always available)</SelectItem>
+                <SelectItem value="f64" className="text-xs" disabled={!decision.f64Enabled}>
+                  f64 {decision.f64Enabled ? "" : "— unsupported by active path"}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            {!decision.f64Enabled && (
+              <div className="text-[10px] text-muted-foreground">
+                Toggle disabled: {decision.reason}
+              </div>
+            )}
+          </div>
+
           <div className="space-y-1">
             <div className="text-[11px] text-muted-foreground">downgrade mode</div>
             <Select value={stats.mode} onValueChange={(v) => setMode(v as PrecisionMode)}>
@@ -122,31 +195,64 @@ export function PrecisionPolicyPanel() {
           </div>
         </div>
 
-        <div className="rounded border border-border/60 bg-background/40 p-2">
-          <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-            recent events ({stats.events.length})
+        <div className="space-y-3">
+          <div className="rounded border border-border/60 bg-background/40 p-2">
+            <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+              active kernel paths
+            </div>
+            <div className="space-y-1">
+              {allPaths.map((s: KernelF64Status) => {
+                const on = activeIds.includes(s.path.id);
+                return (
+                  <button
+                    key={s.path.id}
+                    onClick={() => toggleActive(s.path.id)}
+                    className={`w-full rounded px-2 py-1 text-left text-[11px] transition ${
+                      on ? "bg-primary/15 border border-primary/40" : "border border-border/40 hover:bg-background/60"
+                    }`}
+                    title={s.reason}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono">{s.path.label}</span>
+                      <span className={`tabular-nums text-[10px] ${s.supportsF64 ? "text-emerald-400" : "text-amber-400"}`}>
+                        {s.supportsF64 ? "f64 ok" : "f32 only"}
+                      </span>
+                    </div>
+                    {!s.supportsF64 && s.reason && (
+                      <div className="mt-0.5 text-[10px] text-muted-foreground">{s.reason}</div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          {stats.events.length === 0 ? (
-            <div className="text-[11px] italic text-muted-foreground">
-              No downgrades recorded.
+
+          <div className="rounded border border-border/60 bg-background/40 p-2">
+            <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+              recent events ({stats.events.length})
             </div>
-          ) : (
-            <div className="space-y-1 max-h-56 overflow-y-auto">
-              {stats.events.slice().reverse().map((e, i) => (
-                <div key={i} className="rounded bg-background/40 px-2 py-1 text-[11px]">
-                  <div className="flex justify-between">
-                    <span className="font-mono">{e.label}</span>
-                    <span className="text-muted-foreground tabular-nums">n={e.length}</span>
+            {stats.events.length === 0 ? (
+              <div className="text-[11px] italic text-muted-foreground">
+                No downgrades recorded.
+              </div>
+            ) : (
+              <div className="space-y-1 max-h-56 overflow-y-auto">
+                {stats.events.slice().reverse().map((e, i) => (
+                  <div key={i} className="rounded bg-background/40 px-2 py-1 text-[11px]">
+                    <div className="flex justify-between">
+                      <span className="font-mono">{e.label}</span>
+                      <span className="text-muted-foreground tabular-nums">n={e.length}</span>
+                    </div>
+                    <div className="flex justify-between text-[10px] text-muted-foreground tabular-nums">
+                      <span>|x|max {e.maxAbs.toExponential(2)}</span>
+                      <span>relLoss {e.maxRelLoss.toExponential(2)}</span>
+                      {e.overflow && <span className="text-destructive">overflow</span>}
+                    </div>
                   </div>
-                  <div className="flex justify-between text-[10px] text-muted-foreground tabular-nums">
-                    <span>|x|max {e.maxAbs.toExponential(2)}</span>
-                    <span>relLoss {e.maxRelLoss.toExponential(2)}</span>
-                    {e.overflow && <span className="text-destructive">overflow</span>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
