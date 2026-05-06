@@ -1218,10 +1218,23 @@ export function PhysicsCanvas({
           // For velocity-Verlet, drift already happened above; here we apply
           // the second half-kick using the NEW forces, then cache f→fPrev.
           if (p.integrator === "verlet") {
-            for (let q = 0; q < W; q++) {
-              verletKick(s, subDt, p.damping, partStart(q), partEnd(q), p.dragMode);
-              // still call stepStateRange for boundary handling (verlet branch is a no-op for motion)
-              stepStateRange(s, subDt, p.damping, w, h, p.integrator, partStart(q), partEnd(q), p.boundary, p.restitution, p.dragMode);
+            if (!s.verletPrimed) {
+              // Priming substep: forces have just been evaluated at x₀ but
+              // we did NOT drift, and we must not kick (no a_old to combine
+              // with). Seed fPrev = f(x₀) so the next substep's verletDrift
+              // half-kick uses the correct initial acceleration. Boundary
+              // handling still runs so reflections behave consistently.
+              s.fPrev.set(s.f);
+              s.verletPrimed = true;
+              for (let q = 0; q < W; q++) {
+                stepStateRange(s, subDt, p.damping, w, h, p.integrator, partStart(q), partEnd(q), p.boundary, p.restitution, p.dragMode);
+              }
+            } else {
+              for (let q = 0; q < W; q++) {
+                verletKick(s, subDt, p.damping, partStart(q), partEnd(q), p.dragMode);
+                // still call stepStateRange for boundary handling (verlet branch is a no-op for motion)
+                stepStateRange(s, subDt, p.damping, w, h, p.integrator, partStart(q), partEnd(q), p.boundary, p.restitution, p.dragMode);
+              }
             }
           } else {
             for (let q = 0; q < W; q++) {
