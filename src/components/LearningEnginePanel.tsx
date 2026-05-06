@@ -4,6 +4,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   D,
   FEATURE_NAMES,
@@ -18,6 +19,7 @@ import {
   type Sample,
   type TrainStats,
 } from "@/lib/learningEngine";
+import { designBridge, type PublishedDesign } from "@/lib/geometryToLearning";
 
 const fmt = (v: number, p = 3) =>
   Number.isFinite(v) ? v.toFixed(p) : "—";
