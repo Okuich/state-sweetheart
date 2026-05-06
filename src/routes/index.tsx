@@ -739,20 +739,25 @@ function Index() {
 
         <div className="space-y-2 md:col-span-2 lg:col-span-1">
           <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Integrator</div>
-          <div className="grid grid-cols-3 gap-2">
-            {(["euler", "semi-euler", "verlet"] as const).map((opt) => (
-              <Button
-                key={opt}
-                variant={params.integrator === opt ? "default" : "outline"}
-                className={`uppercase tracking-[0.16em] text-[9px] px-1 ${
-                  params.integrator === opt ? "bg-accent text-accent-foreground" : ""
-                }`}
-                onClick={() => update("integrator", opt)}
-              >
-                {opt === "euler" ? "Euler" : opt === "semi-euler" ? "Semi-impl." : "Verlet"}
-              </Button>
-            ))}
-          </div>
+          <Select
+            value={params.integrator}
+            onValueChange={(v) => update("integrator", v as SimParams["integrator"])}
+          >
+            <SelectTrigger className="w-full uppercase tracking-[0.16em] text-[10px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="euler">
+                Euler — explicit, 1st order (energy grows)
+              </SelectItem>
+              <SelectItem value="semi-euler">
+                Semi-implicit Euler — symplectic, 1st order
+              </SelectItem>
+              <SelectItem value="verlet">
+                Velocity-Verlet — symplectic, 2nd order
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="space-y-2">
