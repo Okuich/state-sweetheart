@@ -541,6 +541,40 @@ function Index() {
           </div>
         </div>
 
+        <div className="space-y-2 rounded border border-border/40 p-2">
+          <div className="flex items-center justify-between">
+            <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Digital twin</div>
+            <Button
+              variant={params.twinEnabled ? "default" : "outline"}
+              className={`uppercase tracking-[0.14em] text-[9px] h-6 px-2 ${params.twinEnabled ? "bg-accent text-accent-foreground" : ""}`}
+              onClick={() => update("twinEnabled", !params.twinEnabled)}
+              title="Stream synthetic IoT telemetry and assimilate into the live sim"
+            >
+              {params.twinEnabled ? "live" : "off"}
+            </Button>
+          </div>
+          <Field label="Sensors M" value={params.twinSensorCount} min={1} max={32} step={1}
+                 onChange={(v) => update("twinSensorCount", v)} />
+          <Field label="Assim gain" value={params.twinAssimGain} min={0} max={0.5} step={0.01}
+                 onChange={(v) => update("twinAssimGain", v)} />
+          <Field label="Sensor noise" value={params.twinSensorNoise} unit="px" min={1} max={60} step={1}
+                 onChange={(v) => update("twinSensorNoise", v)} />
+          <Field label="Anomaly z" value={params.twinAnomalyZ} min={1} max={6} step={0.1}
+                 onChange={(v) => update("twinAnomalyZ", v)} />
+          <Field label="Forecast steps" value={params.twinForecastSteps} min={0} max={60} step={1}
+                 onChange={(v) => update("twinForecastSteps", v)} />
+          <div className="flex items-center justify-between pt-1">
+            <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Twin overlay</span>
+            <Button
+              variant={params.showTwin ? "default" : "outline"}
+              className={`uppercase tracking-[0.14em] text-[9px] h-6 px-2 ${params.showTwin ? "bg-secondary text-secondary-foreground" : ""}`}
+              onClick={() => update("showTwin", !params.showTwin)}
+            >
+              {params.showTwin ? "shown" : "hidden"}
+            </Button>
+          </div>
+        </div>
+
         <div className="space-y-2">
           <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Boundary</div>
           <div className="grid grid-cols-3 gap-1.5">
