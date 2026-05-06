@@ -168,6 +168,24 @@ function Index() {
         <Field label="Pairwise · ε"  value={params.pairwiseStrength} min={-500} max={1000} step={10} onChange={(v) => update("pairwiseStrength", v)} />
         <Field label="Pairwise radius" value={params.pairwiseRadius} unit="px" min={0} max={200} step={1} onChange={(v) => update("pairwiseRadius", v)} />
 
+        <div className="space-y-2">
+          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Integrator</div>
+          <div className="flex gap-2">
+            {(["euler", "verlet"] as const).map((opt) => (
+              <Button
+                key={opt}
+                variant={params.integrator === opt ? "default" : "outline"}
+                className={`flex-1 uppercase tracking-[0.18em] text-[10px] ${
+                  params.integrator === opt ? "bg-accent text-accent-foreground" : ""
+                }`}
+                onClick={() => update("integrator", opt)}
+              >
+                {opt === "euler" ? "Semi-impl. Euler" : "Velocity Verlet"}
+              </Button>
+            ))}
+          </div>
+        </div>
+
         <div className="flex items-end gap-3 md:col-span-2 lg:col-span-1">
           <Button
             variant="default"
