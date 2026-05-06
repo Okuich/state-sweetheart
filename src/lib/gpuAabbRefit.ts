@@ -402,17 +402,16 @@ export function markAllDirty(ctx: AabbRefitContext): void {
 
 function refitStepCpu(ctx: AabbRefitContext): void {
   const { tree, scene, options } = ctx;
-  // Snapshot previous dirty flags (markAllDirty may have set some), then
-  // clear and re-set per actual change this step.
-  const wasDirty = Uint8Array.from(tree.dirty);
+  // dirty[n] reflects "changed this step" only — cleared at start, re-set
+  // when a leaf box delta exceeds eps or when a child propagated dirtiness
+  // up to its parent. markAllDirty zeroes boxes so the natural delta path
+  // marks everything.
   tree.dirty.fill(0);
 
   const eps = options.refitEpsilon;
   let dirtyLeaves = 0;
   let dirtyInternals = 0;
 
-  // Walk levels bottom-up. Each level may contain BOTH leaves and internals
-  // because median-split produces a non-uniform-depth tree.
   for (let L = 0; L < tree.levels.length; L++) {
     const layer = tree.levels[L];
     for (let k = 0; k < layer.length; k++) {
@@ -420,7 +419,6 @@ function refitStepCpu(ctx: AabbRefitContext): void {
       const p = tree.leafPrim[n];
       const off = n * 4;
       if (p >= 0) {
-        // Leaf: recompute from scene.
         const box = leafBoxFromScene(scene, p);
         const delta = Math.max(
           Math.abs(tree.boxes[off + 0] - box.minX),
@@ -432,19 +430,17 @@ function refitStepCpu(ctx: AabbRefitContext): void {
         tree.boxes[off + 1] = box.minY;
         tree.boxes[off + 2] = box.maxX;
         tree.boxes[off + 3] = box.maxY;
-        if (delta > eps || wasDirty[n]) {
+        if (delta > eps) {
           tree.dirty[n] = 1;
           dirtyLeaves++;
         }
       } else {
-        // Internal: union children, only if any child or self was dirty.
         const a = tree.child0[n], b = tree.child1[n];
-        if (!tree.dirty[a] && !tree.dirty[b] && !wasDirty[n]) continue;
+        if (!tree.dirty[a] && !tree.dirty[b]) continue;
         const ao = a * 4, bo = b * 4;
         tree.boxes[off + 0] = Math.min(tree.boxes[ao + 0], tree.boxes[bo + 0]);
         tree.boxes[off + 1] = Math.min(tree.boxes[ao + 1], tree.boxes[bo + 1]);
         tree.boxes[off + 2] = Math.max(tree.boxes[ao + 2], tree.boxes[bo + 2]);
-        tree.boxes[off + 3] = Math.max(tree.boxes[ao + 3], tree.boxes[bo + 3]);
         tree.boxes[off + 3] = Math.max(tree.boxes[ao + 3], tree.boxes[bo + 3]);
         tree.dirty[n] = 1;
         dirtyInternals++;
