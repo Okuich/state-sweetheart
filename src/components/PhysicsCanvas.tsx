@@ -85,6 +85,7 @@ export type SimParams = {
   potentialGrad: "analytic" | "finite-diff";
   fieldSampling: "auto" | "clamp" | "wrap" | "none";
   showFieldArrows: boolean;
+  debugForces: boolean;
   adaptiveSubSteps: boolean;
   maxSubSteps: number;
   pairwiseAlgo: "grid" | "all-pairs";
@@ -1634,6 +1635,105 @@ export function PhysicsCanvas({
             }
           }
         }
+      }
+
+      // ── Debug force overlay ───────────────────────────────────────────
+      // Independent of forceViz/showFieldArrows. Draws TWO arrows per
+      // particle: gravity (red, body force only) and net force (yellow,
+      // includes everything in s.f). Both are normalized to the per-frame
+      // max-net-force so their relative magnitudes are directly readable.
+      // A HUD in the top-left shows |F| stats and a numeric readout is
+      // rendered next to a sparse sample of particles.
+      if (p.debugForces) {
+        const gMode = p.gravityMode ?? "uniform";
+        let gx = 0, gy = 0;
+        if (gMode !== "zero" && p.gravity !== 0) {
+          if (gMode === "directional") {
+            const ang = ((p.gravityAngle ?? 90) * Math.PI) / 180;
+            gx = Math.cos(ang) * p.gravity;
+            gy = Math.sin(ang) * p.gravity;
+          } else {
+            gy = p.gravity;
+          }
+        }
+        // stats over net force
+        let fMax = 1e-6, fSum = 0, fMin = Infinity;
+        for (let i = 0; i < s.N; i++) {
+          const fm = Math.hypot(s.f[i * 2], s.f[i * 2 + 1]);
+          if (fm > fMax) fMax = fm;
+          if (fm < fMin) fMin = fm;
+          fSum += fm;
+        }
+        const fMean = fSum / Math.max(1, s.N);
+        const NET_PX = 26;
+        const GRAV_PX = 18;
+        const gMag = Math.hypot(gx, gy);
+        // Net-force arrows (yellow)
+        ctx.strokeStyle = "oklch(0.88 0.18 95 / 0.85)";
+        ctx.lineWidth = 0.8;
+        ctx.beginPath();
+        for (let i = 0; i < s.N; i++) {
+          const fxv = s.f[i * 2], fyv = s.f[i * 2 + 1];
+          const fm = Math.hypot(fxv, fyv);
+          if (fm < 1e-3) continue;
+          const k2 = (NET_PX * fm / fMax) / fm;
+          const x0 = s.x[i * 2], y0 = s.x[i * 2 + 1];
+          const x1 = x0 + fxv * k2, y1 = y0 + fyv * k2;
+          ctx.moveTo(x0, y0); ctx.lineTo(x1, y1);
+          const ang = Math.atan2(y1 - y0, x1 - x0);
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x1 - 3 * Math.cos(ang - 0.4), y1 - 3 * Math.sin(ang - 0.4));
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x1 - 3 * Math.cos(ang + 0.4), y1 - 3 * Math.sin(ang + 0.4));
+        }
+        ctx.stroke();
+        // Gravity arrows (red), per-particle: gᵢ = g · mᵢ
+        if (gMag > 1e-6) {
+          ctx.strokeStyle = "oklch(0.70 0.22 25 / 0.85)";
+          ctx.lineWidth = 0.7;
+          ctx.beginPath();
+          for (let i = 0; i < s.N; i++) {
+            const m = s.m[i];
+            const gxi = gx * m, gyi = gy * m;
+            const gm = Math.hypot(gxi, gyi);
+            if (gm < 1e-3) continue;
+            const k2 = (GRAV_PX * gm / fMax) / gm;
+            const x0 = s.x[i * 2], y0 = s.x[i * 2 + 1];
+            const x1 = x0 + gxi * k2, y1 = y0 + gyi * k2;
+            ctx.moveTo(x0, y0); ctx.lineTo(x1, y1);
+            const ang = Math.atan2(y1 - y0, x1 - x0);
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x1 - 2.5 * Math.cos(ang - 0.4), y1 - 2.5 * Math.sin(ang - 0.4));
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x1 - 2.5 * Math.cos(ang + 0.4), y1 - 2.5 * Math.sin(ang + 0.4));
+          }
+          ctx.stroke();
+        }
+        // Per-particle magnitude labels (sparse: every Nth particle)
+        const labelStride = Math.max(1, Math.ceil(s.N / 24));
+        ctx.fillStyle = "oklch(0.95 0.02 95 / 0.85)";
+        ctx.font = "9px ui-monospace, monospace";
+        for (let i = 0; i < s.N; i += labelStride) {
+          const fm = Math.hypot(s.f[i * 2], s.f[i * 2 + 1]);
+          ctx.fillText(fm.toFixed(0), s.x[i * 2] + 4, s.x[i * 2 + 1] - 4);
+        }
+        // HUD
+        const hudW = 196, hudH = 64;
+        ctx.fillStyle = "oklch(0.16 0.02 260 / 0.78)";
+        ctx.fillRect(8, 8, hudW, hudH);
+        ctx.strokeStyle = "oklch(0.88 0.18 95 / 0.5)";
+        ctx.lineWidth = 0.6;
+        ctx.strokeRect(8, 8, hudW, hudH);
+        ctx.fillStyle = "oklch(0.95 0.02 95 / 0.95)";
+        ctx.font = "10px ui-monospace, monospace";
+        ctx.fillText("DEBUG · forces", 16, 22);
+        ctx.fillStyle = "oklch(0.88 0.18 95 / 0.95)";
+        ctx.fillText(`|F| min ${fMin === Infinity ? 0 : fMin.toFixed(1)}  mean ${fMean.toFixed(1)}  max ${fMax.toFixed(1)}`, 16, 38);
+        ctx.fillStyle = "oklch(0.70 0.22 25 / 0.95)";
+        ctx.fillText(`|g·m̄| ≈ ${(gMag * 1.2).toFixed(1)}  mode=${gMode}`, 16, 54);
+        ctx.fillStyle = "oklch(0.95 0.02 95 / 0.6)";
+        ctx.font = "9px ui-monospace, monospace";
+        ctx.fillText("yellow = net F   red = gravity", 16, 68);
       }
 
 
