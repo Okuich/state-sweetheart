@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, AlertTriangle, Loader2 } from "lucide-react";
+import { Sparkles, AlertTriangle, Loader2, ChevronDown, ChevronRight } from "lucide-react";
 import { loadGraph, type Graph } from "@/lib/knowledgeGraph";
 import {
   retrieveAll,
@@ -10,6 +10,7 @@ import {
   DEFAULT_WEIGHTS,
   type RagContext,
   type RetrievalWeights,
+  type Breakdown,
 } from "@/lib/ragRetrieval";
 import {
   recommendSimulationParameters,
