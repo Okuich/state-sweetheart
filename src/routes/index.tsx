@@ -148,6 +148,13 @@ function Index() {
     confidenceZ: 2,
     constraintTol: 0.05,
     showConfidence: true,
+    twinEnabled: false,
+    twinSensorCount: 6,
+    twinAssimGain: 0.05,
+    twinSensorNoise: 12,
+    twinAnomalyZ: 3,
+    twinForecastSteps: 18,
+    showTwin: true,
     customFieldSrc: "0.5*(nx^2 + ny^2) + 0.2*sin(8*theta + t)",
   });
   const [resetKey, setResetKey] = useState(0);
