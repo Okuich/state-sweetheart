@@ -400,54 +400,49 @@ export function markAllDirty(ctx: AabbRefitContext): void {
 
 function refitStepCpu(ctx: AabbRefitContext): void {
   const { tree, scene, options } = ctx;
-  // Reset the dirty flags from the previous step. We DON'T fill(0) the
-  // whole array unconditionally because the caller may have set bits
-  // via markAllDirty — those stay live until they're consumed below.
-  // Strategy: snapshot, then clear, then re-set per refit.
+  // Snapshot previous dirty flags (markAllDirty may have set some), then
+  // clear and re-set per actual change this step.
   const wasDirty = Uint8Array.from(tree.dirty);
   tree.dirty.fill(0);
 
   const eps = options.refitEpsilon;
-  const leafLayer = tree.levels[0];
   let dirtyLeaves = 0;
-  for (let li = 0; li < leafLayer.length; li++) {
-    const nodeId = leafLayer[li];
-    const p = tree.leafPrim[nodeId];
-    if (p < 0) continue; // not actually a leaf (defensive)
-    const box = leafBoxFromScene(scene, p);
-    const off = nodeId * 4;
-    const px = tree.boxes[off + 0], py = tree.boxes[off + 1];
-    const pX = tree.boxes[off + 2], pY = tree.boxes[off + 3];
-    const delta = Math.max(
-      Math.abs(px - box.minX), Math.abs(py - box.minY),
-      Math.abs(pX - box.maxX), Math.abs(pY - box.maxY),
-    );
-    tree.boxes[off + 0] = box.minX;
-    tree.boxes[off + 1] = box.minY;
-    tree.boxes[off + 2] = box.maxX;
-    tree.boxes[off + 3] = box.maxY;
-    if (delta > eps || wasDirty[nodeId]) {
-      tree.dirty[nodeId] = 1;
-      dirtyLeaves++;
-    }
-  }
-  ctx.lastDirtyLeaves = dirtyLeaves;
-
-  // Internal layers, bottom-up. Skip levels[0] which is the leaf layer.
   let dirtyInternals = 0;
-  for (let L = 1; L < tree.levels.length; L++) {
+
+  // Walk levels bottom-up. Each level may contain BOTH leaves and internals
+  // because median-split produces a non-uniform-depth tree.
+  for (let L = 0; L < tree.levels.length; L++) {
     const layer = tree.levels[L];
     for (let k = 0; k < layer.length; k++) {
       const n = layer[k];
-      const a = tree.child0[n];
-      const b = tree.child1[n];
-      if (a < 0 || b < 0) continue; // a "leaf" sitting at a non-leaf level
-      if (!tree.dirty[a] && !tree.dirty[b] && !wasDirty[n]) continue;
-      const ao = a * 4, bo = b * 4, no = n * 4;
-      tree.boxes[no + 0] = Math.min(tree.boxes[ao + 0], tree.boxes[bo + 0]);
-      tree.boxes[no + 1] = Math.min(tree.boxes[ao + 1], tree.boxes[bo + 1]);
-      tree.boxes[no + 2] = Math.max(tree.boxes[ao + 2], tree.boxes[bo + 2]);
-      tree.boxes[no + 3] = Math.max(tree.boxes[ao + 3], tree.boxes[bo + 3]);
+      const p = tree.leafPrim[n];
+      const off = n * 4;
+      if (p >= 0) {
+        // Leaf: recompute from scene.
+        const box = leafBoxFromScene(scene, p);
+        const delta = Math.max(
+          Math.abs(tree.boxes[off + 0] - box.minX),
+          Math.abs(tree.boxes[off + 1] - box.minY),
+          Math.abs(tree.boxes[off + 2] - box.maxX),
+          Math.abs(tree.boxes[off + 3] - box.maxY),
+        );
+        tree.boxes[off + 0] = box.minX;
+        tree.boxes[off + 1] = box.minY;
+        tree.boxes[off + 2] = box.maxX;
+        tree.boxes[off + 3] = box.maxY;
+        if (delta > eps || wasDirty[n]) {
+          tree.dirty[n] = 1;
+          dirtyLeaves++;
+        }
+      } else {
+        // Internal: union children, only if any child or self was dirty.
+        const a = tree.child0[n], b = tree.child1[n];
+        if (!tree.dirty[a] && !tree.dirty[b] && !wasDirty[n]) continue;
+        const ao = a * 4, bo = b * 4;
+        tree.boxes[off + 0] = Math.min(tree.boxes[ao + 0], tree.boxes[bo + 0]);
+        tree.boxes[off + 1] = Math.min(tree.boxes[ao + 1], tree.boxes[bo + 1]);
+        tree.boxes[off + 2] = Math.max(tree.boxes[ao + 2], tree.boxes[bo + 2]);
+        tree.boxes[off + 3] = Math.max(tree.boxes[ao + 3], tree.boxes[bo + 3]);
       tree.dirty[n] = 1;
       dirtyInternals++;
     }
