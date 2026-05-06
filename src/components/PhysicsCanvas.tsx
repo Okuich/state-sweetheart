@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { compileFieldExpr } from "@/lib/exprCompile";
+import { resolveContacts, type ContactStats } from "@/lib/contactSolver";
 
 export type ValidationIssue = { field: string; expected: string; got: string };
 export type ValidationReport = { ok: boolean; issues: ValidationIssue[]; checkedAt: number };
@@ -120,6 +121,16 @@ export type SimParams = {
   twinAnomalyZ: number;
   twinForecastSteps: number;
   showTwin: boolean;
+  // ── Narrow-phase contact solver ───────────────────────────────────
+  // Detects pairwise overlap (|xᵢ−xⱼ| < 2·contactRadius) and applies
+  // sequential normal impulses + Baumgarte position correction every
+  // sub-step (after constraint projection, before sync_boundaries).
+  contactsEnabled: boolean;
+  contactRadius: number;
+  contactIters: number;
+  contactRestitution: number;
+  contactBeta: number;
+  contactSlop: number;
 };
 
 type FloatArr = Float32Array | Float64Array;
@@ -935,6 +946,7 @@ export function PhysicsCanvas({
   const prevIntegratorEnergyRef = useRef<string>("");
   const lastSubStepsRef = useRef(1);
   const fpsEmaRef = useRef(60);
+  const lastContactStatsRef = useRef<ContactStats>({ contacts: 0, iters: 0, totalPenetration: 0, maxPenetration: 0 });
   // ── Digital Twin telemetry (synthetic IoT/sensor stream) ─────────
   // Each sensor has: a Lissajous phase pair, an assigned particle id
   // (re-bound on count change), the latest reading (px,py) with noise,
@@ -1368,6 +1380,25 @@ export function PhysicsCanvas({
           // independently-stepped slices stay consistent at the seams.
           // Rebuild boundary_indices when N, W, or edge topology changes.
           projectConstraints(s, p.constraintIters, subDt);
+
+          // 5b. Narrow-phase contact solver — sequential impulses +
+          // Baumgarte position correction. Runs after edge-constraint
+          // projection (so springs win at rest length) and before
+          // boundary sync (so cross-partition particles see corrected
+          // positions). Aggregated contact stats are surfaced via the
+          // overlay HUD.
+          if (p.contactsEnabled && p.contactRadius > 0 && s.N > 1) {
+            lastContactStatsRef.current = resolveContacts(s, {
+              radius: p.contactRadius,
+              iters: Math.max(1, p.contactIters | 0),
+              restitution: p.contactRestitution,
+              beta: p.contactBeta,
+              slop: p.contactSlop,
+            });
+          } else {
+            lastContactStatsRef.current = { contacts: 0, iters: 0, totalPenetration: 0, maxPenetration: 0 };
+          }
+
           {
             const eSig = s.E === 0
               ? 0
@@ -1764,6 +1795,8 @@ export function PhysicsCanvas({
         `twin M    ${p.twinEnabled ? twinSensorsRef.current.length : 0}`,
         `res EMA   ${p.twinEnabled ? twinResidualEmaRef.current.toFixed(1)+"px" : "—"}`,
         `anomalies ${p.twinEnabled ? twinAnomalyCountRef.current : "—"}`,
+        `contacts  ${p.contactsEnabled ? lastContactStatsRef.current.contacts : "—"}`,
+        `pen max   ${p.contactsEnabled ? lastContactStatsRef.current.maxPenetration.toFixed(2)+"px" : "—"}`,
       ];
       const padX = 10, padY = 8, lineH = 14;
       const panelW = 230;
