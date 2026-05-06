@@ -4,13 +4,9 @@ import {
   generateStarts,
 } from "./calibrationMultiStart";
 import {
-  TRUE_PARAMS,
   generateMeasurements,
   type ModelParams,
 } from "./calibration";
-
-const close = (a: number, b: number, rel = 0.15) =>
-  Math.abs(a - b) / Math.max(Math.abs(b), 1e-9) <= rel;
 
 describe("calibrateMultiStart", () => {
   it("best fit beats worst start on clean data", () => {
