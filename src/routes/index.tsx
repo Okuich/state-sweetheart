@@ -80,6 +80,7 @@ function Index() {
     showPartitions: true,
     optimize: false,
     objectiveLR: 0.05,
+    pairwiseMode: "lj",
   });
   const [resetKey, setResetKey] = useState(0);
   const [validation, setValidation] = useState<ValidationReport | null>(null);
