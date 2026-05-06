@@ -310,21 +310,21 @@ function Index() {
       {/* Footer / code echo */}
       <footer className="relative z-10 mx-4 lg:mx-10 mb-8 rounded-xl border border-border bg-card/60 p-5 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-3">
-          state.h — struct-of-arrays memory layout
+          kernels.cu — reset_forces &lt;&lt;&lt;blocks, threads&gt;&gt;&gt;
         </div>
         <pre className="overflow-x-auto text-xs leading-relaxed text-foreground/80">
-{`// positions
-float* x;   float* y;   float* z;     // [N]
-// velocities
-float* vx;  float* vy;  float* vz;    // [N]
-// forces
-float* fx;  float* fy;  float* fz;    // [N]
-// mass
-float* m;                              // [N]
-// edges (constraints / springs)
-int*   edge_i;                         // [E]
-int*   edge_j;                         // [E]
-float* rest_length;                    // [E]`}
+{`__global__ void reset_forces(int N,
+                             float* fx, float* fy, float* fz) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < N) {
+        fx[i] = 0.0f;
+        fy[i] = 0.0f;
+        fz[i] = 0.0f;
+    }
+}
+
+// launch:  reset_forces<<<(N+255)/256, 256>>>(N, fx, fy, fz);
+// JS analog (this build):  s.f.fill(0)   — one coalesced memset per frame`}
         </pre>
       </footer>
     </main>
