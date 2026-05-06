@@ -20,6 +20,7 @@ import { LearningEnginePanel } from "@/components/LearningEnginePanel";
 import { KnowledgeGraphPanel } from "@/components/KnowledgeGraphPanel";
 import { RagPanel } from "@/components/RagPanel";
 import { FabFeedbackPanel } from "@/components/FabFeedbackPanel";
+import { FederatedPanel } from "@/components/FederatedPanel";
 import { saveSnapshot } from "@/lib/worldMemory";
 
 export const Route = createFileRoute("/")({
