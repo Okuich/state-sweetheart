@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { compileFieldExpr } from "@/lib/exprCompile";
 
 export type ValidationIssue = { field: string; expected: string; got: string };
 export type ValidationReport = { ok: boolean; issues: ValidationIssue[]; checkedAt: number };
