@@ -416,10 +416,12 @@ export function PhysicsCanvas({
   params,
   pointerRef,
   onValidation,
+  onLoss,
 }: {
   params: SimParams;
   pointerRef: React.MutableRefObject<{ x: number; y: number; active: boolean; mode: 1 | -1 }>;
   onValidation?: (r: ValidationReport) => void;
+  onLoss?: (loss: number) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stateRef = useRef<State | null>(null);
