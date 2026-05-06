@@ -221,9 +221,21 @@ function verletDrift(
   dt: number,
   a: number,
   b: number,
+  w = 0,
+  h = 0,
+  boundary: Boundary = "walls",
+  restitution = 0.7,
 ) {
   // First half-kick using PREVIOUS step's forces (cached in s.fPrev),
-  // then drift positions with the half-updated velocity.
+  // then drift positions with the half-updated velocity. Wall reflection
+  // is applied IMMEDIATELY after the drift so the subsequent force
+  // evaluation (springs, pairwise, field) sees in-bounds positions and
+  // the velocity is consistent with the new pose.
+  //
+  // We also flip the normal component of fPrev (the cached a_old) for any
+  // particle that just bounced — otherwise the *next* drift would re-apply
+  // a half-kick that pushes the particle back through the wall it just
+  // reflected off, producing the classic "stuck-to-wall" Verlet artifact.
   for (let i = a; i < b; i++) {
     const invM = 1 / s.m[i];
     const axOld = s.fPrev[i * 2]     * invM;
@@ -232,6 +244,39 @@ function verletDrift(
     s.v[i * 2 + 1] += 0.5 * ayOld * dt;
     s.x[i * 2]     += s.v[i * 2]     * dt;
     s.x[i * 2 + 1] += s.v[i * 2 + 1] * dt;
+  }
+  if (boundary === "walls" && w > 0 && h > 0) {
+    const e = restitution < 0 ? 0 : restitution > 1 ? 1 : restitution;
+    for (let i = a; i < b; i++) {
+      if (s.x[i * 2] < 0) {
+        s.x[i * 2] = 0;
+        if (s.v[i * 2] < 0)        s.v[i * 2]     = -s.v[i * 2]     * e;
+        if (s.fPrev[i * 2] < 0)    s.fPrev[i * 2] = -s.fPrev[i * 2] * e;
+      } else if (s.x[i * 2] > w) {
+        s.x[i * 2] = w;
+        if (s.v[i * 2] > 0)        s.v[i * 2]     = -s.v[i * 2]     * e;
+        if (s.fPrev[i * 2] > 0)    s.fPrev[i * 2] = -s.fPrev[i * 2] * e;
+      }
+      if (s.x[i * 2 + 1] < 0) {
+        s.x[i * 2 + 1] = 0;
+        if (s.v[i * 2 + 1] < 0)        s.v[i * 2 + 1]     = -s.v[i * 2 + 1]     * e;
+        if (s.fPrev[i * 2 + 1] < 0)    s.fPrev[i * 2 + 1] = -s.fPrev[i * 2 + 1] * e;
+      } else if (s.x[i * 2 + 1] > h) {
+        s.x[i * 2 + 1] = h;
+        if (s.v[i * 2 + 1] > 0)        s.v[i * 2 + 1]     = -s.v[i * 2 + 1]     * e;
+        if (s.fPrev[i * 2 + 1] > 0)    s.fPrev[i * 2 + 1] = -s.fPrev[i * 2 + 1] * e;
+      }
+    }
+  } else if (boundary !== "walls" && w > 0 && h > 0) {
+    // wrap / periodic: keep positions inside the canvas so the recomputed
+    // forces (and minimum-image pairwise) see canonical coords.
+    for (let i = a; i < b; i++) {
+      let xi = s.x[i * 2], yi = s.x[i * 2 + 1];
+      xi = xi - Math.floor(xi / w) * w;
+      yi = yi - Math.floor(yi / h) * h;
+      s.x[i * 2] = xi;
+      s.x[i * 2 + 1] = yi;
+    }
   }
 }
 
@@ -571,11 +616,32 @@ function stepStateRange(
   //             convention so particles interact across the seam.
   if (boundary === "walls") {
     const e = restitution < 0 ? 0 : restitution > 1 ? 1 : restitution;
+    // For verlet, also flip the normal component of fPrev when a particle
+    // is reflected here. fPrev was just written to f at the end of the kick;
+    // if the post-kick position landed past a wall, the next drift's
+    // half-kick (v += ½·a_old·dt) would otherwise drive the particle back
+    // into the wall it just bounced off, producing the classic
+    // "stuck-to-wall" Verlet artifact.
+    const flipPrev = integrator === "verlet";
     for (let i = a; i < b; i++) {
-      if (s.x[i * 2] < 0)         { s.x[i * 2] = 0; if (s.v[i * 2]     < 0) s.v[i * 2]     = -s.v[i * 2]     * e; }
-      else if (s.x[i * 2] > w)    { s.x[i * 2] = w; if (s.v[i * 2]     > 0) s.v[i * 2]     = -s.v[i * 2]     * e; }
-      if (s.x[i * 2 + 1] < 0)     { s.x[i * 2 + 1] = 0; if (s.v[i * 2 + 1] < 0) s.v[i * 2 + 1] = -s.v[i * 2 + 1] * e; }
-      else if (s.x[i * 2 + 1] > h){ s.x[i * 2 + 1] = h; if (s.v[i * 2 + 1] > 0) s.v[i * 2 + 1] = -s.v[i * 2 + 1] * e; }
+      if (s.x[i * 2] < 0) {
+        s.x[i * 2] = 0;
+        if (s.v[i * 2]     < 0) s.v[i * 2]     = -s.v[i * 2]     * e;
+        if (flipPrev && s.fPrev[i * 2] < 0)     s.fPrev[i * 2]     = -s.fPrev[i * 2]     * e;
+      } else if (s.x[i * 2] > w) {
+        s.x[i * 2] = w;
+        if (s.v[i * 2]     > 0) s.v[i * 2]     = -s.v[i * 2]     * e;
+        if (flipPrev && s.fPrev[i * 2] > 0)     s.fPrev[i * 2]     = -s.fPrev[i * 2]     * e;
+      }
+      if (s.x[i * 2 + 1] < 0) {
+        s.x[i * 2 + 1] = 0;
+        if (s.v[i * 2 + 1] < 0) s.v[i * 2 + 1] = -s.v[i * 2 + 1] * e;
+        if (flipPrev && s.fPrev[i * 2 + 1] < 0) s.fPrev[i * 2 + 1] = -s.fPrev[i * 2 + 1] * e;
+      } else if (s.x[i * 2 + 1] > h) {
+        s.x[i * 2 + 1] = h;
+        if (s.v[i * 2 + 1] > 0) s.v[i * 2 + 1] = -s.v[i * 2 + 1] * e;
+        if (flipPrev && s.fPrev[i * 2 + 1] > 0) s.fPrev[i * 2 + 1] = -s.fPrev[i * 2 + 1] * e;
+      }
     }
   } else {
     // wrap & periodic both use modular position remapping
@@ -1015,7 +1081,7 @@ export function PhysicsCanvas({
           // BEFORE we recompute forces for the new positions.
           if (p.integrator === "verlet" && s.verletPrimed) {
             for (let q = 0; q < W; q++) {
-              verletDrift(s, subDt, partStart(q), partEnd(q));
+              verletDrift(s, subDt, partStart(q), partEnd(q), w, h, p.boundary, p.restitution);
             }
           }
 
