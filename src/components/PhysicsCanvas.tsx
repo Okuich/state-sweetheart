@@ -8,21 +8,22 @@ export type ValidationReport = { ok: boolean; issues: ValidationIssue[]; checked
  * Mirrors what `assert x.shape == (N, D)` / `x.dtype == float32` would do in PyTorch.
  */
 function validateState(s: {
-  N: number; D: number;
+  N: number; D: number; dtype: "float32" | "float64";
   x: unknown; v: unknown; m: unknown; f: unknown;
 }): ValidationReport {
   const issues: ValidationIssue[] = [];
   const N = s.N, D = s.D;
+  const Ctor = s.dtype === "float64" ? Float64Array : Float32Array;
+  const dtypeName = Ctor.name;
 
-  const checkVec = (name: string, arr: unknown, len: number, dtype = "Float32Array") => {
-    if (!(arr instanceof Float32Array)) {
-      issues.push({ field: name, expected: dtype, got: arr?.constructor?.name ?? typeof arr });
+  const checkVec = (name: string, arr: unknown, len: number) => {
+    if (!(arr instanceof Ctor)) {
+      issues.push({ field: name, expected: dtypeName, got: (arr as ArrayBufferView | undefined)?.constructor?.name ?? typeof arr });
       return;
     }
     if (arr.length !== len) {
       issues.push({ field: name, expected: `length ${len}`, got: `length ${arr.length}` });
     }
-    // NaN / Inf scan (cheap sample for large arrays)
     const stride = Math.max(1, Math.floor(arr.length / 256));
     for (let i = 0; i < arr.length; i += stride) {
       if (!Number.isFinite(arr[i])) {
@@ -35,10 +36,10 @@ function validateState(s: {
   if (!Number.isInteger(N) || N <= 0) issues.push({ field: "N", expected: "positive int", got: String(N) });
   if (D !== 2) issues.push({ field: "D", expected: "2", got: String(D) });
 
-  checkVec("x", s.x, N * D);   // [N, D]
-  checkVec("v", s.v, N * D);   // [N, D]
-  checkVec("m", s.m, N);       // [N]
-  checkVec("f", s.f, N * D);   // [N, D]
+  checkVec("x", s.x, N * D);
+  checkVec("v", s.v, N * D);
+  checkVec("m", s.m, N);
+  checkVec("f", s.f, N * D);
 
   return { ok: issues.length === 0, issues, checkedAt: performance.now() };
 }
