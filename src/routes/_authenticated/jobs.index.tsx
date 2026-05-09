@@ -1,11 +1,23 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
+import { zodValidator, fallback } from "@tanstack/zod-adapter";
+import { z } from "zod";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { listStepJobs } from "@/lib/step-jobs.functions";
 
+const STATUSES = ["queued", "parsing", "reasoning", "done", "failed"] as const;
+
+const searchSchema = z.object({
+  clientId: fallback(z.string().uuid().optional(), undefined),
+  status: fallback(z.enum(STATUSES).optional(), undefined),
+  q: fallback(z.string().optional(), undefined),
+});
+
 export const Route = createFileRoute("/_authenticated/jobs/")({
+  validateSearch: zodValidator(searchSchema),
   component: JobsPage,
   head: () => ({ meta: [{ title: "STEP Jobs — Particle Dynamics Engine" }] }),
 });
@@ -17,21 +29,36 @@ function statusVariant(s: string): "default" | "destructive" | "secondary" {
 }
 
 function JobsPage() {
+  const { clientId, status, q } = Route.useSearch();
+  const navigate = useNavigate({ from: "/jobs" });
   const list = useServerFn(listStepJobs);
+
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ["step-jobs"],
-    queryFn: () => list(),
+    queryKey: ["step-jobs", clientId ?? "", status ?? "", q ?? ""],
+    queryFn: () => list({ data: { clientId, status, q } }),
     refetchInterval: 5000,
   });
 
+  const setSearch = (next: Partial<{ clientId?: string; status?: string; q?: string }>) =>
+    navigate({
+      search: (prev) => ({
+        ...prev,
+        ...next,
+        // Strip empty strings so the URL stays clean
+        ...(next.clientId === "" ? { clientId: undefined } : {}),
+        ...(next.status === "" ? { status: undefined } : {}),
+        ...(next.q === "" ? { q: undefined } : {}),
+      }),
+    });
+
   return (
     <div className="min-h-screen bg-background p-6">
-      <div className="mx-auto max-w-5xl space-y-6">
+      <div className="mx-auto max-w-6xl space-y-6">
         <header className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">STEP Jobs</h1>
             <p className="text-sm text-muted-foreground">
-              Recent uploads from Fabrication OS / Midwater. Auto-refreshes every 5 s.
+              Search by caller, status, or filename. Auto-refreshes every 5 s.
             </p>
           </div>
           <div className="flex gap-3 text-sm">
@@ -45,14 +72,60 @@ function JobsPage() {
         </header>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Recent (last 100)</CardTitle>
-            <button
-              className="text-xs text-muted-foreground underline"
-              onClick={() => refetch()}
-            >
-              Refresh
-            </button>
+          <CardHeader className="space-y-3">
+            <div className="flex items-center justify-between">
+              <CardTitle>Recent (last 100)</CardTitle>
+              <button
+                className="text-xs text-muted-foreground underline"
+                onClick={() => refetch()}
+              >
+                Refresh
+              </button>
+            </div>
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_220px_180px_auto]">
+              <Input
+                placeholder="Search filename…"
+                value={q ?? ""}
+                onChange={(e) => setSearch({ q: e.target.value })}
+                className="h-9"
+              />
+              <select
+                className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                value={clientId ?? ""}
+                onChange={(e) => setSearch({ clientId: e.target.value || undefined })}
+              >
+                <option value="">All callers</option>
+                {(data?.clients ?? []).map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                value={status ?? ""}
+                onChange={(e) =>
+                  setSearch({ status: (e.target.value || undefined) as typeof status })
+                }
+              >
+                <option value="">Any status</option>
+                {STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+              {(clientId || status || q) && (
+                <button
+                  className="h-9 rounded-md border border-input px-3 text-xs text-muted-foreground hover:bg-muted"
+                  onClick={() =>
+                    navigate({ search: () => ({ clientId: undefined, status: undefined, q: undefined }) })
+                  }
+                >
+                  Clear
+                </button>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -64,17 +137,21 @@ function JobsPage() {
                     <th className="py-2">Filename</th>
                     <th>Caller</th>
                     <th>Status</th>
+                    <th>Error</th>
                     <th>Created</th>
                     <th />
                   </tr>
                 </thead>
                 <tbody>
                   {(data?.jobs ?? []).map((j) => (
-                    <tr key={j.id} className="border-t border-border">
+                    <tr key={j.id} className="border-t border-border align-top">
                       <td className="py-2 font-mono text-xs">{j.filename}</td>
                       <td className="text-xs">{j.client_name ?? "—"}</td>
                       <td>
                         <Badge variant={statusVariant(j.status)}>{j.status}</Badge>
+                      </td>
+                      <td className="max-w-[280px] truncate text-xs text-destructive" title={j.error ?? ""}>
+                        {j.error ?? ""}
                       </td>
                       <td className="text-xs">
                         {new Date(j.created_at).toLocaleString()}
@@ -92,8 +169,8 @@ function JobsPage() {
                   ))}
                   {(data?.jobs ?? []).length === 0 && (
                     <tr>
-                      <td colSpan={5} className="py-6 text-center text-xs text-muted-foreground">
-                        No jobs yet.
+                      <td colSpan={6} className="py-6 text-center text-xs text-muted-foreground">
+                        No jobs match the current filters.
                       </td>
                     </tr>
                   )}
