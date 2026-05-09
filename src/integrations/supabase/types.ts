@@ -115,6 +115,44 @@ export type Database = {
         }
         Relationships: []
       }
+      step_job_events: {
+        Row: {
+          created_at: string
+          data: Json | null
+          id: number
+          job_id: string
+          message: string | null
+          progress: number
+          stage: string
+        }
+        Insert: {
+          created_at?: string
+          data?: Json | null
+          id?: number
+          job_id: string
+          message?: string | null
+          progress?: number
+          stage: string
+        }
+        Update: {
+          created_at?: string
+          data?: Json | null
+          id?: number
+          job_id?: string
+          message?: string | null
+          progress?: number
+          stage?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "step_job_events_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "step_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       step_jobs: {
         Row: {
           client_id: string | null
@@ -124,6 +162,7 @@ export type Database = {
           filename: string
           geometry: Json | null
           id: string
+          progress: Json | null
           reasoning: Json | null
           status: string
           storage_path: string
@@ -136,6 +175,7 @@ export type Database = {
           filename: string
           geometry?: Json | null
           id?: string
+          progress?: Json | null
           reasoning?: Json | null
           status?: string
           storage_path: string
@@ -148,6 +188,7 @@ export type Database = {
           filename?: string
           geometry?: Json | null
           id?: string
+          progress?: Json | null
           reasoning?: Json | null
           status?: string
           storage_path?: string

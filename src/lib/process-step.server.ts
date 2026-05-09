@@ -4,6 +4,7 @@
  */
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { parseStep, buildTopology, describe, validate } from "./stepParser";
+import { emitJobEvent } from "./job-events.server";
 
 const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const REASONING_MODEL = "google/gemini-2.5-pro";
@@ -18,8 +19,10 @@ export async function processStepJob(jobId: string): Promise<void> {
 
   try {
     await supabaseAdmin.from("step_jobs").update({ status: "parsing" }).eq("id", jobId);
+    await emitJobEvent(jobId, { stage: "queued", progress: 5, message: "job picked up" });
 
     // Download the STEP file from storage
+    await emitJobEvent(jobId, { stage: "downloading", progress: 15, message: "fetching file" });
     const { data: blob, error: dlErr } = await supabaseAdmin.storage
       .from("step-uploads")
       .download(job.storage_path);
@@ -27,6 +30,11 @@ export async function processStepJob(jobId: string): Promise<void> {
     const text = await blob.text();
 
     // Parse + describe
+    await emitJobEvent(jobId, {
+      stage: "parsing",
+      progress: 35,
+      message: `parsing ${text.length} bytes`,
+    });
     const report = parseStep(text);
     const topo = buildTopology(report);
     const desc = describe(report, topo);
@@ -58,8 +66,15 @@ export async function processStepJob(jobId: string): Promise<void> {
       .from("step_jobs")
       .update({ status: "reasoning", geometry: geometry as never })
       .eq("id", jobId);
+    await emitJobEvent(jobId, {
+      stage: "geometry_ready",
+      progress: 60,
+      message: `parsed ${desc.counts ? Object.keys(desc.counts).length : 0} entity types`,
+      data: { bbox: desc.bbox, counts: desc.counts },
+    });
 
     // AI reasoning
+    await emitJobEvent(jobId, { stage: "reasoning", progress: 75, message: "calling AI gateway" });
     const reasoning = await reasonAboutGeometry(geometry);
 
     await supabaseAdmin
@@ -70,12 +85,19 @@ export async function processStepJob(jobId: string): Promise<void> {
         completed_at: new Date().toISOString(),
       })
       .eq("id", jobId);
+    await emitJobEvent(jobId, {
+      stage: "done",
+      progress: 100,
+      message: "analysis complete",
+      data: { has_reasoning: !!reasoning },
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     await supabaseAdmin
       .from("step_jobs")
       .update({ status: "failed", error: msg, completed_at: new Date().toISOString() })
       .eq("id", jobId);
+    await emitJobEvent(jobId, { stage: "failed", progress: 100, message: msg });
     throw e;
   }
 }
