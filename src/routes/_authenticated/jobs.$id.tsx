@@ -49,6 +49,29 @@ function JobDetailPage() {
           </div>
         </header>
 
+        {(() => {
+          const p = job.progress as { stage?: string; progress?: number; message?: string; at?: string } | null;
+          if (!p || job.status === "done" || job.status === "failed") return null;
+          return (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">
+                  {p.stage ?? job.status} — {p.progress ?? 0}%
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="h-2 w-full overflow-hidden rounded bg-muted">
+                  <div
+                    className="h-full bg-primary transition-all"
+                    style={{ width: `${Math.min(100, Math.max(0, p.progress ?? 0))}%` }}
+                  />
+                </div>
+                {p.message && <p className="text-xs text-muted-foreground">{p.message}</p>}
+              </CardContent>
+            </Card>
+          );
+        })()}
+
         {job.error && (
           <Card className="border-destructive/40">
             <CardHeader>
