@@ -35,7 +35,7 @@ export const IngestSchema = z.union([
 
 type Listener = (s: TelemetrySample) => void;
 
-class TelemetryBus {
+export class InMemoryTelemetryBus implements TelemetryBusLike {
   private listeners = new Set<Listener>();
   private ring: TelemetrySample[] = [];
   private cap = 512;
@@ -68,6 +68,6 @@ class TelemetryBus {
   }
 }
 
-const g = globalThis as unknown as { __telemetryBus?: TelemetryBus };
-if (!g.__telemetryBus) g.__telemetryBus = new TelemetryBus();
-export const telemetryBus: TelemetryBus = g.__telemetryBus;
+const g = globalThis as unknown as { __telemetryBus?: TelemetryBusLike };
+if (!g.__telemetryBus) g.__telemetryBus = new InMemoryTelemetryBus();
+export const telemetryBus: TelemetryBusLike = g.__telemetryBus;
