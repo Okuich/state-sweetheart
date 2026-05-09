@@ -3,7 +3,7 @@
  * Server-only. Writes to step_job_events (broadcast via realtime) and updates
  * the step_jobs.progress snapshot.
  */
-
+import { getAdmin } from "@/lib/admin";
 
 export interface JobEvent {
   stage: string;
@@ -13,7 +13,7 @@ export interface JobEvent {
 }
 
 export async function emitJobEvent(jobId: string, ev: JobEvent): Promise<void> {
-  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const supabaseAdmin = getAdmin();
   const progress = Math.max(0, Math.min(100, Math.round(ev.progress)));
   const row = {
     job_id: jobId,
