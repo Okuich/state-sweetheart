@@ -153,6 +153,10 @@ export function PrecisionPolicyPanel() {
         </div>
       </div>
 
+      {!mounted ? (
+        <div className="h-32 rounded border border-border/40 bg-background/30 animate-pulse" />
+      ) : (<>
+
       {!decision.f64Enabled && (
         <div className="rounded border border-amber-500/40 bg-amber-500/10 p-3 text-[12px] text-amber-300">
           <div className="flex items-start gap-2">
