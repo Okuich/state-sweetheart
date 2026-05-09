@@ -11,6 +11,7 @@ import {
   createApiClient,
   listApiClients,
   revokeApiClient,
+  rotateApiClient,
 } from "@/lib/api-clients.functions";
 
 export const Route = createFileRoute("/_authenticated/api-keys")({
@@ -44,6 +45,7 @@ function ApiKeysPage() {
   const list = useServerFn(listApiClients);
   const create = useServerFn(createApiClient);
   const revoke = useServerFn(revokeApiClient);
+  const rotate = useServerFn(rotateApiClient);
 
   const { data, isLoading } = useQuery({
     queryKey: ["api-clients"],
@@ -70,6 +72,16 @@ function ApiKeysPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["api-clients"] });
       toast.success("Revoked");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const rotateMut = useMutation({
+    mutationFn: (id: string) => rotate({ data: { id } }),
+    onSuccess: (res) => {
+      setRevealed({ name: `${res.client.name} (rotated)`, key: res.raw_key });
+      qc.invalidateQueries({ queryKey: ["api-clients"] });
+      toast.success("Key rotated — copy the new value now");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -203,13 +215,35 @@ function ApiKeysPage() {
                       </td>
                       <td className="text-right">
                         {!c.revoked_at && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => revokeMut.mutate(c.id)}
-                          >
-                            Revoke
-                          </Button>
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={rotateMut.isPending}
+                              onClick={() => {
+                                if (
+                                  confirm(
+                                    `Rotate key for "${c.name}"? The old key stops working immediately.`,
+                                  )
+                                ) {
+                                  rotateMut.mutate(c.id);
+                                }
+                              }}
+                            >
+                              Rotate
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                if (confirm(`Revoke key for "${c.name}"?`)) {
+                                  revokeMut.mutate(c.id);
+                                }
+                              }}
+                            >
+                              Revoke
+                            </Button>
+                          </div>
                         )}
                       </td>
                     </tr>

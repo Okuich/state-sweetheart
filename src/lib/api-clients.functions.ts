@@ -59,6 +59,29 @@ export const revokeApiClient = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const rotateApiClient = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => RevokeInput.parse(d))
+  .handler(async ({ data }) => {
+    const { data: existing, error: loadErr } = await supabaseAdmin
+      .from("api_clients")
+      .select("id,name,revoked_at")
+      .eq("id", data.id)
+      .maybeSingle();
+    if (loadErr) throw new Error(loadErr.message);
+    if (!existing) throw new Error("client not found");
+    if (existing.revoked_at) throw new Error("cannot rotate a revoked key");
+
+    const { raw, hash, prefix } = await generateApiKey();
+    const { error: upErr } = await supabaseAdmin
+      .from("api_clients")
+      .update({ key_hash: hash, key_prefix: prefix, last_used_at: null })
+      .eq("id", data.id);
+    if (upErr) throw new Error(upErr.message);
+
+    return { client: { id: existing.id, name: existing.name }, raw_key: raw };
+  });
+
 export const getRequestLog = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ clientId: z.string().uuid().optional() }).parse(d ?? {}))
