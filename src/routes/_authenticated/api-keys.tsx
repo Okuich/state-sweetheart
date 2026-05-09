@@ -11,6 +11,7 @@ import {
   createApiClient,
   listApiClients,
   revokeApiClient,
+  rotateApiClient,
 } from "@/lib/api-clients.functions";
 
 export const Route = createFileRoute("/_authenticated/api-keys")({
