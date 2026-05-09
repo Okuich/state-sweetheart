@@ -20,7 +20,7 @@ class JobCancelledError extends Error {
 }
 
 async function assertNotCancelled(jobId: string): Promise<void> {
-  const { data } = await supabaseAdmin
+  const { data } = await (await admin())
     .from("step_jobs")
     .select("status")
     .eq("id", jobId)
@@ -29,7 +29,7 @@ async function assertNotCancelled(jobId: string): Promise<void> {
 }
 
 export async function processStepJob(jobId: string): Promise<void> {
-  const { data: job, error: loadErr } = await supabaseAdmin
+  const { data: job, error: loadErr } = await (await admin())
     .from("step_jobs")
     .select("id,storage_path,filename,status")
     .eq("id", jobId)
@@ -86,7 +86,7 @@ export async function processStepJob(jobId: string): Promise<void> {
     };
 
     await assertNotCancelled(jobId);
-    await supabaseAdmin
+    await (await admin())
       .from("step_jobs")
       .update({ status: "reasoning", geometry: geometry as never })
       .eq("id", jobId);
@@ -103,7 +103,7 @@ export async function processStepJob(jobId: string): Promise<void> {
     const reasoning = await reasonAboutGeometry(geometry);
 
     await assertNotCancelled(jobId);
-    await supabaseAdmin
+    await (await admin())
       .from("step_jobs")
       .update({
         status: "done",
@@ -119,7 +119,7 @@ export async function processStepJob(jobId: string): Promise<void> {
     });
   } catch (e) {
     if (e instanceof JobCancelledError) {
-      await supabaseAdmin
+      await (await admin())
         .from("step_jobs")
         .update({ status: "cancelled", completed_at: new Date().toISOString() })
         .eq("id", jobId);
@@ -131,7 +131,7 @@ export async function processStepJob(jobId: string): Promise<void> {
       return;
     }
     const msg = e instanceof Error ? e.message : String(e);
-    await supabaseAdmin
+    await (await admin())
       .from("step_jobs")
       .update({ status: "failed", error: msg, completed_at: new Date().toISOString() })
       .eq("id", jobId);
