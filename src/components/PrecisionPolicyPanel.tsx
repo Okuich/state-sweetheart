@@ -83,6 +83,12 @@ export function PrecisionPolicyPanel() {
   const [, force] = useState(0);
   const refresh = () => force((n) => n + 1);
 
+  // WebGPU adapter detection differs between SSR and client (no `navigator.gpu`
+  // on the server). Gate everything that depends on `decideDtypeToggle` behind
+  // a hydration flag so server HTML and first client render match.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
   // Active kernel paths the simulator currently uses. In a real app this
   // would come from the simulator config; we let the user toggle them so
   // the gating behaviour is observable.
