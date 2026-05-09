@@ -46,7 +46,7 @@ export async function verifyServiceAuth(
 
   const hash = await hashKey(raw);
 
-  const { data, error } = await supabaseAdmin
+  const { data, error } = await (await admin())
     .from("api_clients")
     .select("id,name,scopes,revoked_at")
     .eq("key_hash", hash)
@@ -57,7 +57,7 @@ export async function verifyServiceAuth(
   if (!data.scopes?.includes(requiredScope)) return null;
 
   // touch last_used_at (fire and forget)
-  void supabaseAdmin
+  void (await admin())
     .from("api_clients")
     .update({ last_used_at: new Date().toISOString() })
     .eq("id", data.id);
@@ -72,7 +72,7 @@ export async function logRequest(
   status: number,
   latencyMs: number,
 ): Promise<void> {
-  void supabaseAdmin.from("api_request_log").insert({
+  void (await admin()).from("api_request_log").insert({
     client_id: clientId,
     route,
     method,
