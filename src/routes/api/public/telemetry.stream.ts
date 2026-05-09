@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import type { TelemetrySample } from "@/lib/telemetrySchema";
 import { corsHeaders } from "@/lib/cors";
+import { verifyServiceAuth } from "@/lib/service-auth.server";
 
 /**
  * Server-Sent Events stream of telemetry samples.
