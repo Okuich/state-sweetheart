@@ -3,7 +3,7 @@
  * Server-only. Writes to step_job_events (broadcast via realtime) and updates
  * the step_jobs.progress snapshot.
  */
-import { supabaseAdmin } from "@/integrations/supabase/client.server";
+
 
 export interface JobEvent {
   stage: string;
