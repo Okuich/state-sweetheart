@@ -34,7 +34,7 @@ export const Route = createFileRoute("/api/public/step/jobs/$id")({
 
         const { data, error } = await supabaseAdmin
           .from("step_jobs")
-          .select("id,client_id,filename,status,error,geometry,reasoning,created_at,completed_at")
+          .select("id,client_id,filename,status,error,geometry,reasoning,progress,created_at,completed_at")
           .eq("id", params.id)
           .maybeSingle();
 
