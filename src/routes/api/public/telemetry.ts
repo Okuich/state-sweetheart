@@ -15,7 +15,6 @@ const json = (body: unknown, request: Request, init: ResponseInit = {}) =>
  * present the same value via the `X-Telemetry-Token` header. When the env var
  * is unset (dev/preview), ingest is open. GET (status) stays open either way.
  */
-import { createHash, timingSafeEqual } from "node:crypto";
 
 /**
  * Auth: accepts EITHER
@@ -23,7 +22,6 @@ import { createHash, timingSafeEqual } from "node:crypto";
  *   - `X-Telemetry-Token` shared secret (legacy).
  * If neither env nor a valid bearer is present, ingest is open in dev.
  */
-import { createHash, timingSafeEqual } from "node:crypto";
 
 async function checkAuth(request: Request): Promise<{ ok: true; clientId: string | null } | { ok: false; reason: string }> {
   // 1. Try API key first
