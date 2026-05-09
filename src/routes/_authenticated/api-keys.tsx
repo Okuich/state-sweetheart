@@ -215,13 +215,35 @@ function ApiKeysPage() {
                       </td>
                       <td className="text-right">
                         {!c.revoked_at && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => revokeMut.mutate(c.id)}
-                          >
-                            Revoke
-                          </Button>
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={rotateMut.isPending}
+                              onClick={() => {
+                                if (
+                                  confirm(
+                                    `Rotate key for "${c.name}"? The old key stops working immediately.`,
+                                  )
+                                ) {
+                                  rotateMut.mutate(c.id);
+                                }
+                              }}
+                            >
+                              Rotate
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                if (confirm(`Revoke key for "${c.name}"?`)) {
+                                  revokeMut.mutate(c.id);
+                                }
+                              }}
+                            >
+                              Revoke
+                            </Button>
+                          </div>
                         )}
                       </td>
                     </tr>
