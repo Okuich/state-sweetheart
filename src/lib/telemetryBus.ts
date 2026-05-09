@@ -1,12 +1,21 @@
 /**
- * Shared in-memory telemetry bus.
+ * Pluggable telemetry bus.
  *
- * Module singleton lives for the lifetime of the worker instance. This is
- * fine for dev / single-instance preview; for a multi-instance production
- * deployment swap the bus for a Durable Object or Redis pub/sub.
+ * The default `InMemoryTelemetryBus` lives for the lifetime of the worker
+ * instance and is fine for single-instance dev/preview. For multi-instance
+ * production, build an adapter that implements `TelemetryBusLike` (Durable
+ * Object, Redis pub/sub, NATS, ...) and assign it to `globalThis.__telemetryBus`
+ * before any route imports `telemetryBus`.
  */
 
 import { z } from "zod";
+
+export interface TelemetryBusLike {
+  publish(s: TelemetrySample): void;
+  subscribe(l: (s: TelemetrySample) => void): () => void;
+  recent(limit?: number): TelemetrySample[];
+  stats(): { buffered: number; totalIngested: number; listeners: number };
+}
 
 export const TelemetrySampleSchema = z.object({
   t: z.number().finite(),
@@ -26,7 +35,7 @@ export const IngestSchema = z.union([
 
 type Listener = (s: TelemetrySample) => void;
 
-class TelemetryBus {
+export class InMemoryTelemetryBus implements TelemetryBusLike {
   private listeners = new Set<Listener>();
   private ring: TelemetrySample[] = [];
   private cap = 512;
@@ -59,6 +68,6 @@ class TelemetryBus {
   }
 }
 
-const g = globalThis as unknown as { __telemetryBus?: TelemetryBus };
-if (!g.__telemetryBus) g.__telemetryBus = new TelemetryBus();
-export const telemetryBus: TelemetryBus = g.__telemetryBus;
+const g = globalThis as unknown as { __telemetryBus?: TelemetryBusLike };
+if (!g.__telemetryBus) g.__telemetryBus = new InMemoryTelemetryBus();
+export const telemetryBus: TelemetryBusLike = g.__telemetryBus;

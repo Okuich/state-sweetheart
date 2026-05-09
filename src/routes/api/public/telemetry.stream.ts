@@ -1,11 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import type { TelemetrySample } from "@/lib/telemetrySchema";
-
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-} as const;
+import { corsHeaders } from "@/lib/cors";
 
 /**
  * Server-Sent Events stream of telemetry samples.
@@ -13,7 +8,8 @@ const CORS = {
 export const Route = createFileRoute("/api/public/telemetry/stream")({
   server: {
     handlers: {
-      OPTIONS: async () => new Response(null, { status: 204, headers: CORS }),
+      OPTIONS: async ({ request }: { request: Request }) =>
+        new Response(null, { status: 204, headers: corsHeaders(request) }),
 
       GET: async ({ request }: { request: Request }) => {
         const { telemetryBus } = await import("@/lib/telemetryBus");
@@ -56,7 +52,7 @@ export const Route = createFileRoute("/api/public/telemetry/stream")({
             "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
-            ...CORS,
+            ...corsHeaders(request),
           },
         });
       },
