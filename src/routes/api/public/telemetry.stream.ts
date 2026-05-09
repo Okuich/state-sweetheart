@@ -13,21 +13,30 @@ export const Route = createFileRoute("/api/public/telemetry/stream")({
         new Response(null, { status: 204, headers: corsHeaders(request) }),
 
       GET: async ({ request }: { request: Request }) => {
-        // Token gate: same shared secret as POST. The token may come via the
-        // `X-Telemetry-Token` header, or — because EventSource cannot set
-        // custom headers — via a `?token=` query string for browser clients.
-        const expected = (typeof process !== "undefined" ? process.env.TELEMETRY_INGEST_TOKEN : "") ?? "";
-        if (expected) {
-          const url = new URL(request.url);
-          const provided =
-            request.headers.get("x-telemetry-token") ?? url.searchParams.get("token") ?? "";
-          const { createHash, timingSafeEqual } = await import("node:crypto");
-          const a = createHash("sha256").update(provided).digest();
-          const b = createHash("sha256").update(expected).digest();
-          if (!timingSafeEqual(a, b)) {
-            return new Response("unauthorized", { status: 401, headers: corsHeaders(request) });
+        // Auth: prefer Bearer pde_ API key (scope telemetry:read). Fall back to
+        // X-Telemetry-Token header or ?token= query (since EventSource can't set
+        // custom headers).
+        const auth = request.headers.get("authorization") ?? "";
+        let authed = false;
+        if (/^Bearer\s+pde_/i.test(auth)) {
+          const client = await verifyServiceAuth(request, "/api/public/telemetry/stream", "telemetry:read");
+          if (client) authed = true;
+        }
+        if (!authed) {
+          const expected = (typeof process !== "undefined" ? process.env.TELEMETRY_INGEST_TOKEN : "") ?? "";
+          if (expected) {
+            const url = new URL(request.url);
+            const provided =
+              request.headers.get("x-telemetry-token") ?? url.searchParams.get("token") ?? "";
+            const { createHash, timingSafeEqual } = await import("node:crypto");
+            const a = createHash("sha256").update(provided).digest();
+            const b = createHash("sha256").update(expected).digest();
+            if (!timingSafeEqual(a, b)) {
+              return new Response("unauthorized", { status: 401, headers: corsHeaders(request) });
+            }
           }
         }
+
 
         const { telemetryBus } = await import("@/lib/telemetryBus");
         const stream = new ReadableStream<Uint8Array>({
