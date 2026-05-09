@@ -109,7 +109,8 @@ export const Route = createFileRoute("/api/public/telemetry")({
           log("warn", "telemetry.persist.skipped", { msg: (e as Error).message });
         }
 
-        log("info", "telemetry.ingest.ok", { count: samples.length });
+        log("info", "telemetry.ingest.ok", { count: samples.length, clientId });
+        await logRequest(clientId, "/api/public/telemetry", "POST", 200, Date.now() - start);
         return json({ ok: true, accepted: samples.length, stats: telemetryBus.stats() }, request);
       },
     },
