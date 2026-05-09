@@ -18,6 +18,7 @@ import { Route as ApiPublicTelemetryRouteImport } from './routes/api/public/tele
 import { Route as AuthenticatedJobsIdRouteImport } from './routes/_authenticated/jobs.$id'
 import { Route as ApiPublicTelemetryStreamRouteImport } from './routes/api/public/telemetry.stream'
 import { Route as ApiPublicStepAnalyzeRouteImport } from './routes/api/public/step.analyze'
+import { Route as ApiPublicReasonerRecommendRouteImport } from './routes/api/public/reasoner.recommend'
 import { Route as ApiPublicStepJobsIdRouteImport } from './routes/api/public/step.jobs.$id'
 
 const LoginRoute = LoginRouteImport.update({
@@ -65,6 +66,12 @@ const ApiPublicStepAnalyzeRoute = ApiPublicStepAnalyzeRouteImport.update({
   path: '/api/public/step/analyze',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicReasonerRecommendRoute =
+  ApiPublicReasonerRecommendRouteImport.update({
+    id: '/api/public/reasoner/recommend',
+    path: '/api/public/reasoner/recommend',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicStepJobsIdRoute = ApiPublicStepJobsIdRouteImport.update({
   id: '/api/public/step/jobs/$id',
   path: '/api/public/step/jobs/$id',
@@ -78,6 +85,7 @@ export interface FileRoutesByFullPath {
   '/jobs/$id': typeof AuthenticatedJobsIdRoute
   '/api/public/telemetry': typeof ApiPublicTelemetryRouteWithChildren
   '/jobs/': typeof AuthenticatedJobsIndexRoute
+  '/api/public/reasoner/recommend': typeof ApiPublicReasonerRecommendRoute
   '/api/public/step/analyze': typeof ApiPublicStepAnalyzeRoute
   '/api/public/telemetry/stream': typeof ApiPublicTelemetryStreamRoute
   '/api/public/step/jobs/$id': typeof ApiPublicStepJobsIdRoute
@@ -89,6 +97,7 @@ export interface FileRoutesByTo {
   '/jobs/$id': typeof AuthenticatedJobsIdRoute
   '/api/public/telemetry': typeof ApiPublicTelemetryRouteWithChildren
   '/jobs': typeof AuthenticatedJobsIndexRoute
+  '/api/public/reasoner/recommend': typeof ApiPublicReasonerRecommendRoute
   '/api/public/step/analyze': typeof ApiPublicStepAnalyzeRoute
   '/api/public/telemetry/stream': typeof ApiPublicTelemetryStreamRoute
   '/api/public/step/jobs/$id': typeof ApiPublicStepJobsIdRoute
@@ -102,6 +111,7 @@ export interface FileRoutesById {
   '/_authenticated/jobs/$id': typeof AuthenticatedJobsIdRoute
   '/api/public/telemetry': typeof ApiPublicTelemetryRouteWithChildren
   '/_authenticated/jobs/': typeof AuthenticatedJobsIndexRoute
+  '/api/public/reasoner/recommend': typeof ApiPublicReasonerRecommendRoute
   '/api/public/step/analyze': typeof ApiPublicStepAnalyzeRoute
   '/api/public/telemetry/stream': typeof ApiPublicTelemetryStreamRoute
   '/api/public/step/jobs/$id': typeof ApiPublicStepJobsIdRoute
@@ -115,6 +125,7 @@ export interface FileRouteTypes {
     | '/jobs/$id'
     | '/api/public/telemetry'
     | '/jobs/'
+    | '/api/public/reasoner/recommend'
     | '/api/public/step/analyze'
     | '/api/public/telemetry/stream'
     | '/api/public/step/jobs/$id'
@@ -126,6 +137,7 @@ export interface FileRouteTypes {
     | '/jobs/$id'
     | '/api/public/telemetry'
     | '/jobs'
+    | '/api/public/reasoner/recommend'
     | '/api/public/step/analyze'
     | '/api/public/telemetry/stream'
     | '/api/public/step/jobs/$id'
@@ -138,6 +150,7 @@ export interface FileRouteTypes {
     | '/_authenticated/jobs/$id'
     | '/api/public/telemetry'
     | '/_authenticated/jobs/'
+    | '/api/public/reasoner/recommend'
     | '/api/public/step/analyze'
     | '/api/public/telemetry/stream'
     | '/api/public/step/jobs/$id'
@@ -147,6 +160,7 @@ export interface RootRouteChildren {
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   LoginRoute: typeof LoginRoute
   ApiPublicTelemetryRoute: typeof ApiPublicTelemetryRouteWithChildren
+  ApiPublicReasonerRecommendRoute: typeof ApiPublicReasonerRecommendRoute
   ApiPublicStepAnalyzeRoute: typeof ApiPublicStepAnalyzeRoute
   ApiPublicStepJobsIdRoute: typeof ApiPublicStepJobsIdRoute
 }
@@ -216,6 +230,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicStepAnalyzeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/reasoner/recommend': {
+      id: '/api/public/reasoner/recommend'
+      path: '/api/public/reasoner/recommend'
+      fullPath: '/api/public/reasoner/recommend'
+      preLoaderRoute: typeof ApiPublicReasonerRecommendRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/step/jobs/$id': {
       id: '/api/public/step/jobs/$id'
       path: '/api/public/step/jobs/$id'
@@ -259,9 +280,20 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   LoginRoute: LoginRoute,
   ApiPublicTelemetryRoute: ApiPublicTelemetryRouteWithChildren,
+  ApiPublicReasonerRecommendRoute: ApiPublicReasonerRecommendRoute,
   ApiPublicStepAnalyzeRoute: ApiPublicStepAnalyzeRoute,
   ApiPublicStepJobsIdRoute: ApiPublicStepJobsIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
