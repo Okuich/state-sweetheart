@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { IngestSchema, type TelemetrySample } from "@/lib/telemetrySchema";
 import { corsHeaders } from "@/lib/cors";
 import { log } from "@/lib/serverLog";
+import { verifyServiceAuth, logRequest } from "@/lib/service-auth.server";
 
 const json = (body: unknown, request: Request, init: ResponseInit = {}) =>
   new Response(JSON.stringify(body), {
