@@ -22,6 +22,7 @@ import { Route as ApiPublicStepAnalyzeRouteImport } from './routes/api/public/st
 import { Route as ApiPublicReasonerRecommendRouteImport } from './routes/api/public/reasoner.recommend'
 import { Route as ApiPublicStepJobsIdRouteImport } from './routes/api/public/step.jobs.$id'
 import { Route as ApiPublicStepJobsIdStreamRouteImport } from './routes/api/public/step.jobs.$id.stream'
+import { Route as ApiPublicStepJobsIdCancelRouteImport } from './routes/api/public/step.jobs.$id.cancel'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -90,6 +91,12 @@ const ApiPublicStepJobsIdStreamRoute =
     path: '/stream',
     getParentRoute: () => ApiPublicStepJobsIdRoute,
   } as any)
+const ApiPublicStepJobsIdCancelRoute =
+  ApiPublicStepJobsIdCancelRouteImport.update({
+    id: '/cancel',
+    path: '/cancel',
+    getParentRoute: () => ApiPublicStepJobsIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
@@ -103,6 +110,7 @@ export interface FileRoutesByFullPath {
   '/api/public/step/parse': typeof ApiPublicStepParseRoute
   '/api/public/telemetry/stream': typeof ApiPublicTelemetryStreamRoute
   '/api/public/step/jobs/$id': typeof ApiPublicStepJobsIdRouteWithChildren
+  '/api/public/step/jobs/$id/cancel': typeof ApiPublicStepJobsIdCancelRoute
   '/api/public/step/jobs/$id/stream': typeof ApiPublicStepJobsIdStreamRoute
 }
 export interface FileRoutesByTo {
@@ -117,6 +125,7 @@ export interface FileRoutesByTo {
   '/api/public/step/parse': typeof ApiPublicStepParseRoute
   '/api/public/telemetry/stream': typeof ApiPublicTelemetryStreamRoute
   '/api/public/step/jobs/$id': typeof ApiPublicStepJobsIdRouteWithChildren
+  '/api/public/step/jobs/$id/cancel': typeof ApiPublicStepJobsIdCancelRoute
   '/api/public/step/jobs/$id/stream': typeof ApiPublicStepJobsIdStreamRoute
 }
 export interface FileRoutesById {
@@ -133,6 +142,7 @@ export interface FileRoutesById {
   '/api/public/step/parse': typeof ApiPublicStepParseRoute
   '/api/public/telemetry/stream': typeof ApiPublicTelemetryStreamRoute
   '/api/public/step/jobs/$id': typeof ApiPublicStepJobsIdRouteWithChildren
+  '/api/public/step/jobs/$id/cancel': typeof ApiPublicStepJobsIdCancelRoute
   '/api/public/step/jobs/$id/stream': typeof ApiPublicStepJobsIdStreamRoute
 }
 export interface FileRouteTypes {
@@ -149,6 +159,7 @@ export interface FileRouteTypes {
     | '/api/public/step/parse'
     | '/api/public/telemetry/stream'
     | '/api/public/step/jobs/$id'
+    | '/api/public/step/jobs/$id/cancel'
     | '/api/public/step/jobs/$id/stream'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -163,6 +174,7 @@ export interface FileRouteTypes {
     | '/api/public/step/parse'
     | '/api/public/telemetry/stream'
     | '/api/public/step/jobs/$id'
+    | '/api/public/step/jobs/$id/cancel'
     | '/api/public/step/jobs/$id/stream'
   id:
     | '__root__'
@@ -178,6 +190,7 @@ export interface FileRouteTypes {
     | '/api/public/step/parse'
     | '/api/public/telemetry/stream'
     | '/api/public/step/jobs/$id'
+    | '/api/public/step/jobs/$id/cancel'
     | '/api/public/step/jobs/$id/stream'
   fileRoutesById: FileRoutesById
 }
@@ -284,6 +297,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicStepJobsIdStreamRouteImport
       parentRoute: typeof ApiPublicStepJobsIdRoute
     }
+    '/api/public/step/jobs/$id/cancel': {
+      id: '/api/public/step/jobs/$id/cancel'
+      path: '/cancel'
+      fullPath: '/api/public/step/jobs/$id/cancel'
+      preLoaderRoute: typeof ApiPublicStepJobsIdCancelRouteImport
+      parentRoute: typeof ApiPublicStepJobsIdRoute
+    }
   }
 }
 
@@ -317,10 +337,12 @@ const ApiPublicTelemetryRouteWithChildren =
   ApiPublicTelemetryRoute._addFileChildren(ApiPublicTelemetryRouteChildren)
 
 interface ApiPublicStepJobsIdRouteChildren {
+  ApiPublicStepJobsIdCancelRoute: typeof ApiPublicStepJobsIdCancelRoute
   ApiPublicStepJobsIdStreamRoute: typeof ApiPublicStepJobsIdStreamRoute
 }
 
 const ApiPublicStepJobsIdRouteChildren: ApiPublicStepJobsIdRouteChildren = {
+  ApiPublicStepJobsIdCancelRoute: ApiPublicStepJobsIdCancelRoute,
   ApiPublicStepJobsIdStreamRoute: ApiPublicStepJobsIdStreamRoute,
 }
 

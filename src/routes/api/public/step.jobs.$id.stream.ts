@@ -116,8 +116,10 @@ export const Route = createFileRoute("/api/public/step/jobs/$id/stream")({
             });
 
             // If already terminal, finish immediately
-            if (job.status === "done" || job.status === "failed") {
-              send(job.status === "done" ? "done" : "error", {
+            if (job.status === "done" || job.status === "failed" || job.status === "cancelled") {
+              const evt =
+                job.status === "done" ? "done" : job.status === "cancelled" ? "cancelled" : "error";
+              send(evt, {
                 status: job.status,
                 geometry: job.geometry,
                 reasoning: job.reasoning,
@@ -150,14 +152,16 @@ export const Route = createFileRoute("/api/public/step/jobs/$id/stream")({
 
                   // Terminal stages → fetch final job row, emit, close.
                   const stage = String(row.stage);
-                  if (stage === "done" || stage === "failed") {
+                  if (stage === "done" || stage === "failed" || stage === "cancelled") {
                     void (async () => {
                       const { data: finalJob } = await supabaseAdmin
                         .from("step_jobs")
                         .select("status,geometry,reasoning,error")
                         .eq("id", jobId)
                         .maybeSingle();
-                      send(stage === "done" ? "done" : "error", finalJob ?? { status: stage });
+                      const evt =
+                        stage === "done" ? "done" : stage === "cancelled" ? "cancelled" : "error";
+                      send(evt, finalJob ?? { status: stage });
                       setTimeout(() => close(), 50);
                     })();
                   }

@@ -9,19 +9,38 @@ import { emitJobEvent } from "./job-events.server";
 const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const REASONING_MODEL = "google/gemini-2.5-pro";
 
+class JobCancelledError extends Error {
+  constructor() {
+    super("cancelled");
+    this.name = "JobCancelledError";
+  }
+}
+
+async function assertNotCancelled(jobId: string): Promise<void> {
+  const { data } = await supabaseAdmin
+    .from("step_jobs")
+    .select("status")
+    .eq("id", jobId)
+    .maybeSingle();
+  if (data?.status === "cancelled") throw new JobCancelledError();
+}
+
 export async function processStepJob(jobId: string): Promise<void> {
   const { data: job, error: loadErr } = await supabaseAdmin
     .from("step_jobs")
-    .select("id,storage_path,filename")
+    .select("id,storage_path,filename,status")
     .eq("id", jobId)
     .single();
   if (loadErr || !job) throw new Error(loadErr?.message ?? "job not found");
+  if (job.status === "cancelled") return; // already cancelled before pickup
 
   try {
+    await assertNotCancelled(jobId);
     await supabaseAdmin.from("step_jobs").update({ status: "parsing" }).eq("id", jobId);
     await emitJobEvent(jobId, { stage: "queued", progress: 5, message: "job picked up" });
 
     // Download the STEP file from storage
+    await assertNotCancelled(jobId);
     await emitJobEvent(jobId, { stage: "downloading", progress: 15, message: "fetching file" });
     const { data: blob, error: dlErr } = await supabaseAdmin.storage
       .from("step-uploads")
@@ -30,6 +49,7 @@ export async function processStepJob(jobId: string): Promise<void> {
     const text = await blob.text();
 
     // Parse + describe
+    await assertNotCancelled(jobId);
     await emitJobEvent(jobId, {
       stage: "parsing",
       progress: 35,
@@ -62,6 +82,7 @@ export async function processStepJob(jobId: string): Promise<void> {
       },
     };
 
+    await assertNotCancelled(jobId);
     await supabaseAdmin
       .from("step_jobs")
       .update({ status: "reasoning", geometry: geometry as never })
@@ -74,9 +95,11 @@ export async function processStepJob(jobId: string): Promise<void> {
     });
 
     // AI reasoning
+    await assertNotCancelled(jobId);
     await emitJobEvent(jobId, { stage: "reasoning", progress: 75, message: "calling AI gateway" });
     const reasoning = await reasonAboutGeometry(geometry);
 
+    await assertNotCancelled(jobId);
     await supabaseAdmin
       .from("step_jobs")
       .update({
@@ -92,6 +115,18 @@ export async function processStepJob(jobId: string): Promise<void> {
       data: { has_reasoning: !!reasoning },
     });
   } catch (e) {
+    if (e instanceof JobCancelledError) {
+      await supabaseAdmin
+        .from("step_jobs")
+        .update({ status: "cancelled", completed_at: new Date().toISOString() })
+        .eq("id", jobId);
+      await emitJobEvent(jobId, {
+        stage: "cancelled",
+        progress: 100,
+        message: "job cancelled by caller",
+      });
+      return;
+    }
     const msg = e instanceof Error ? e.message : String(e);
     await supabaseAdmin
       .from("step_jobs")
