@@ -7,8 +7,8 @@
  */
 import { createFileRoute } from "@tanstack/react-router";
 import { corsHeaders } from "@/lib/cors";
-import { verifyServiceAuth, logRequest } from "@/lib/service-auth.server";
-import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { verifyServiceAuth, logRequest } from "@/lib/service-auth";
+import { getAdmin } from "@/lib/admin";
 
 const ROUTE = "/api/public/step/jobs/:id";
 
@@ -32,7 +32,7 @@ export const Route = createFileRoute("/api/public/step/jobs/$id")({
         const client = await verifyServiceAuth(request, ROUTE, "step:read");
         if (!client) return json(401, { error: "unauthorized" });
 
-        const { data, error } = await supabaseAdmin
+        const { data, error } = await getAdmin()
           .from("step_jobs")
           .select("id,client_id,filename,status,error,geometry,reasoning,progress,created_at,completed_at")
           .eq("id", params.id)

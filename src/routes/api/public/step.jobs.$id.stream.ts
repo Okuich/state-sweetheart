@@ -16,8 +16,8 @@
  */
 import { createFileRoute } from "@tanstack/react-router";
 import { corsHeaders } from "@/lib/cors";
-import { verifyServiceAuth, logRequest } from "@/lib/service-auth.server";
-import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { verifyServiceAuth, logRequest } from "@/lib/service-auth";
+import { getAdmin } from "@/lib/admin";
 import { createClient } from "@supabase/supabase-js";
 
 const ROUTE_TEMPLATE = "/api/public/step/jobs/:id/stream";
@@ -56,7 +56,7 @@ export const Route = createFileRoute("/api/public/step/jobs/$id/stream")({
         }
 
         // ---- Verify the job belongs to this caller ----
-        const { data: job, error: jobErr } = await supabaseAdmin
+        const { data: job, error: jobErr } = await getAdmin()
           .from("step_jobs")
           .select("id,client_id,status,filename,error,geometry,reasoning,progress,created_at,completed_at")
           .eq("id", jobId)
@@ -71,7 +71,7 @@ export const Route = createFileRoute("/api/public/step/jobs/$id/stream")({
         }
 
         // ---- Replay existing events ----
-        const { data: existing } = await supabaseAdmin
+        const { data: existing } = await getAdmin()
           .from("step_job_events")
           .select("stage,progress,message,data,created_at")
           .eq("job_id", jobId)
@@ -154,7 +154,7 @@ export const Route = createFileRoute("/api/public/step/jobs/$id/stream")({
                   const stage = String(row.stage);
                   if (stage === "done" || stage === "failed" || stage === "cancelled") {
                     void (async () => {
-                      const { data: finalJob } = await supabaseAdmin
+                      const { data: finalJob } = await getAdmin()
                         .from("step_jobs")
                         .select("status,geometry,reasoning,error")
                         .eq("id", jobId)

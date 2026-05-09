@@ -9,9 +9,9 @@
  */
 import { createFileRoute } from "@tanstack/react-router";
 import { corsHeaders } from "@/lib/cors";
-import { verifyServiceAuth, logRequest } from "@/lib/service-auth.server";
-import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { emitJobEvent } from "@/lib/job-events.server";
+import { verifyServiceAuth, logRequest } from "@/lib/service-auth";
+import { getAdmin } from "@/lib/admin";
+import { emitJobEvent } from "@/lib/job-events";
 
 const ROUTE = "/api/public/step/jobs/:id/cancel";
 const TERMINAL = new Set(["done", "failed", "cancelled"]);
@@ -37,7 +37,7 @@ export const Route = createFileRoute("/api/public/step/jobs/$id/cancel")({
         const client = await verifyServiceAuth(request, ROUTE, "step:ingest");
         if (!client) return json(401, { error: "unauthorized" });
 
-        const { data: job, error: loadErr } = await supabaseAdmin
+        const { data: job, error: loadErr } = await getAdmin()
           .from("step_jobs")
           .select("id,client_id,status")
           .eq("id", jobId)
@@ -55,7 +55,7 @@ export const Route = createFileRoute("/api/public/step/jobs/$id/cancel")({
           );
         }
 
-        const { error: upErr } = await supabaseAdmin
+        const { error: upErr } = await getAdmin()
           .from("step_jobs")
           .update({ status: "cancelled", completed_at: new Date().toISOString() })
           .eq("id", jobId);

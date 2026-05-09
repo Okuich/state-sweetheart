@@ -7,9 +7,9 @@
  */
 import { createFileRoute } from "@tanstack/react-router";
 import { corsHeaders } from "@/lib/cors";
-import { verifyServiceAuth, logRequest } from "@/lib/service-auth.server";
-import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { processStepJob } from "@/lib/process-step.server";
+import { verifyServiceAuth, logRequest } from "@/lib/service-auth";
+import { getAdmin } from "@/lib/admin";
+import { processStepJob } from "@/lib/process-step";
 
 const MAX_BYTES = 25 * 1024 * 1024;
 const ROUTE = "/api/public/step/analyze";
@@ -64,7 +64,7 @@ export const Route = createFileRoute("/api/public/step/analyze")({
         const storagePath = `${client.id}/${ts}-${safe}`;
 
         const arrayBuf = await file.arrayBuffer();
-        const { error: upErr } = await supabaseAdmin.storage
+        const { error: upErr } = await getAdmin().storage
           .from("step-uploads")
           .upload(storagePath, new Uint8Array(arrayBuf), {
             contentType: "application/step",
@@ -72,7 +72,7 @@ export const Route = createFileRoute("/api/public/step/analyze")({
           });
         if (upErr) return json(500, { error: "upload failed", detail: upErr.message }, client.id);
 
-        const { data: row, error: insErr } = await supabaseAdmin
+        const { data: row, error: insErr } = await getAdmin()
           .from("step_jobs")
           .insert({
             client_id: client.id,
