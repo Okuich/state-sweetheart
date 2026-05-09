@@ -16,12 +16,12 @@ const json = (body: unknown, request: Request, init: ResponseInit = {}) =>
  */
 import { createHash, timingSafeEqual } from "node:crypto";
 
-function checkToken(request: Request): { ok: true } | { ok: false; reason: string } {
+async function checkToken(request: Request): Promise<{ ok: true } | { ok: false; reason: string }> {
   const expected = (typeof process !== "undefined" ? process.env.TELEMETRY_INGEST_TOKEN : "") ?? "";
   if (!expected) return { ok: true };
   const provided = request.headers.get("x-telemetry-token") ?? "";
-  // Hash both sides so the buffers always have identical length and the
-  // comparison runs in constant time (no length-leak side channel).
+  // Lazy server-only import so node:crypto never reaches the client bundle.
+  const { createHash, timingSafeEqual } = await import("node:crypto");
   const a = createHash("sha256").update(provided).digest();
   const b = createHash("sha256").update(expected).digest();
   return timingSafeEqual(a, b)
