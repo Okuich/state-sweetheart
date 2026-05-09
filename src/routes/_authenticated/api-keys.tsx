@@ -20,7 +20,24 @@ export const Route = createFileRoute("/_authenticated/api-keys")({
   }),
 });
 
-const SCOPE_OPTIONS = ["step:ingest", "step:read"] as const;
+const SCOPE_OPTIONS = [
+  "step:ingest",
+  "step:read",
+  "telemetry:write",
+  "telemetry:read",
+  "reasoner:invoke",
+] as const;
+
+const PRESETS: Record<string, { name: string; scopes: string[] }> = {
+  "fabrication-os": {
+    name: "fabrication-os",
+    scopes: ["step:ingest", "step:read", "reasoner:invoke", "telemetry:write"],
+  },
+  midwater: {
+    name: "midwater",
+    scopes: ["step:ingest", "step:read", "telemetry:read"],
+  },
+};
 
 function ApiKeysPage() {
   const qc = useQueryClient();
@@ -77,6 +94,23 @@ function ApiKeysPage() {
             <CardTitle>Create new key</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              <span className="text-xs text-muted-foreground self-center">Presets:</span>
+              {Object.entries(PRESETS).map(([key, p]) => (
+                <Button
+                  key={key}
+                  variant="outline"
+                  size="sm"
+                  type="button"
+                  onClick={() => {
+                    setName(p.name);
+                    setScopes(p.scopes);
+                  }}
+                >
+                  {p.name}
+                </Button>
+              ))}
+            </div>
             <div className="flex flex-wrap gap-3">
               <Input
                 placeholder="caller name (e.g. fabrication-os)"
