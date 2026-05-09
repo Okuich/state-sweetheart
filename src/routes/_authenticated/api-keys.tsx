@@ -45,6 +45,7 @@ function ApiKeysPage() {
   const list = useServerFn(listApiClients);
   const create = useServerFn(createApiClient);
   const revoke = useServerFn(revokeApiClient);
+  const rotate = useServerFn(rotateApiClient);
 
   const { data, isLoading } = useQuery({
     queryKey: ["api-clients"],
