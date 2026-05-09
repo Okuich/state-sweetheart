@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { IngestSchema, type TelemetrySample } from "@/lib/telemetrySchema";
 import { corsHeaders } from "@/lib/cors";
 import { log } from "@/lib/serverLog";
+import { verifyServiceAuth, logRequest } from "@/lib/service-auth.server";
 
 const json = (body: unknown, request: Request, init: ResponseInit = {}) =>
   new Response(JSON.stringify(body), {
@@ -14,19 +15,33 @@ const json = (body: unknown, request: Request, init: ResponseInit = {}) =>
  * present the same value via the `X-Telemetry-Token` header. When the env var
  * is unset (dev/preview), ingest is open. GET (status) stays open either way.
  */
-import { createHash, timingSafeEqual } from "node:crypto";
 
-async function checkToken(request: Request): Promise<{ ok: true } | { ok: false; reason: string }> {
+/**
+ * Auth: accepts EITHER
+ *   - `Authorization: Bearer pde_...` API key with scope `telemetry:write` (preferred for service-to-service), OR
+ *   - `X-Telemetry-Token` shared secret (legacy).
+ * If neither env nor a valid bearer is present, ingest is open in dev.
+ */
+
+async function checkAuth(request: Request): Promise<{ ok: true; clientId: string | null } | { ok: false; reason: string }> {
+  // 1. Try API key first
+  const auth = request.headers.get("authorization") ?? "";
+  if (/^Bearer\s+pde_/i.test(auth)) {
+    const client = await verifyServiceAuth(request, "/api/public/telemetry", "telemetry:write");
+    if (client) return { ok: true, clientId: client.id };
+    return { ok: false, reason: "invalid api key or missing telemetry:write scope" };
+  }
+
+  // 2. Fall back to shared token
   const expected = (typeof process !== "undefined" ? process.env.TELEMETRY_INGEST_TOKEN : "") ?? "";
-  if (!expected) return { ok: true };
+  if (!expected) return { ok: true, clientId: null };
   const provided = request.headers.get("x-telemetry-token") ?? "";
-  // Lazy server-only import so node:crypto never reaches the client bundle.
   const { createHash, timingSafeEqual } = await import("node:crypto");
   const a = createHash("sha256").update(provided).digest();
   const b = createHash("sha256").update(expected).digest();
   return timingSafeEqual(a, b)
-    ? { ok: true }
-    : { ok: false, reason: "missing or invalid X-Telemetry-Token" };
+    ? { ok: true, clientId: null }
+    : { ok: false, reason: "missing or invalid credentials" };
 }
 
 export const Route = createFileRoute("/api/public/telemetry")({
@@ -45,11 +60,14 @@ export const Route = createFileRoute("/api/public/telemetry")({
       },
 
       POST: async ({ request }: { request: Request }) => {
-        const auth = await checkToken(request);
+        const start = Date.now();
+        const auth = await checkAuth(request);
         if (!auth.ok) {
           log("warn", "telemetry.ingest.unauthorized", { reason: auth.reason });
+          await logRequest(null, "/api/public/telemetry", "POST", 401, Date.now() - start);
           return json({ error: "unauthorized" }, request, { status: 401 });
         }
+        const clientId = auth.clientId;
 
         let raw: unknown;
         try { raw = await request.json(); }
@@ -91,7 +109,8 @@ export const Route = createFileRoute("/api/public/telemetry")({
           log("warn", "telemetry.persist.skipped", { msg: (e as Error).message });
         }
 
-        log("info", "telemetry.ingest.ok", { count: samples.length });
+        log("info", "telemetry.ingest.ok", { count: samples.length, clientId });
+        await logRequest(clientId, "/api/public/telemetry", "POST", 200, Date.now() - start);
         return json({ ok: true, accepted: samples.length, stats: telemetryBus.stats() }, request);
       },
     },
