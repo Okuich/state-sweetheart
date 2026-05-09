@@ -2,7 +2,10 @@
  * Service-to-service auth for /api/public/step/* routes.
  * Server-only (uses node:crypto and supabaseAdmin).
  */
-import { supabaseAdmin } from "@/integrations/supabase/client.server";
+async function admin() {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  return supabaseAdmin;
+}
 
 const KEY_PREFIX = "pde_";
 
