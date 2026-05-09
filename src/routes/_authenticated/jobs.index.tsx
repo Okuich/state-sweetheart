@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { listStepJobs } from "@/lib/step-jobs.functions";
 
-export const Route = createFileRoute("/_authenticated/jobs")({
+export const Route = createFileRoute("/_authenticated/jobs/")({
   component: JobsPage,
   head: () => ({ meta: [{ title: "STEP Jobs — Particle Dynamics Engine" }] }),
 });
