@@ -39,13 +39,13 @@ export async function processStepJob(jobId: string): Promise<void> {
 
   try {
     await assertNotCancelled(jobId);
-    await supabaseAdmin.from("step_jobs").update({ status: "parsing" }).eq("id", jobId);
+    await (await admin()).from("step_jobs").update({ status: "parsing" }).eq("id", jobId);
     await emitJobEvent(jobId, { stage: "queued", progress: 5, message: "job picked up" });
 
     // Download the STEP file from storage
     await assertNotCancelled(jobId);
     await emitJobEvent(jobId, { stage: "downloading", progress: 15, message: "fetching file" });
-    const { data: blob, error: dlErr } = await supabaseAdmin.storage
+    const { data: blob, error: dlErr } = await (await admin()).storage
       .from("step-uploads")
       .download(job.storage_path);
     if (dlErr || !blob) throw new Error(dlErr?.message ?? "download failed");
