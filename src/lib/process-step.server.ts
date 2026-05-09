@@ -97,6 +97,7 @@ export async function processStepJob(jobId: string): Promise<void> {
       .from("step_jobs")
       .update({ status: "failed", error: msg, completed_at: new Date().toISOString() })
       .eq("id", jobId);
+    await emitJobEvent(jobId, { stage: "failed", progress: 100, message: msg });
     throw e;
   }
 }
