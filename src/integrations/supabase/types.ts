@@ -14,6 +14,80 @@ export type Database = {
   }
   public: {
     Tables: {
+      api_clients: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          key_hash: string
+          key_prefix: string
+          last_used_at: string | null
+          name: string
+          revoked_at: string | null
+          scopes: string[]
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          key_hash: string
+          key_prefix: string
+          last_used_at?: string | null
+          name: string
+          revoked_at?: string | null
+          scopes?: string[]
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          key_hash?: string
+          key_prefix?: string
+          last_used_at?: string | null
+          name?: string
+          revoked_at?: string | null
+          scopes?: string[]
+        }
+        Relationships: []
+      }
+      api_request_log: {
+        Row: {
+          client_id: string | null
+          created_at: string
+          id: number
+          latency_ms: number | null
+          method: string
+          route: string
+          status: number
+        }
+        Insert: {
+          client_id?: string | null
+          created_at?: string
+          id?: number
+          latency_ms?: number | null
+          method: string
+          route: string
+          status: number
+        }
+        Update: {
+          client_id?: string | null
+          created_at?: string
+          id?: number
+          latency_ms?: number | null
+          method?: string
+          route?: string
+          status?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "api_request_log_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "api_clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -40,6 +114,53 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      step_jobs: {
+        Row: {
+          client_id: string | null
+          completed_at: string | null
+          created_at: string
+          error: string | null
+          filename: string
+          geometry: Json | null
+          id: string
+          reasoning: Json | null
+          status: string
+          storage_path: string
+        }
+        Insert: {
+          client_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          error?: string | null
+          filename: string
+          geometry?: Json | null
+          id?: string
+          reasoning?: Json | null
+          status?: string
+          storage_path: string
+        }
+        Update: {
+          client_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          error?: string | null
+          filename?: string
+          geometry?: Json | null
+          id?: string
+          reasoning?: Json | null
+          status?: string
+          storage_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "step_jobs_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "api_clients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       telemetry_samples: {
         Row: {
