@@ -76,6 +76,16 @@ function ApiKeysPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const rotateMut = useMutation({
+    mutationFn: (id: string) => rotate({ data: { id } }),
+    onSuccess: (res) => {
+      setRevealed({ name: `${res.client.name} (rotated)`, key: res.raw_key });
+      qc.invalidateQueries({ queryKey: ["api-clients"] });
+      toast.success("Key rotated — copy the new value now");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="mx-auto max-w-4xl space-y-6">
