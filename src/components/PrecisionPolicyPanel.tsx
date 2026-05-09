@@ -334,6 +334,7 @@ export function PrecisionPolicyPanel() {
           </div>
         </div>
       </div>
+      </>)}
     </div>
   );
 }
