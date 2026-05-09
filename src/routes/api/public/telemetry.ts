@@ -14,12 +14,19 @@ const json = (body: unknown, request: Request, init: ResponseInit = {}) =>
  * present the same value via the `X-Telemetry-Token` header. When the env var
  * is unset (dev/preview), ingest is open. GET (status) stays open either way.
  */
+import { createHash, timingSafeEqual } from "node:crypto";
+
 function checkToken(request: Request): { ok: true } | { ok: false; reason: string } {
   const expected = (typeof process !== "undefined" ? process.env.TELEMETRY_INGEST_TOKEN : "") ?? "";
   if (!expected) return { ok: true };
   const provided = request.headers.get("x-telemetry-token") ?? "";
-  if (provided.length === expected.length && provided === expected) return { ok: true };
-  return { ok: false, reason: "missing or invalid X-Telemetry-Token" };
+  // Hash both sides so the buffers always have identical length and the
+  // comparison runs in constant time (no length-leak side channel).
+  const a = createHash("sha256").update(provided).digest();
+  const b = createHash("sha256").update(expected).digest();
+  return timingSafeEqual(a, b)
+    ? { ok: true }
+    : { ok: false, reason: "missing or invalid X-Telemetry-Token" };
 }
 
 export const Route = createFileRoute("/api/public/telemetry")({
