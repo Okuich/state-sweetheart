@@ -10,7 +10,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { corsHeaders } from "@/lib/cors";
 import { verifyServiceAuth, logRequest } from "@/lib/service-auth";
-import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { getAdmin } from "@/lib/admin";
+const supabaseAdmin = /* @__PURE__ */ (() => null as never)();
 import { emitJobEvent } from "@/lib/job-events";
 
 const ROUTE = "/api/public/step/jobs/:id/cancel";
