@@ -7,6 +7,7 @@
  * — so the UI can render typed parameter cards instead of parsing prose.
  */
 import { createServerFn } from "@tanstack/react-start";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 
 const InputSchema = z.object({
@@ -36,6 +37,7 @@ material assumption, boundary conditions, convergence tolerance, max iterations,
 when relevant. Flag risks from past failures.`;
 
 export const recommendSimulationParameters = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => InputSchema.parse(data))
   .handler(async ({ data }): Promise<Recommendation> => {
     const apiKey = process.env.LOVABLE_API_KEY;
