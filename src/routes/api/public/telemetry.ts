@@ -60,11 +60,14 @@ export const Route = createFileRoute("/api/public/telemetry")({
       },
 
       POST: async ({ request }: { request: Request }) => {
-        const auth = await checkToken(request);
+        const start = Date.now();
+        const auth = await checkAuth(request);
         if (!auth.ok) {
           log("warn", "telemetry.ingest.unauthorized", { reason: auth.reason });
+          await logRequest(null, "/api/public/telemetry", "POST", 401, Date.now() - start);
           return json({ error: "unauthorized" }, request, { status: 401 });
         }
+        const clientId = auth.clientId;
 
         let raw: unknown;
         try { raw = await request.json(); }
