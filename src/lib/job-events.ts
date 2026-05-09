@@ -13,6 +13,7 @@ export interface JobEvent {
 }
 
 export async function emitJobEvent(jobId: string, ev: JobEvent): Promise<void> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const progress = Math.max(0, Math.min(100, Math.round(ev.progress)));
   const row = {
     job_id: jobId,
