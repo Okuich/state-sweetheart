@@ -14,7 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      telemetry_samples: {
+        Row: {
+          constraint_l2: number | null
+          divergence_risk: number | null
+          energy_drift_pct: number | null
+          id: number
+          ingested_at: string
+          nan_count: number | null
+          source: string | null
+          t: number
+          velocity_max: number | null
+        }
+        Insert: {
+          constraint_l2?: number | null
+          divergence_risk?: number | null
+          energy_drift_pct?: number | null
+          id?: number
+          ingested_at?: string
+          nan_count?: number | null
+          source?: string | null
+          t: number
+          velocity_max?: number | null
+        }
+        Update: {
+          constraint_l2?: number | null
+          divergence_risk?: number | null
+          energy_drift_pct?: number | null
+          id?: number
+          ingested_at?: string
+          nan_count?: number | null
+          source?: string | null
+          t?: number
+          velocity_max?: number | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
