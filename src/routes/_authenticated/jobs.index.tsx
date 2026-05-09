@@ -41,10 +41,9 @@ function JobsPage() {
 
   const setSearch = (next: Partial<{ clientId?: string; status?: string; q?: string }>) =>
     navigate({
-      search: (prev) => ({
+      search: (prev: Record<string, unknown>) => ({
         ...prev,
         ...next,
-        // Strip empty strings so the URL stays clean
         ...(next.clientId === "" ? { clientId: undefined } : {}),
         ...(next.status === "" ? { status: undefined } : {}),
         ...(next.q === "" ? { q: undefined } : {}),
