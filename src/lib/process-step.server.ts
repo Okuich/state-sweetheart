@@ -56,7 +56,7 @@ export async function processStepJob(jobId: string): Promise<void> {
 
     await supabaseAdmin
       .from("step_jobs")
-      .update({ status: "reasoning", geometry })
+      .update({ status: "reasoning", geometry: geometry as never })
       .eq("id", jobId);
 
     // AI reasoning
@@ -66,7 +66,7 @@ export async function processStepJob(jobId: string): Promise<void> {
       .from("step_jobs")
       .update({
         status: "done",
-        reasoning,
+        reasoning: reasoning as never,
         completed_at: new Date().toISOString(),
       })
       .eq("id", jobId);
