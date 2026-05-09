@@ -20,7 +20,24 @@ export const Route = createFileRoute("/_authenticated/api-keys")({
   }),
 });
 
-const SCOPE_OPTIONS = ["step:ingest", "step:read"] as const;
+const SCOPE_OPTIONS = [
+  "step:ingest",
+  "step:read",
+  "telemetry:write",
+  "telemetry:read",
+  "reasoner:invoke",
+] as const;
+
+const PRESETS: Record<string, { name: string; scopes: string[] }> = {
+  "fabrication-os": {
+    name: "fabrication-os",
+    scopes: ["step:ingest", "step:read", "reasoner:invoke", "telemetry:write"],
+  },
+  midwater: {
+    name: "midwater",
+    scopes: ["step:ingest", "step:read", "telemetry:read"],
+  },
+};
 
 function ApiKeysPage() {
   const qc = useQueryClient();
