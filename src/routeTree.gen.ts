@@ -12,7 +12,10 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
+import { Route as AuthenticatedJobsRouteImport } from './routes/_authenticated/jobs'
+import { Route as AuthenticatedApiKeysRouteImport } from './routes/_authenticated/api-keys'
 import { Route as ApiPublicTelemetryRouteImport } from './routes/api/public/telemetry'
+import { Route as AuthenticatedJobsIdRouteImport } from './routes/_authenticated/jobs.$id'
 import { Route as ApiPublicTelemetryStreamRouteImport } from './routes/api/public/telemetry.stream'
 import { Route as ApiPublicStepAnalyzeRouteImport } from './routes/api/public/step.analyze'
 import { Route as ApiPublicStepJobsIdRouteImport } from './routes/api/public/step.jobs.$id'
@@ -31,10 +34,25 @@ const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedJobsRoute = AuthenticatedJobsRouteImport.update({
+  id: '/jobs',
+  path: '/jobs',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedApiKeysRoute = AuthenticatedApiKeysRouteImport.update({
+  id: '/api-keys',
+  path: '/api-keys',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const ApiPublicTelemetryRoute = ApiPublicTelemetryRouteImport.update({
   id: '/api/public/telemetry',
   path: '/api/public/telemetry',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedJobsIdRoute = AuthenticatedJobsIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => AuthenticatedJobsRoute,
 } as any)
 const ApiPublicTelemetryStreamRoute =
   ApiPublicTelemetryStreamRouteImport.update({
@@ -56,6 +74,9 @@ const ApiPublicStepJobsIdRoute = ApiPublicStepJobsIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
   '/login': typeof LoginRoute
+  '/api-keys': typeof AuthenticatedApiKeysRoute
+  '/jobs': typeof AuthenticatedJobsRouteWithChildren
+  '/jobs/$id': typeof AuthenticatedJobsIdRoute
   '/api/public/telemetry': typeof ApiPublicTelemetryRouteWithChildren
   '/api/public/step/analyze': typeof ApiPublicStepAnalyzeRoute
   '/api/public/telemetry/stream': typeof ApiPublicTelemetryStreamRoute
@@ -63,7 +84,10 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
+  '/api-keys': typeof AuthenticatedApiKeysRoute
+  '/jobs': typeof AuthenticatedJobsRouteWithChildren
   '/': typeof AuthenticatedIndexRoute
+  '/jobs/$id': typeof AuthenticatedJobsIdRoute
   '/api/public/telemetry': typeof ApiPublicTelemetryRouteWithChildren
   '/api/public/step/analyze': typeof ApiPublicStepAnalyzeRoute
   '/api/public/telemetry/stream': typeof ApiPublicTelemetryStreamRoute
@@ -73,7 +97,10 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/login': typeof LoginRoute
+  '/_authenticated/api-keys': typeof AuthenticatedApiKeysRoute
+  '/_authenticated/jobs': typeof AuthenticatedJobsRouteWithChildren
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/jobs/$id': typeof AuthenticatedJobsIdRoute
   '/api/public/telemetry': typeof ApiPublicTelemetryRouteWithChildren
   '/api/public/step/analyze': typeof ApiPublicStepAnalyzeRoute
   '/api/public/telemetry/stream': typeof ApiPublicTelemetryStreamRoute
@@ -84,6 +111,9 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/api-keys'
+    | '/jobs'
+    | '/jobs/$id'
     | '/api/public/telemetry'
     | '/api/public/step/analyze'
     | '/api/public/telemetry/stream'
@@ -91,7 +121,10 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
+    | '/api-keys'
+    | '/jobs'
     | '/'
+    | '/jobs/$id'
     | '/api/public/telemetry'
     | '/api/public/step/analyze'
     | '/api/public/telemetry/stream'
@@ -100,7 +133,10 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_authenticated'
     | '/login'
+    | '/_authenticated/api-keys'
+    | '/_authenticated/jobs'
     | '/_authenticated/'
+    | '/_authenticated/jobs/$id'
     | '/api/public/telemetry'
     | '/api/public/step/analyze'
     | '/api/public/telemetry/stream'
@@ -138,12 +174,33 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/jobs': {
+      id: '/_authenticated/jobs'
+      path: '/jobs'
+      fullPath: '/jobs'
+      preLoaderRoute: typeof AuthenticatedJobsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/api-keys': {
+      id: '/_authenticated/api-keys'
+      path: '/api-keys'
+      fullPath: '/api-keys'
+      preLoaderRoute: typeof AuthenticatedApiKeysRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/api/public/telemetry': {
       id: '/api/public/telemetry'
       path: '/api/public/telemetry'
       fullPath: '/api/public/telemetry'
       preLoaderRoute: typeof ApiPublicTelemetryRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/jobs/$id': {
+      id: '/_authenticated/jobs/$id'
+      path: '/$id'
+      fullPath: '/jobs/$id'
+      preLoaderRoute: typeof AuthenticatedJobsIdRouteImport
+      parentRoute: typeof AuthenticatedJobsRoute
     }
     '/api/public/telemetry/stream': {
       id: '/api/public/telemetry/stream'
@@ -169,11 +226,26 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AuthenticatedJobsRouteChildren {
+  AuthenticatedJobsIdRoute: typeof AuthenticatedJobsIdRoute
+}
+
+const AuthenticatedJobsRouteChildren: AuthenticatedJobsRouteChildren = {
+  AuthenticatedJobsIdRoute: AuthenticatedJobsIdRoute,
+}
+
+const AuthenticatedJobsRouteWithChildren =
+  AuthenticatedJobsRoute._addFileChildren(AuthenticatedJobsRouteChildren)
+
 interface AuthenticatedRouteChildren {
+  AuthenticatedApiKeysRoute: typeof AuthenticatedApiKeysRoute
+  AuthenticatedJobsRoute: typeof AuthenticatedJobsRouteWithChildren
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
+  AuthenticatedApiKeysRoute: AuthenticatedApiKeysRoute,
+  AuthenticatedJobsRoute: AuthenticatedJobsRouteWithChildren,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
 }
 
