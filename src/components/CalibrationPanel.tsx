@@ -69,7 +69,12 @@ export function CalibrationPanel() {
       const [x, y] = xy(s.t, modelAt(fit.params, s.t));
       return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
     }).join(" ") : "";
-    return { W, H, truePath, fitPath, points: data.map((s) => xy(s.t, s.y)) };
+    // Round to 2dp so SSR vs client FP rounding can't desync hydration.
+    const round = (n: number) => Math.round(n * 100) / 100;
+    return {
+      W, H, truePath, fitPath,
+      points: data.map((s) => { const [x, y] = xy(s.t, s.y); return [round(x), round(y)] as [number, number]; }),
+    };
   }, [data, fit]);
 
   const residView = useMemo(() => {
