@@ -34,7 +34,7 @@ import { TelemetryUploadPanel } from "@/components/TelemetryUploadPanel";
 import { FederatedPanel } from "@/components/FederatedPanel";
 import { saveSnapshot } from "@/lib/worldMemory";
 
-export const Route = createFileRoute("/")({
+export const Route = createFileRoute("/_authenticated/")({
   component: Index,
   head: () => ({
     meta: [
