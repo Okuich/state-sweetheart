@@ -6,7 +6,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { generateApiKey } from "./service-auth.server";
+import { generateApiKey } from "./service-auth";
 
 const CreateInput = z.object({
   name: z.string().min(1).max(64).regex(/^[a-z0-9-]+$/),

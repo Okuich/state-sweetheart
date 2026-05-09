@@ -4,7 +4,7 @@
  */
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { parseStep, buildTopology, describe, validate } from "./stepParser";
-import { emitJobEvent } from "./job-events.server";
+import { emitJobEvent } from "./job-events";
 
 const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const REASONING_MODEL = "google/gemini-2.5-pro";

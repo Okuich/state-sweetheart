@@ -7,7 +7,7 @@
  */
 import { createFileRoute } from "@tanstack/react-router";
 import { corsHeaders } from "@/lib/cors";
-import { verifyServiceAuth, logRequest } from "@/lib/service-auth.server";
+import { verifyServiceAuth, logRequest } from "@/lib/service-auth";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 const ROUTE = "/api/public/step/jobs/:id";

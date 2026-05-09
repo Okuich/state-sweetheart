@@ -9,9 +9,9 @@
  */
 import { createFileRoute } from "@tanstack/react-router";
 import { corsHeaders } from "@/lib/cors";
-import { verifyServiceAuth, logRequest } from "@/lib/service-auth.server";
+import { verifyServiceAuth, logRequest } from "@/lib/service-auth";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { emitJobEvent } from "@/lib/job-events.server";
+import { emitJobEvent } from "@/lib/job-events";
 
 const ROUTE = "/api/public/step/jobs/:id/cancel";
 const TERMINAL = new Set(["done", "failed", "cancelled"]);

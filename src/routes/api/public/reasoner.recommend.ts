@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { corsHeaders } from "@/lib/cors";
-import { verifyServiceAuth, logRequest } from "@/lib/service-auth.server";
+import { verifyServiceAuth, logRequest } from "@/lib/service-auth";
 import { RecommendationSchema } from "@/server/physicsReasoner.functions";
 
 const InputSchema = z.object({

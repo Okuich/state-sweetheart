@@ -13,7 +13,7 @@
  */
 import { createFileRoute } from "@tanstack/react-router";
 import { corsHeaders } from "@/lib/cors";
-import { verifyServiceAuth, logRequest } from "@/lib/service-auth.server";
+import { verifyServiceAuth, logRequest } from "@/lib/service-auth";
 import { parseStep, buildTopology, describe, validate } from "@/lib/stepParser";
 
 const MAX_BYTES = 10 * 1024 * 1024; // sync limit; use /analyze for larger

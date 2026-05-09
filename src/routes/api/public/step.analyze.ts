@@ -7,9 +7,9 @@
  */
 import { createFileRoute } from "@tanstack/react-router";
 import { corsHeaders } from "@/lib/cors";
-import { verifyServiceAuth, logRequest } from "@/lib/service-auth.server";
+import { verifyServiceAuth, logRequest } from "@/lib/service-auth";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { processStepJob } from "@/lib/process-step.server";
+import { processStepJob } from "@/lib/process-step";
 
 const MAX_BYTES = 25 * 1024 * 1024;
 const ROUTE = "/api/public/step/analyze";
