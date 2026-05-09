@@ -116,8 +116,10 @@ export const Route = createFileRoute("/api/public/step/jobs/$id/stream")({
             });
 
             // If already terminal, finish immediately
-            if (job.status === "done" || job.status === "failed") {
-              send(job.status === "done" ? "done" : "error", {
+            if (job.status === "done" || job.status === "failed" || job.status === "cancelled") {
+              const evt =
+                job.status === "done" ? "done" : job.status === "cancelled" ? "cancelled" : "error";
+              send(evt, {
                 status: job.status,
                 geometry: job.geometry,
                 reasoning: job.reasoning,
