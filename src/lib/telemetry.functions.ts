@@ -8,9 +8,11 @@
  * bundle.
  */
 import { createServerFn } from "@tanstack/react-start";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { IngestSchema, type TelemetrySample } from "@/lib/telemetrySchema";
 
 export const publishTelemetry = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => IngestSchema.parse(input))
   .handler(async ({ data }) => {
     const { telemetryBus } = await import("@/lib/telemetryBus");
@@ -21,6 +23,7 @@ export const publishTelemetry = createServerFn({ method: "POST" })
   });
 
 export const getTelemetryRecent = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((input: { limit?: number } | undefined) => ({
     limit: Math.max(1, Math.min(Number(input?.limit ?? 64) || 64, 512)),
   }))
