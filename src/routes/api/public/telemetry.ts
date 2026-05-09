@@ -17,17 +17,33 @@ const json = (body: unknown, request: Request, init: ResponseInit = {}) =>
  */
 import { createHash, timingSafeEqual } from "node:crypto";
 
-async function checkToken(request: Request): Promise<{ ok: true } | { ok: false; reason: string }> {
+/**
+ * Auth: accepts EITHER
+ *   - `Authorization: Bearer pde_...` API key with scope `telemetry:write` (preferred for service-to-service), OR
+ *   - `X-Telemetry-Token` shared secret (legacy).
+ * If neither env nor a valid bearer is present, ingest is open in dev.
+ */
+import { createHash, timingSafeEqual } from "node:crypto";
+
+async function checkAuth(request: Request): Promise<{ ok: true; clientId: string | null } | { ok: false; reason: string }> {
+  // 1. Try API key first
+  const auth = request.headers.get("authorization") ?? "";
+  if (/^Bearer\s+pde_/i.test(auth)) {
+    const client = await verifyServiceAuth(request, "/api/public/telemetry", "telemetry:write");
+    if (client) return { ok: true, clientId: client.id };
+    return { ok: false, reason: "invalid api key or missing telemetry:write scope" };
+  }
+
+  // 2. Fall back to shared token
   const expected = (typeof process !== "undefined" ? process.env.TELEMETRY_INGEST_TOKEN : "") ?? "";
-  if (!expected) return { ok: true };
+  if (!expected) return { ok: true, clientId: null };
   const provided = request.headers.get("x-telemetry-token") ?? "";
-  // Lazy server-only import so node:crypto never reaches the client bundle.
   const { createHash, timingSafeEqual } = await import("node:crypto");
   const a = createHash("sha256").update(provided).digest();
   const b = createHash("sha256").update(expected).digest();
   return timingSafeEqual(a, b)
-    ? { ok: true }
-    : { ok: false, reason: "missing or invalid X-Telemetry-Token" };
+    ? { ok: true, clientId: null }
+    : { ok: false, reason: "missing or invalid credentials" };
 }
 
 export const Route = createFileRoute("/api/public/telemetry")({
