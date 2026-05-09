@@ -90,7 +90,8 @@ export const Route = createFileRoute("/api/public/telemetry")({
         // Persist to the telemetry_samples table (admin write, server-only).
         // Fire-and-forget so a slow DB never blocks ingest acks.
         try {
-          const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+          const { getAdmin } = await import("@/lib/admin");
+          const supabaseAdmin = getAdmin();
           void supabaseAdmin
             .from("telemetry_samples")
             .insert(samples.map((s) => ({
