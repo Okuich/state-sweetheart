@@ -14,6 +14,8 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as ApiPublicTelemetryRouteImport } from './routes/api/public/telemetry'
 import { Route as ApiPublicTelemetryStreamRouteImport } from './routes/api/public/telemetry.stream'
+import { Route as ApiPublicStepAnalyzeRouteImport } from './routes/api/public/step.analyze'
+import { Route as ApiPublicStepJobsIdRouteImport } from './routes/api/public/step.jobs.$id'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -40,18 +42,32 @@ const ApiPublicTelemetryStreamRoute =
     path: '/stream',
     getParentRoute: () => ApiPublicTelemetryRoute,
   } as any)
+const ApiPublicStepAnalyzeRoute = ApiPublicStepAnalyzeRouteImport.update({
+  id: '/api/public/step/analyze',
+  path: '/api/public/step/analyze',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicStepJobsIdRoute = ApiPublicStepJobsIdRouteImport.update({
+  id: '/api/public/step/jobs/$id',
+  path: '/api/public/step/jobs/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
   '/login': typeof LoginRoute
   '/api/public/telemetry': typeof ApiPublicTelemetryRouteWithChildren
+  '/api/public/step/analyze': typeof ApiPublicStepAnalyzeRoute
   '/api/public/telemetry/stream': typeof ApiPublicTelemetryStreamRoute
+  '/api/public/step/jobs/$id': typeof ApiPublicStepJobsIdRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/': typeof AuthenticatedIndexRoute
   '/api/public/telemetry': typeof ApiPublicTelemetryRouteWithChildren
+  '/api/public/step/analyze': typeof ApiPublicStepAnalyzeRoute
   '/api/public/telemetry/stream': typeof ApiPublicTelemetryStreamRoute
+  '/api/public/step/jobs/$id': typeof ApiPublicStepJobsIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -59,7 +75,9 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/api/public/telemetry': typeof ApiPublicTelemetryRouteWithChildren
+  '/api/public/step/analyze': typeof ApiPublicStepAnalyzeRoute
   '/api/public/telemetry/stream': typeof ApiPublicTelemetryStreamRoute
+  '/api/public/step/jobs/$id': typeof ApiPublicStepJobsIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -67,22 +85,34 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/api/public/telemetry'
+    | '/api/public/step/analyze'
     | '/api/public/telemetry/stream'
+    | '/api/public/step/jobs/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/login' | '/' | '/api/public/telemetry' | '/api/public/telemetry/stream'
+  to:
+    | '/login'
+    | '/'
+    | '/api/public/telemetry'
+    | '/api/public/step/analyze'
+    | '/api/public/telemetry/stream'
+    | '/api/public/step/jobs/$id'
   id:
     | '__root__'
     | '/_authenticated'
     | '/login'
     | '/_authenticated/'
     | '/api/public/telemetry'
+    | '/api/public/step/analyze'
     | '/api/public/telemetry/stream'
+    | '/api/public/step/jobs/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   LoginRoute: typeof LoginRoute
   ApiPublicTelemetryRoute: typeof ApiPublicTelemetryRouteWithChildren
+  ApiPublicStepAnalyzeRoute: typeof ApiPublicStepAnalyzeRoute
+  ApiPublicStepJobsIdRoute: typeof ApiPublicStepJobsIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -122,6 +152,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicTelemetryStreamRouteImport
       parentRoute: typeof ApiPublicTelemetryRoute
     }
+    '/api/public/step/analyze': {
+      id: '/api/public/step/analyze'
+      path: '/api/public/step/analyze'
+      fullPath: '/api/public/step/analyze'
+      preLoaderRoute: typeof ApiPublicStepAnalyzeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/step/jobs/$id': {
+      id: '/api/public/step/jobs/$id'
+      path: '/api/public/step/jobs/$id'
+      fullPath: '/api/public/step/jobs/$id'
+      preLoaderRoute: typeof ApiPublicStepJobsIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -152,6 +196,8 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   LoginRoute: LoginRoute,
   ApiPublicTelemetryRoute: ApiPublicTelemetryRouteWithChildren,
+  ApiPublicStepAnalyzeRoute: ApiPublicStepAnalyzeRoute,
+  ApiPublicStepJobsIdRoute: ApiPublicStepJobsIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
