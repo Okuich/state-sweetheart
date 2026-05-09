@@ -2,10 +2,7 @@
  * STEP processing pipeline: parse → describe → reason via Lovable AI Gateway.
  * Server-only.
  */
-async function admin() {
-  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  return supabaseAdmin;
-}
+import { getAdmin } from "@/lib/admin";
 import { parseStep, buildTopology, describe, validate } from "./stepParser";
 import { emitJobEvent } from "./job-events";
 
