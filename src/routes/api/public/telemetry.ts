@@ -45,7 +45,7 @@ export const Route = createFileRoute("/api/public/telemetry")({
       },
 
       POST: async ({ request }: { request: Request }) => {
-        const auth = checkToken(request);
+        const auth = await checkToken(request);
         if (!auth.ok) {
           log("warn", "telemetry.ingest.unauthorized", { reason: auth.reason });
           return json({ error: "unauthorized" }, request, { status: 401 });
