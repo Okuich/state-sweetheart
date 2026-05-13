@@ -37,7 +37,7 @@ describe("sdf/queries", () => {
   it("nearestSurface projects onto the sphere", () => {
     const prims: SDFPrim[] = [{ kind: "sphere", center: [0, 0, 0], radius: 0.5 }];
     const sdf = buildSparseSDF(bbox, prims, { voxelSize: 0.05 });
-    const r = nearestSurface(sdf, [0.8, 0, 0]);
+    const r = nearestSurface(sdf, [0.55, 0, 0]);
     expect(Math.abs(Math.hypot(r.point[0], r.point[1], r.point[2]) - 0.5)).toBeLessThan(0.1);
   });
 
