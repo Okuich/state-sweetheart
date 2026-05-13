@@ -254,3 +254,32 @@ ${JSON.stringify(geometry, null, 2)}`;
     return { model: REASONING_MODEL, raw: content };
   }
 }
+
+/** Spread STEP feature counts across the bbox surface deterministically. */
+function synthesizeSeeds(
+  bbox: AABB,
+  features: { holes: number; fillets: number; chamfers: number; planar: number; cylindrical: number },
+): { kind: string; center?: number[]; radius?: number; weight?: number }[] {
+  const out: { kind: string; center?: number[]; radius?: number; weight?: number }[] = [];
+  const ext = Math.max(bbox.max[0] - bbox.min[0], bbox.max[1] - bbox.min[1], bbox.max[2] - bbox.min[2]);
+  const r = ext * 0.12;
+  const place = (i: number, n: number): [number, number, number] => {
+    const t = (i + 0.5) / Math.max(1, n);
+    const a = t * Math.PI * 2;
+    return [
+      bbox.min[0] + (bbox.max[0] - bbox.min[0]) * (0.5 + 0.4 * Math.cos(a)),
+      bbox.min[1] + (bbox.max[1] - bbox.min[1]) * (0.5 + 0.4 * Math.sin(a)),
+      bbox.min[2] + (bbox.max[2] - bbox.min[2]) * (0.5 + 0.3 * Math.sin(a * 2)),
+    ];
+  };
+  const cap = (n: number, max = 12) => Math.min(n, max);
+  const holes = cap(features.holes ?? 0);
+  for (let i = 0; i < holes; i++) out.push({ kind: "hole", center: place(i, holes), radius: r, weight: 0.9 });
+  const fillets = cap(features.fillets ?? 0);
+  for (let i = 0; i < fillets; i++) out.push({ kind: "fillet", center: place(i + 1, fillets), radius: r * 0.7, weight: 0.6 });
+  const chamfers = cap(features.chamfers ?? 0);
+  for (let i = 0; i < chamfers; i++) out.push({ kind: "chamfer", center: place(i + 2, chamfers), radius: r * 0.6, weight: 0.5 });
+  const cyl = cap(features.cylindrical ?? 0);
+  for (let i = 0; i < cyl; i++) out.push({ kind: "cylindrical", center: place(i + 3, cyl), radius: r, weight: 0.7 });
+  return out;
+}
