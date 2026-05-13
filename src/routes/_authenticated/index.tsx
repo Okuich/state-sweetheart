@@ -21,6 +21,7 @@ import { GeometryFeaturePanel } from "@/components/GeometryFeaturePanel";
 import { MeshingPanel } from "@/components/MeshingPanel";
 import { SpatialAccelPanel } from "@/components/SpatialAccelPanel";
 import { SDFPanel } from "@/components/SDFPanel";
+import { TopologyPanel } from "@/components/TopologyPanel";
 import { LearningEnginePanel } from "@/components/LearningEnginePanel";
 import { TrainingDataUploadPanel } from "@/components/TrainingDataUploadPanel";
 import { KnowledgeGraphPanel } from "@/components/KnowledgeGraphPanel";
@@ -953,6 +954,7 @@ function Index() {
       <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
         <SpatialAccelPanel />
         <SDFPanel />
+        <TopologyPanel />
       </section>
 
       {/* Physics Learning Engine — priors from geometry + sim + fab + QA */}
