@@ -942,6 +942,11 @@ function Index() {
         <GeometryFeaturePanel />
       </section>
 
+      {/* Simulation Meshing — adaptive octree, GPU adjacency, MPI partitioning */}
+      <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
+        <MeshingPanel />
+      </section>
+
       {/* Physics Learning Engine — priors from geometry + sim + fab + QA */}
       <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
         <LearningEnginePanel />
