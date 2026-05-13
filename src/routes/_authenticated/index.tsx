@@ -23,6 +23,7 @@ import { SpatialAccelPanel } from "@/components/SpatialAccelPanel";
 import { SDFPanel } from "@/components/SDFPanel";
 import { TopologyPanel } from "@/components/TopologyPanel";
 import { RefinementPanel } from "@/components/RefinementPanel";
+import { DistPartPanel } from "@/components/DistPartPanel";
 import { LearningEnginePanel } from "@/components/LearningEnginePanel";
 import { TrainingDataUploadPanel } from "@/components/TrainingDataUploadPanel";
 import { KnowledgeGraphPanel } from "@/components/KnowledgeGraphPanel";
@@ -958,6 +959,9 @@ function Index() {
         <TopologyPanel />
         <div className="mt-6">
           <RefinementPanel />
+        </div>
+        <div className="mt-6">
+          <DistPartPanel />
         </div>
       </section>
 
