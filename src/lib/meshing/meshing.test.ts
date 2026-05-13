@@ -16,7 +16,7 @@ describe("octree", () => {
   });
   it("refines deeper near a seed", () => {
     const seeded = buildOctreeMesh(BBOX, [
-      { kind: "hole", center: [0.5, 0.5, 0.5], radius: 0.05, weight: 5 },
+      { kind: "hole", center: [0.5, 0.5, 0.5], radius: 0.4, weight: 3 },
     ], { minDepth: 1, maxDepth: 5, refineThreshold: 0.2 });
     const baseline = buildOctreeMesh(BBOX, [], { minDepth: 1, maxDepth: 5, refineThreshold: 0.2 });
     expect(seeded.leaves.length).toBeGreaterThan(baseline.leaves.length);
