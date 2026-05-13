@@ -137,6 +137,13 @@ export function planDistributed(input: DistPartInput): DistPartResult {
   const broadphase = input.broadphase
     ? partitionBroadphase(input.mesh, finalPart, finalHalo)
     : undefined;
+  const schedule = input.schedule
+    ? buildBatchSchedule(finalHalo, {
+        comm,
+        iterations: input.haloSyncIterations ?? 16,
+        ...(typeof input.schedule === "object" ? input.schedule : {}),
+      })
+    : undefined;
 
   return {
     algorithm: algo,
@@ -151,6 +158,7 @@ export function planDistributed(input: DistPartInput): DistPartResult {
     traversal,
     haloSync,
     broadphase,
+    schedule,
     totalMs: Date.now() - t0,
   };
 }
