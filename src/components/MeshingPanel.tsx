@@ -164,10 +164,28 @@ export function MeshingPanel() {
         </div>
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap items-center">
         <Button onClick={run} disabled={running} className="uppercase tracking-[0.18em] text-[10px]">
           {running ? "meshing…" : result ? "re-mesh" : "generate mesh"}
         </Button>
+        {result && (
+          <>
+            <span className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground ml-2">
+              export
+            </span>
+            {(["vtk", "obj", "json"] as ExportFormat[]).map((f) => (
+              <Button
+                key={f}
+                onClick={() => handleExport(f)}
+                disabled={exporting !== null}
+                variant="outline"
+                className="uppercase tracking-[0.18em] text-[10px]"
+              >
+                {exporting === f ? "…" : `.${f}`}
+              </Button>
+            ))}
+          </>
+        )}
       </div>
 
       {result && (
