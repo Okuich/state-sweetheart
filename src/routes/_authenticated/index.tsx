@@ -19,6 +19,7 @@ import { CalibrationPanel } from "@/components/CalibrationPanel";
 import { StepIngestionPanel } from "@/components/StepIngestionPanel";
 import { GeometryFeaturePanel } from "@/components/GeometryFeaturePanel";
 import { MeshingPanel } from "@/components/MeshingPanel";
+import { SpatialAccelPanel } from "@/components/SpatialAccelPanel";
 import { LearningEnginePanel } from "@/components/LearningEnginePanel";
 import { TrainingDataUploadPanel } from "@/components/TrainingDataUploadPanel";
 import { KnowledgeGraphPanel } from "@/components/KnowledgeGraphPanel";
