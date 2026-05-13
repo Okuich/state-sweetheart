@@ -28,6 +28,7 @@ import { buildCheckpoint, type DistributedCheckpoint } from "./checkpoint";
 import { partitionAwareTraversal, type TraversalResult } from "./traversal";
 import { simulateHaloSync, type HaloSyncResult } from "./halosync";
 import { partitionBroadphase, type BroadphaseResult } from "./broadphase";
+import { buildBatchSchedule, type BatchSchedule, type BatchScheduleOptions } from "./scheduler";
 
 export * from "./algorithms";
 export * from "./comm";
@@ -36,6 +37,7 @@ export * from "./checkpoint";
 export * from "./traversal";
 export * from "./halosync";
 export * from "./broadphase";
+export * from "./scheduler";
 
 export interface DistPartInput {
   mesh: OctreeMesh;
@@ -55,6 +57,8 @@ export interface DistPartInput {
   haloSyncIterations?: number;
   /** Run partition-aware broadphase. */
   broadphase?: boolean;
+  /** Build a batched comm-minimization schedule. */
+  schedule?: BatchScheduleOptions | boolean;
 }
 
 export interface DistPartResult {
@@ -70,6 +74,7 @@ export interface DistPartResult {
   traversal?: TraversalResult;
   haloSync?: HaloSyncResult;
   broadphase?: BroadphaseResult;
+  schedule?: BatchSchedule;
   totalMs: number;
 }
 
@@ -132,6 +137,13 @@ export function planDistributed(input: DistPartInput): DistPartResult {
   const broadphase = input.broadphase
     ? partitionBroadphase(input.mesh, finalPart, finalHalo)
     : undefined;
+  const schedule = input.schedule
+    ? buildBatchSchedule(finalHalo, {
+        comm,
+        iterations: input.haloSyncIterations ?? 16,
+        ...(typeof input.schedule === "object" ? input.schedule : {}),
+      })
+    : undefined;
 
   return {
     algorithm: algo,
@@ -146,6 +158,7 @@ export function planDistributed(input: DistPartInput): DistPartResult {
     traversal,
     haloSync,
     broadphase,
+    schedule,
     totalMs: Date.now() - t0,
   };
 }
