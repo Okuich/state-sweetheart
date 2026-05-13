@@ -25,11 +25,17 @@ import {
 } from "./comm";
 import { planRebalance, applyMigration, type RebalancePlan } from "./rebalance";
 import { buildCheckpoint, type DistributedCheckpoint } from "./checkpoint";
+import { partitionAwareTraversal, type TraversalResult } from "./traversal";
+import { simulateHaloSync, type HaloSyncResult } from "./halosync";
+import { partitionBroadphase, type BroadphaseResult } from "./broadphase";
 
 export * from "./algorithms";
 export * from "./comm";
 export * from "./rebalance";
 export * from "./checkpoint";
+export * from "./traversal";
+export * from "./halosync";
+export * from "./broadphase";
 
 export interface DistPartInput {
   mesh: OctreeMesh;
