@@ -101,7 +101,7 @@ export function partitionBroadphase(
   const P = halo.partitionCount;
   const aabbs = tetAABBs(mesh, opts.padding ?? 0.0);
   const gridRes = Math.max(2, opts.gridResolution ?? Math.ceil(Math.cbrt(T / 8)));
-  const cellsTotal = gridRes ** 3;
+  
 
   const bx = mesh.bbox.min[0], by = mesh.bbox.min[1], bz = mesh.bbox.min[2];
   const sx = (mesh.bbox.max[0] - bx) || 1;
