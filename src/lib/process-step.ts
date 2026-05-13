@@ -5,7 +5,7 @@
 import { getAdmin } from "@/lib/admin";
 import { parseStep, buildTopology, describe, validate } from "./stepParser";
 import { emitJobEvent } from "./job-events";
-import { generateMesh, seedsFromFeatures, type AABB } from "./meshing";
+import { generateMeshWithProgress, seedsFromFeatures, type AABB } from "./meshing";
 
 const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const REASONING_MODEL = "google/gemini-2.5-pro";
@@ -108,12 +108,24 @@ export async function processStepJob(jobId: string): Promise<void> {
         const bbox: AABB = desc.bbox;
         const synthSeeds = synthesizeSeeds(bbox, desc.features);
         const seeds = seedsFromFeatures(bbox, synthSeeds);
-        const meshing = generateMesh({
-          bbox,
-          seeds,
-          octree: { minDepth: 2, maxDepth: 5, refineThreshold: 0.3, maxLeaves: 20_000 },
-          partitionCount: 8,
-        });
+        const MESH_BASE = 65;
+        const MESH_SPAN = 5; // 65 → 70
+        const meshing = await generateMeshWithProgress(
+          {
+            bbox,
+            seeds,
+            octree: { minDepth: 2, maxDepth: 5, refineThreshold: 0.3, maxLeaves: 20_000 },
+            partitionCount: 8,
+          },
+          async (ev) => {
+            await emitJobEvent(jobId, {
+              stage: `meshing.${ev.stage}`,
+              progress: MESH_BASE + ev.progress * MESH_SPAN,
+              message: ev.message,
+              data: { ...ev.data, elapsedMs: ev.elapsedMs },
+            });
+          },
+        );
         meshSummary = meshing.summary;
         await getAdmin()
           .from("step_jobs")
