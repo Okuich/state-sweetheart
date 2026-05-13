@@ -18,7 +18,7 @@ function JobDetailPage() {
     queryFn: () => get({ data: { id } }),
     refetchInterval: (q) => {
       const s = q.state.data?.job?.status;
-      return s === "done" || s === "failed" ? false : 3000;
+      return s === "done" || s === "failed" || s === "cancelled" ? false : 1000;
     },
   });
 
@@ -71,6 +71,56 @@ function JobDetailPage() {
             </Card>
           );
         })()}
+
+        {data?.events && data.events.length > 0 && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">
+                Pipeline timeline · {data.events.length} events
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ol className="relative space-y-2 border-l border-border/60 pl-4">
+                {[...data.events].reverse().map((ev) => {
+                  const stage = String(ev.stage);
+                  const isMeshSub = stage.startsWith("meshing.");
+                  const isFail = stage === "failed" || stage === "mesh_failed" || stage === "cancelled";
+                  const isDone = stage === "done" || stage === "mesh_ready";
+                  const dot = isFail
+                    ? "bg-destructive"
+                    : isDone
+                      ? "bg-primary"
+                      : isMeshSub
+                        ? "bg-accent"
+                        : "bg-muted-foreground/60";
+                  return (
+                    <li key={ev.id} className="relative">
+                      <span
+                        className={`absolute -left-[19px] top-1.5 h-2 w-2 rounded-full ${dot}`}
+                      />
+                      <div className="flex items-baseline justify-between gap-3">
+                        <div className="flex items-baseline gap-2 min-w-0">
+                          <span className="font-mono text-[11px] text-foreground">{stage}</span>
+                          <span className="text-[10px] tabular-nums text-muted-foreground">
+                            {ev.progress}%
+                          </span>
+                        </div>
+                        <time className="text-[10px] tabular-nums text-muted-foreground/70 shrink-0">
+                          {new Date(ev.created_at).toLocaleTimeString()}
+                        </time>
+                      </div>
+                      {ev.message && (
+                        <p className="mt-0.5 text-[11px] text-muted-foreground break-words">
+                          {ev.message}
+                        </p>
+                      )}
+                    </li>
+                  );
+                })}
+              </ol>
+            </CardContent>
+          </Card>
+        )}
 
         {job.error && (
           <Card className="border-destructive/40">
