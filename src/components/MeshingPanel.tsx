@@ -9,6 +9,11 @@ import {
   type RefinementSeed,
 } from "@/lib/meshing";
 import { MeshViewer3D } from "./MeshViewer3D";
+import { useServerFn } from "@tanstack/react-start";
+import { exportMeshFn } from "@/lib/meshing/export.functions";
+import { toast } from "sonner";
+
+type ExportFormat = "vtk" | "obj" | "json";
 
 const BBOX: AABB = { min: [0, 0, 0], max: [1, 1, 1] };
 
@@ -45,6 +50,46 @@ export function MeshingPanel() {
   const [partitionCount, setPartitionCount] = useState(8);
   const [result, setResult] = useState<MeshingResult | null>(null);
   const [running, setRunning] = useState(false);
+  const [exporting, setExporting] = useState<ExportFormat | null>(null);
+  const exportFn = useServerFn(exportMeshFn);
+
+  const lastInput = useMemo(() => {
+    const placed = placeSeeds(PRESETS[presetIdx].seeds);
+    const seeds: RefinementSeed[] = seedsFromFeatures(BBOX, placed);
+    return {
+      bbox: BBOX,
+      seeds,
+      octree: { minDepth: 2, maxDepth, refineThreshold: 0.3, maxLeaves: 30_000 },
+      partitionCount,
+    };
+  }, [presetIdx, maxDepth, partitionCount]);
+
+  const handleExport = async (format: ExportFormat) => {
+    setExporting(format);
+    try {
+      const res = await exportFn({ data: { ...lastInput, format } });
+      if (!res.ok) {
+        toast.error(`Export failed: ${res.error}`);
+        return;
+      }
+      const blob = new Blob([res.content], { type: res.mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = res.filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+      toast.success(
+        `${format.toUpperCase()} ready · ${(res.bytes / 1024).toFixed(1)} KB · ${res.summary.tets.toLocaleString()} tets`,
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Export failed");
+    } finally {
+      setExporting(null);
+    }
+  };
 
   const run = () => {
     setRunning(true);
