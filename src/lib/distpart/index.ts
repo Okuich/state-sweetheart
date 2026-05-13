@@ -120,6 +120,19 @@ export function planDistributed(input: DistPartInput): DistPartResult {
       )
     : undefined;
 
+  const finalPart = (rebalanced ?? assignment).tetPart;
+  const finalHalo = rebalancedHalo ?? halo;
+
+  const traversal = input.traversal
+    ? partitionAwareTraversal(finalPart, input.adj, finalHalo, { comm })
+    : undefined;
+  const haloSync = input.haloSyncIterations
+    ? simulateHaloSync(finalHalo, { iterations: input.haloSyncIterations, comm })
+    : undefined;
+  const broadphase = input.broadphase
+    ? partitionBroadphase(input.mesh, finalPart, finalHalo)
+    : undefined;
+
   return {
     algorithm: algo,
     partitionCount: input.partitionCount,
@@ -130,6 +143,9 @@ export function planDistributed(input: DistPartInput): DistPartResult {
     rebalanced,
     rebalancedHalo,
     checkpoint,
+    traversal,
+    haloSync,
+    broadphase,
     totalMs: Date.now() - t0,
   };
 }
