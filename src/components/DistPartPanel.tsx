@@ -57,8 +57,9 @@ export function DistPartPanel() {
         weights,
         checkpointStep: history.length,
         traversal: true,
-        haloSyncIterations: 8,
+        haloSyncIterations: 16,
         broadphase: true,
+        schedule: { batchSize: 4, coalesceCap: 4, deltaCompressionRatio: 0.4 },
       });
       setLast(r);
       setHistory((h) =>
