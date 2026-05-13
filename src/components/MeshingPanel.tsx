@@ -9,6 +9,10 @@ import {
   type RefinementSeed,
 } from "@/lib/meshing";
 import { MeshViewer3D } from "./MeshViewer3D";
+import { useServerFn } from "@tanstack/react-start";
+import { exportMeshFn } from "@/lib/meshing/export.functions";
+
+type ExportFormat = "vtk" | "obj" | "json";
 
 const BBOX: AABB = { min: [0, 0, 0], max: [1, 1, 1] };
 
@@ -45,6 +49,49 @@ export function MeshingPanel() {
   const [partitionCount, setPartitionCount] = useState(8);
   const [result, setResult] = useState<MeshingResult | null>(null);
   const [running, setRunning] = useState(false);
+  const [exporting, setExporting] = useState<ExportFormat | null>(null);
+  const exportFn = useServerFn(exportMeshFn);
+
+  const lastInput = useMemo(() => {
+    const placed = placeSeeds(PRESETS[presetIdx].seeds);
+    const seeds: RefinementSeed[] = seedsFromFeatures(BBOX, placed);
+    return {
+      bbox: BBOX,
+      seeds,
+      octree: { minDepth: 2, maxDepth, refineThreshold: 0.3, maxLeaves: 30_000 },
+      partitionCount,
+    };
+  }, [presetIdx, maxDepth, partitionCount]);
+
+  const [exportMsg, setExportMsg] = useState<string | null>(null);
+
+  const handleExport = async (format: ExportFormat) => {
+    setExporting(format);
+    setExportMsg(null);
+    try {
+      const res = await exportFn({ data: { ...lastInput, format } });
+      if (!res.ok) {
+        setExportMsg(`export failed · ${res.error}`);
+        return;
+      }
+      const blob = new Blob([res.content], { type: res.mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = res.filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+      setExportMsg(
+        `${format.toUpperCase()} · ${(res.bytes / 1024).toFixed(1)} KB · ${res.summary.tets.toLocaleString()} tets`,
+      );
+    } catch (err) {
+      setExportMsg(err instanceof Error ? err.message : "export failed");
+    } finally {
+      setExporting(null);
+    }
+  };
 
   const run = () => {
     setRunning(true);
@@ -119,10 +166,31 @@ export function MeshingPanel() {
         </div>
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap items-center">
         <Button onClick={run} disabled={running} className="uppercase tracking-[0.18em] text-[10px]">
           {running ? "meshing…" : result ? "re-mesh" : "generate mesh"}
         </Button>
+        {result && (
+          <>
+            <span className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground ml-2">
+              export
+            </span>
+            {(["vtk", "obj", "json"] as ExportFormat[]).map((f) => (
+              <Button
+                key={f}
+                onClick={() => handleExport(f)}
+                disabled={exporting !== null}
+                variant="outline"
+                className="uppercase tracking-[0.18em] text-[10px]"
+              >
+                {exporting === f ? "…" : `.${f}`}
+              </Button>
+            ))}
+          </>
+        )}
+        {exportMsg && (
+          <span className="text-[10px] font-mono text-muted-foreground ml-2">{exportMsg}</span>
+        )}
       </div>
 
       {result && (
