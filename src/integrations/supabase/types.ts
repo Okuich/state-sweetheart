@@ -162,6 +162,7 @@ export type Database = {
           filename: string
           geometry: Json | null
           id: string
+          mesh: Json | null
           progress: Json | null
           reasoning: Json | null
           status: string
@@ -175,6 +176,7 @@ export type Database = {
           filename: string
           geometry?: Json | null
           id?: string
+          mesh?: Json | null
           progress?: Json | null
           reasoning?: Json | null
           status?: string
@@ -188,6 +190,7 @@ export type Database = {
           filename?: string
           geometry?: Json | null
           id?: string
+          mesh?: Json | null
           progress?: Json | null
           reasoning?: Json | null
           status?: string

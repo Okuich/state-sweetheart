@@ -1,0 +1,1 @@
+ALTER TABLE public.step_jobs ADD COLUMN IF NOT EXISTS mesh jsonb;
