@@ -65,17 +65,6 @@ export function MeshingPanel() {
 
   const [exportMsg, setExportMsg] = useState<string | null>(null);
 
-  const lastInput = useMemo(() => {
-    const placed = placeSeeds(PRESETS[presetIdx].seeds);
-    const seeds: RefinementSeed[] = seedsFromFeatures(BBOX, placed);
-    return {
-      bbox: BBOX,
-      seeds,
-      octree: { minDepth: 2, maxDepth, refineThreshold: 0.3, maxLeaves: 30_000 },
-      partitionCount,
-    };
-  }, [presetIdx, maxDepth, partitionCount]);
-
   const handleExport = async (format: ExportFormat) => {
     setExporting(format);
     setExportMsg(null);
