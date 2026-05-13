@@ -90,10 +90,56 @@ export async function processStepJob(jobId: string): Promise<void> {
       .eq("id", jobId);
     await emitJobEvent(jobId, {
       stage: "geometry_ready",
-      progress: 60,
+      progress: 55,
       message: `parsed ${desc.counts ? Object.keys(desc.counts).length : 0} entity types`,
       data: { bbox: desc.bbox, counts: desc.counts },
     });
+
+    // Volumetric meshing — octree + adaptive refinement + GPU adjacency + MPI partitioning.
+    let meshSummary: unknown = null;
+    if (desc.bbox) {
+      await assertNotCancelled(jobId);
+      await emitJobEvent(jobId, {
+        stage: "meshing",
+        progress: 65,
+        message: "generating adaptive octree mesh",
+      });
+      try {
+        const bbox: AABB = desc.bbox;
+        const synthSeeds = synthesizeSeeds(bbox, desc.features);
+        const seeds = seedsFromFeatures(bbox, synthSeeds);
+        const meshing = generateMesh({
+          bbox,
+          seeds,
+          octree: { minDepth: 2, maxDepth: 5, refineThreshold: 0.3, maxLeaves: 20_000 },
+          partitionCount: 8,
+        });
+        meshSummary = meshing.summary;
+        await getAdmin()
+          .from("step_jobs")
+          .update({ mesh: meshing.summary as never })
+          .eq("id", jobId);
+        await emitJobEvent(jobId, {
+          stage: "mesh_ready",
+          progress: 70,
+          message: `mesh ${meshing.summary.tets.count} tets · ${meshing.summary.partition.partitionCount} partitions`,
+          data: {
+            tets: meshing.summary.tets.count,
+            convergence: meshing.summary.tets.convergenceScore,
+            partitions: meshing.summary.partition.partitionCount,
+            edgeCut: meshing.summary.partition.edgeCut,
+          },
+        });
+      } catch (e) {
+        const m = e instanceof Error ? e.message : String(e);
+        await emitJobEvent(jobId, {
+          stage: "mesh_failed",
+          progress: 70,
+          message: `meshing skipped: ${m}`,
+        });
+      }
+    }
+    void meshSummary;
 
     // AI reasoning
     await assertNotCancelled(jobId);
