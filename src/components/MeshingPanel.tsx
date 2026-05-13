@@ -188,6 +188,9 @@ export function MeshingPanel() {
             ))}
           </>
         )}
+        {exportMsg && (
+          <span className="text-[10px] font-mono text-muted-foreground ml-2">{exportMsg}</span>
+        )}
       </div>
 
       {result && (
