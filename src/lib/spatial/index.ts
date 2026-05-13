@@ -1,9 +1,9 @@
-export * from "./morton";
-export * from "./bvh";
-export * from "./kdtree";
-export * from "./spatialHash";
-export * from "./queries";
-export * from "./fabIntel";
+export { morton3D, mortonCodes, mortonOrder, expandBits, type Vec3 } from "./morton";
+export { buildBVH, bvhQueryAABB, bvhAllPairs, type BVH, type AABB } from "./bvh";
+export { buildKDTree, knn, radiusQuery, type KDTree } from "./kdtree";
+export { buildSpatialHash, broadphasePairs, type SpatialHash } from "./spatialHash";
+export { rayAABB, rayQuery, pointInSolid, contactCandidates, type RayHit } from "./queries";
+export { analyzeFabrication, FAB_CLASS_LABELS, type FabIntelReport } from "./fabIntel";
 
 import type { OctreeMesh } from "../meshing/octree";
 import { buildBVH, type BVH } from "./bvh";
