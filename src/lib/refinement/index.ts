@@ -71,7 +71,7 @@ export function runAdaptivePass(input: AdaptivePassInput): AdaptivePassResult {
   const plan = planRefinement(input.baseMesh, error, input.options);
   const pass = applyRefinement(input.bbox, input.baseSeeds, input.baseMesh, plan, input.octreeOpts);
   const haloDelta = estimateHaloDelta(input.baseMesh, input.basePartition, pass.newMesh, plan.splitLeaves);
-  const repartition = planRepartition(input.basePartition, pass.newMesh, plan.splitLeaves);
+  const repartition = planRepartition(input.basePartition, pass.newMesh, plan.splitLeaves, input.baseMesh);
   const priorsAdded = input.ingestPriors === false ? 0 : sharedPriorStore().ingest(input.baseMesh, error, plan);
   return {
     fields,
