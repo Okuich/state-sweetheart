@@ -71,5 +71,13 @@ export const getStepJob = createServerFn({ method: "GET" })
         .maybeSingle();
       client_name = c?.name ?? null;
     }
-    return { job: { ...job, client_name } };
+
+    const { data: events } = await supabaseAdmin
+      .from("step_job_events")
+      .select("id,stage,progress,message,data,created_at")
+      .eq("job_id", data.id)
+      .order("id", { ascending: true })
+      .limit(200);
+
+    return { job: { ...job, client_name }, events: events ?? [] };
   });
