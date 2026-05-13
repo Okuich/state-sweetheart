@@ -111,23 +111,34 @@ export function seedsFromFeatures(
     .filter((s): s is RefinementSeed => s !== null);
 }
 
-export function generateMesh(input: MeshingInput): MeshingResult {
-  const t0 = Date.now();
-  const mesh = buildOctreeMesh(input.bbox, input.seeds, input.octree);
-  const quality = evaluateQuality(mesh);
-  const adjacency = buildAdjacency(mesh);
-  const partitionCount = Math.max(1, input.partitionCount ?? 8);
-  const partition = partitionMesh(mesh, adjacency, partitionCount);
+export type MeshStageName = "octree" | "quality" | "adjacency" | "partition" | "summary";
 
+export interface MeshStageEvent {
+  stage: MeshStageName;
+  /** 0-1 fraction of meshing complete after this stage. */
+  progress: number;
+  message: string;
+  data?: Record<string, unknown>;
+  elapsedMs: number;
+}
+
+export type MeshProgressFn = (e: MeshStageEvent) => void | Promise<void>;
+
+function buildSummary(
+  input: MeshingInput,
+  mesh: ReturnType<typeof buildOctreeMesh>,
+  quality: QualityReport,
+  adjacency: AdjacencyTensors,
+  partition: PartitionPlan,
+  totalMs: number,
+): MeshingSummary {
   const refinedFraction =
     mesh.leaves.length > 0
       ? mesh.leaves.filter((id) => mesh.nodes[id].depth >= (input.octree?.minDepth ?? 2) + 1).length /
         mesh.leaves.length
       : 0;
-
   const boundaryLeaves = Array.from(mesh.boundaryLeaf).reduce((a, b) => a + b, 0);
-
-  const summary: MeshingSummary = {
+  return {
     bbox: input.bbox,
     octree: {
       minDepth: mesh.options.minDepth,
@@ -161,8 +172,99 @@ export function generateMesh(input: MeshingInput): MeshingResult {
       imbalance: Number(partition.imbalance.toFixed(3)),
       commMatrix: Array.from(partition.commMatrix),
     },
-    totalMs: Date.now() - t0,
+    totalMs,
   };
+}
+
+export function generateMesh(input: MeshingInput): MeshingResult {
+  const t0 = Date.now();
+  const mesh = buildOctreeMesh(input.bbox, input.seeds, input.octree);
+  const quality = evaluateQuality(mesh);
+  const adjacency = buildAdjacency(mesh);
+  const partitionCount = Math.max(1, input.partitionCount ?? 8);
+  const partition = partitionMesh(mesh, adjacency, partitionCount);
+  const summary = buildSummary(input, mesh, quality, adjacency, partition, Date.now() - t0);
+  return { mesh, quality, adjacency, partition, summary };
+}
+
+/**
+ * Async meshing pipeline that yields between stages so callers (e.g.
+ * STEP job runners) can stream sub-stage progress to clients in real time.
+ */
+export async function generateMeshWithProgress(
+  input: MeshingInput,
+  onProgress: MeshProgressFn,
+): Promise<MeshingResult> {
+  const t0 = Date.now();
+
+  const mesh = buildOctreeMesh(input.bbox, input.seeds, input.octree);
+  await onProgress({
+    stage: "octree",
+    progress: 0.35,
+    message: `octree refined to ${mesh.leaves.length.toLocaleString()} leaves (depth ${mesh.options.minDepth}-${mesh.options.maxDepth})`,
+    data: {
+      leaves: mesh.leaves.length,
+      buildMs: mesh.buildMs,
+      maxDepth: mesh.options.maxDepth,
+      minDepth: mesh.options.minDepth,
+    },
+    elapsedMs: Date.now() - t0,
+  });
+
+  const quality = evaluateQuality(mesh);
+  await onProgress({
+    stage: "quality",
+    progress: 0.55,
+    message: `${quality.tetCount.toLocaleString()} tets · mean aspect ${quality.meanAspect.toFixed(2)} · ${quality.invertedTets} inverted`,
+    data: {
+      tets: quality.tetCount,
+      vertices: quality.vertexCount,
+      meanAspect: quality.meanAspect,
+      worstAspect: quality.worstAspect,
+      invertedTets: quality.invertedTets,
+      convergence: quality.convergenceScore,
+    },
+    elapsedMs: Date.now() - t0,
+  });
+
+  const adjacency = buildAdjacency(mesh);
+  await onProgress({
+    stage: "adjacency",
+    progress: 0.75,
+    message: `${adjacency.edgeStats.count.toLocaleString()} edges · mean degree ${adjacency.edgeStats.meanDegree.toFixed(2)} · warp stride ${adjacency.warpStride}`,
+    data: {
+      edges: adjacency.edgeStats.count,
+      meanDegree: adjacency.edgeStats.meanDegree,
+      maxDegree: adjacency.edgeStats.maxDegree,
+      warpStride: adjacency.warpStride,
+    },
+    elapsedMs: Date.now() - t0,
+  });
+
+  const partitionCount = Math.max(1, input.partitionCount ?? 8);
+  const partition = partitionMesh(mesh, adjacency, partitionCount);
+  await onProgress({
+    stage: "partition",
+    progress: 0.95,
+    message: `${partition.partitionCount} partitions · edge-cut ${partition.edgeCut.toLocaleString()} · imbalance ${partition.imbalance.toFixed(3)}`,
+    data: {
+      partitions: partition.partitionCount,
+      edgeCut: partition.edgeCut,
+      imbalance: partition.imbalance,
+      sizes: Array.from(partition.sizes),
+    },
+    elapsedMs: Date.now() - t0,
+  });
+
+  const totalMs = Date.now() - t0;
+  const summary = buildSummary(input, mesh, quality, adjacency, partition, totalMs);
+  await onProgress({
+    stage: "summary",
+    progress: 1,
+    message: `meshing complete in ${totalMs} ms`,
+    data: { totalMs },
+    elapsedMs: totalMs,
+  });
 
   return { mesh, quality, adjacency, partition, summary };
 }
