@@ -25,11 +25,17 @@ import {
 } from "./comm";
 import { planRebalance, applyMigration, type RebalancePlan } from "./rebalance";
 import { buildCheckpoint, type DistributedCheckpoint } from "./checkpoint";
+import { partitionAwareTraversal, type TraversalResult } from "./traversal";
+import { simulateHaloSync, type HaloSyncResult } from "./halosync";
+import { partitionBroadphase, type BroadphaseResult } from "./broadphase";
 
 export * from "./algorithms";
 export * from "./comm";
 export * from "./rebalance";
 export * from "./checkpoint";
+export * from "./traversal";
+export * from "./halosync";
+export * from "./broadphase";
 
 export interface DistPartInput {
   mesh: OctreeMesh;
@@ -43,6 +49,12 @@ export interface DistPartInput {
   rebalance?: boolean;
   /** Optional checkpoint step. */
   checkpointStep?: number;
+  /** Run partition-aware traversal simulation. */
+  traversal?: boolean;
+  /** Run cross-partition halo sync simulation (iterations). */
+  haloSyncIterations?: number;
+  /** Run partition-aware broadphase. */
+  broadphase?: boolean;
 }
 
 export interface DistPartResult {
@@ -55,6 +67,9 @@ export interface DistPartResult {
   rebalanced?: PartitionAssignment;
   rebalancedHalo?: HaloPlan;
   checkpoint?: DistributedCheckpoint;
+  traversal?: TraversalResult;
+  haloSync?: HaloSyncResult;
+  broadphase?: BroadphaseResult;
   totalMs: number;
 }
 
@@ -105,6 +120,19 @@ export function planDistributed(input: DistPartInput): DistPartResult {
       )
     : undefined;
 
+  const finalPart = (rebalanced ?? assignment).tetPart;
+  const finalHalo = rebalancedHalo ?? halo;
+
+  const traversal = input.traversal
+    ? partitionAwareTraversal(finalPart, input.adj, finalHalo, { comm })
+    : undefined;
+  const haloSync = input.haloSyncIterations
+    ? simulateHaloSync(finalHalo, { iterations: input.haloSyncIterations, comm })
+    : undefined;
+  const broadphase = input.broadphase
+    ? partitionBroadphase(input.mesh, finalPart, finalHalo)
+    : undefined;
+
   return {
     algorithm: algo,
     partitionCount: input.partitionCount,
@@ -115,6 +143,9 @@ export function planDistributed(input: DistPartInput): DistPartResult {
     rebalanced,
     rebalancedHalo,
     checkpoint,
+    traversal,
+    haloSync,
+    broadphase,
     totalMs: Date.now() - t0,
   };
 }

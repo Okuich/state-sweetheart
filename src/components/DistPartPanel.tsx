@@ -56,6 +56,9 @@ export function DistPartPanel() {
         rebalance: true,
         weights,
         checkpointStep: history.length,
+        traversal: true,
+        haloSyncIterations: 8,
+        broadphase: true,
       });
       setLast(r);
       setHistory((h) =>
@@ -219,6 +222,136 @@ export function DistPartPanel() {
           )}
         </div>
       </div>
+
+      {last && (last.traversal || last.haloSync || last.broadphase) && (
+        <div className="grid gap-4 md:grid-cols-3">
+          {last.traversal && (
+            <div className="rounded-md border border-border bg-background/40 p-4 space-y-2">
+              <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                partition-aware traversal
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
+                <div>
+                  <div className="text-muted-foreground uppercase tracking-[0.14em]">super-steps</div>
+                  <div className="text-foreground tabular-nums">{last.traversal.steps.length}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground uppercase tracking-[0.14em]">speedup</div>
+                  <div className="text-primary tabular-nums">{last.traversal.speedup.toFixed(2)}×</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground uppercase tracking-[0.14em]">visited</div>
+                  <div className="text-foreground tabular-nums">{last.traversal.totalVisited}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground uppercase tracking-[0.14em]">est. wall µs</div>
+                  <div className="text-accent tabular-nums">{last.traversal.estimatedUs.toFixed(1)}</div>
+                </div>
+              </div>
+              <div className="flex gap-[2px] items-end h-12 pt-1">
+                {last.traversal.steps.map((s, i) => {
+                  const max = Math.max(1, ...last.traversal!.steps.map((x) => x.parallelWork));
+                  return (
+                    <div
+                      key={i}
+                      className="flex-1 bg-primary/70 rounded-[1px]"
+                      style={{ height: `${(s.parallelWork / max) * 100}%` }}
+                      title={`step ${s.step}: parallel ${s.parallelWork} / serial ${s.serialWork}, halo ${s.haloTets} tets`}
+                    />
+                  );
+                })}
+              </div>
+              <div className="text-[9px] font-mono text-muted-foreground">
+                halo bytes · <span className="text-foreground">{last.traversal.totalHaloBytes.toLocaleString()}</span>
+              </div>
+            </div>
+          )}
+
+          {last.haloSync && (
+            <div className="rounded-md border border-border bg-background/40 p-4 space-y-2">
+              <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                halo sync · {last.haloSync.iterations.length} iters
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
+                <div>
+                  <div className="text-muted-foreground uppercase tracking-[0.14em]">avg µs</div>
+                  <div className="text-foreground tabular-nums">{last.haloSync.avgUs.toFixed(1)}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground uppercase tracking-[0.14em]">total bytes</div>
+                  <div className="text-foreground tabular-nums">{last.haloSync.totalBytes.toLocaleString()}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground uppercase tracking-[0.14em]">eff. GB/s</div>
+                  <div className="text-primary tabular-nums">{last.haloSync.effectiveGBs.toFixed(1)}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground uppercase tracking-[0.14em]">staleness</div>
+                  <div className="text-accent tabular-nums">{last.haloSync.maxStaleness}</div>
+                </div>
+              </div>
+              <div className="flex gap-[2px] items-end h-12 pt-1">
+                {last.haloSync.iterations.map((it, i) => {
+                  const max = Math.max(1, ...last.haloSync!.iterations.map((x) => x.iterUs));
+                  return (
+                    <div
+                      key={i}
+                      className="flex-1 bg-accent/70 rounded-[1px]"
+                      style={{ height: `${(it.iterUs / max) * 100}%` }}
+                      title={`iter ${it.iter}: ${it.iterUs.toFixed(1)} µs, ${it.packets} pkts`}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {last.broadphase && (
+            <div className="rounded-md border border-border bg-background/40 p-4 space-y-2">
+              <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                partition-aware broadphase
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
+                <div>
+                  <div className="text-muted-foreground uppercase tracking-[0.14em]">grid</div>
+                  <div className="text-foreground tabular-nums">{last.broadphase.gridResolution}³</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground uppercase tracking-[0.14em]">prune rate</div>
+                  <div className="text-primary tabular-nums">{(last.broadphase.pruningRate * 100).toFixed(1)}%</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground uppercase tracking-[0.14em]">local pairs</div>
+                  <div className="text-foreground tabular-nums">{last.broadphase.totalLocalPairs}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground uppercase tracking-[0.14em]">cross pairs</div>
+                  <div className="text-accent tabular-nums">{last.broadphase.uniqueCrossPairs}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground uppercase tracking-[0.14em]">halo cov.</div>
+                  <div className="text-primary tabular-nums">{(last.broadphase.haloCoverage * 100).toFixed(0)}%</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground uppercase tracking-[0.14em]">build ms</div>
+                  <div className="text-foreground tabular-nums">{last.broadphase.buildMs}</div>
+                </div>
+              </div>
+              <div className="flex gap-[2px] items-end h-12 pt-1">
+                {last.broadphase.perRank.map((r, i) => {
+                  const max = Math.max(1, ...last.broadphase!.perRank.map((x) => x.local + x.ghost));
+                  return (
+                    <div key={i} className="flex-1 flex flex-col-reverse rounded-[1px] overflow-hidden">
+                      <div className="bg-primary/70" style={{ height: `${(r.local / max) * 100}%` }} title={`rank ${r.rank} local ${r.local}`} />
+                      <div className="bg-accent/70" style={{ height: `${(r.ghost / max) * 100}%` }} title={`rank ${r.rank} ghost ${r.ghost}`} />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="rounded-md border border-border bg-background/40 p-4 space-y-2">
         <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
