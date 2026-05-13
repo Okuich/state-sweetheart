@@ -34,7 +34,7 @@ export const Route = createFileRoute("/api/public/step/jobs/$id")({
 
         const { data, error } = await getAdmin()
           .from("step_jobs")
-          .select("id,client_id,filename,status,error,geometry,reasoning,progress,created_at,completed_at")
+          .select("id,client_id,filename,status,error,geometry,reasoning,mesh,progress,created_at,completed_at")
           .eq("id", params.id)
           .maybeSingle();
 
@@ -51,6 +51,7 @@ export const Route = createFileRoute("/api/public/step/jobs/$id")({
             error: data.error,
             geometry: data.geometry,
             reasoning: data.reasoning,
+            mesh: data.mesh,
             progress: data.progress,
             created_at: data.created_at,
             completed_at: data.completed_at,

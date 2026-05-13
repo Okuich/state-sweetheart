@@ -18,6 +18,7 @@ import { GuardrailsPanel } from "@/components/GuardrailsPanel";
 import { CalibrationPanel } from "@/components/CalibrationPanel";
 import { StepIngestionPanel } from "@/components/StepIngestionPanel";
 import { GeometryFeaturePanel } from "@/components/GeometryFeaturePanel";
+import { MeshingPanel } from "@/components/MeshingPanel";
 import { LearningEnginePanel } from "@/components/LearningEnginePanel";
 import { TrainingDataUploadPanel } from "@/components/TrainingDataUploadPanel";
 import { KnowledgeGraphPanel } from "@/components/KnowledgeGraphPanel";
@@ -939,6 +940,11 @@ function Index() {
       {/* Geometry Feature Intelligence — physical features from CAD */}
       <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
         <GeometryFeaturePanel />
+      </section>
+
+      {/* Simulation Meshing — adaptive octree, GPU adjacency, MPI partitioning */}
+      <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
+        <MeshingPanel />
       </section>
 
       {/* Physics Learning Engine — priors from geometry + sim + fab + QA */}
