@@ -85,15 +85,14 @@ export function planRepartition(
   basePartition: PartitionPlan,
   refinedMesh: OctreeMesh,
   splitLeafIdx: Uint32Array,
-  imbalanceTol = 0.15,
+  baseMesh?: OctreeMesh,
 ): RepartitionHint {
   const P = basePartition.partitionCount;
   const sizes = Array.from(basePartition.sizes);
-
-  // Add the splits to whichever partition currently owns the original leaf.
+  const lp = baseMesh ? leafPartition(baseMesh, basePartition) : null;
   for (const li of splitLeafIdx) {
-    const part = basePartition.assignment[li] ?? 0;
-    sizes[part] += 7; // split = +7 leaves
+    const part = lp ? (lp[li] ?? 0) : (li % P);
+    sizes[part] += 7;
   }
 
   const total = sizes.reduce((a, b) => a + b, 0);
