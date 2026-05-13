@@ -57,6 +57,8 @@ export interface DistPartInput {
   haloSyncIterations?: number;
   /** Run partition-aware broadphase. */
   broadphase?: boolean;
+  /** Build a batched comm-minimization schedule. */
+  schedule?: BatchScheduleOptions | boolean;
 }
 
 export interface DistPartResult {
@@ -72,6 +74,7 @@ export interface DistPartResult {
   traversal?: TraversalResult;
   haloSync?: HaloSyncResult;
   broadphase?: BroadphaseResult;
+  schedule?: BatchSchedule;
   totalMs: number;
 }
 
