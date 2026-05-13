@@ -14,6 +14,28 @@
 import type { OctreeMesh, Vec3 } from "../meshing/octree";
 import type { PartitionPlan } from "../meshing/partition";
 
+/** Map each leaf to its dominant partition by majority of its 6 tets. */
+function leafPartition(mesh: OctreeMesh, plan: PartitionPlan): Uint16Array {
+  const N = mesh.leaves.length;
+  const out = new Uint16Array(N);
+  const counts = new Map<number, number[]>();
+  for (let t = 0; t < mesh.tetLeaf.length; t++) {
+    const li = mesh.tetLeaf[t];
+    const p = plan.tetPart[t] ?? 0;
+    let c = counts.get(li);
+    if (!c) { c = new Array(plan.partitionCount).fill(0); counts.set(li, c); }
+    c[p]++;
+  }
+  for (let li = 0; li < N; li++) {
+    const c = counts.get(li);
+    if (!c) { out[li] = 0; continue; }
+    let best = 0, bestI = 0;
+    for (let p = 0; p < c.length; p++) if (c[p] > best) { best = c[p]; bestI = p; }
+    out[li] = bestI;
+  }
+  return out;
+}
+
 export interface RepartitionHint {
   partitionCount: number;
   /** New per-partition counts after greedy rebalance. */
