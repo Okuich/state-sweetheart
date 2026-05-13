@@ -28,6 +28,7 @@ import { buildCheckpoint, type DistributedCheckpoint } from "./checkpoint";
 import { partitionAwareTraversal, type TraversalResult } from "./traversal";
 import { simulateHaloSync, type HaloSyncResult } from "./halosync";
 import { partitionBroadphase, type BroadphaseResult } from "./broadphase";
+import { buildBatchSchedule, type BatchSchedule, type BatchScheduleOptions } from "./scheduler";
 
 export * from "./algorithms";
 export * from "./comm";
@@ -36,6 +37,7 @@ export * from "./checkpoint";
 export * from "./traversal";
 export * from "./halosync";
 export * from "./broadphase";
+export * from "./scheduler";
 
 export interface DistPartInput {
   mesh: OctreeMesh;
