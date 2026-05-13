@@ -5,6 +5,7 @@
 import { getAdmin } from "@/lib/admin";
 import { parseStep, buildTopology, describe, validate } from "./stepParser";
 import { emitJobEvent } from "./job-events";
+import { generateMesh, seedsFromFeatures, type AABB } from "./meshing";
 
 const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const REASONING_MODEL = "google/gemini-2.5-pro";
