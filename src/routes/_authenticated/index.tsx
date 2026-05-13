@@ -22,6 +22,7 @@ import { MeshingPanel } from "@/components/MeshingPanel";
 import { SpatialAccelPanel } from "@/components/SpatialAccelPanel";
 import { SDFPanel } from "@/components/SDFPanel";
 import { TopologyPanel } from "@/components/TopologyPanel";
+import { RefinementPanel } from "@/components/RefinementPanel";
 import { LearningEnginePanel } from "@/components/LearningEnginePanel";
 import { TrainingDataUploadPanel } from "@/components/TrainingDataUploadPanel";
 import { KnowledgeGraphPanel } from "@/components/KnowledgeGraphPanel";
@@ -955,6 +956,9 @@ function Index() {
         <SpatialAccelPanel />
         <SDFPanel />
         <TopologyPanel />
+        <div className="mt-6">
+          <RefinementPanel />
+        </div>
       </section>
 
       {/* Physics Learning Engine — priors from geometry + sim + fab + QA */}
