@@ -69,14 +69,10 @@ export function estimateHaloDelta(
 ): { addedHalo: number; perPartition: number[] } {
   const P = basePartition.partitionCount;
   const perPartition = new Array<number>(P).fill(0);
+  const lp = leafPartition(baseMesh, basePartition);
   let addedHalo = 0;
-
-  // Each split leaf becomes ~8 child leaves; assume face-adjacent neighbors
-  // in 6 directions. Estimate how many neighbors cross partition lines via
-  // proximity in the refined mesh's bbox layout.
   for (const li of splitLeafIdx) {
-    const part = basePartition.assignment[li] ?? 0;
-    // Crude heuristic: assume 30% of new face neighbors cross boundaries.
+    const part = lp[li] ?? 0;
     const newHalo = Math.round(8 * 0.3);
     perPartition[part] += newHalo;
     addedHalo += newHalo;
