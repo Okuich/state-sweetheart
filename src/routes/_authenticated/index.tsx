@@ -948,6 +948,11 @@ function Index() {
         <MeshingPanel />
       </section>
 
+      {/* Spatial Acceleration — BVH, KD-tree, hash, fab intel */}
+      <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
+        <SpatialAccelPanel />
+      </section>
+
       {/* Physics Learning Engine — priors from geometry + sim + fab + QA */}
       <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
         <LearningEnginePanel />
