@@ -230,6 +230,4 @@ export function partitionBroadphase(
     haloCoverage,
     buildMs: Date.now() - t0,
   };
-  // Note: cellsTotal kept implicit via gridResolution; we don't expose it.
-  void cellsTotal;
 }
