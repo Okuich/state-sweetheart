@@ -8,6 +8,7 @@ import {
   type MeshingResult,
   type RefinementSeed,
 } from "@/lib/meshing";
+import { MeshViewer3D } from "./MeshViewer3D";
 
 const BBOX: AABB = { min: [0, 0, 0], max: [1, 1, 1] };
 
@@ -136,6 +137,8 @@ export function MeshingPanel() {
             <Stat label="inverted tets" value={String(result.summary.tets.invertedTets)} />
             <Stat label="non-manifold" value={String(result.summary.tets.nonManifoldFaces)} />
           </div>
+
+          <MeshViewer3D result={result} />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {/* Quality histogram */}
