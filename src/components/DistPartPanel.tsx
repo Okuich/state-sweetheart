@@ -354,6 +354,63 @@ export function DistPartPanel() {
         </div>
       )}
 
+      {last?.schedule && (
+        <div className="rounded-md border border-border bg-background/40 p-4 space-y-3">
+          <div className="flex items-baseline justify-between">
+            <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+              comm-minimization scheduler · batch {last.schedule.batchSize} · {last.schedule.iterations} iters
+            </div>
+            <div className="text-[10px] font-mono text-muted-foreground">
+              {last.schedule.batches} batches · {last.schedule.rounds.length} rounds
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-3 text-[10px] font-mono">
+            <div className="rounded-sm border border-border/60 p-2 space-y-1">
+              <div className="text-muted-foreground uppercase tracking-[0.14em]">messages</div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-foreground tabular-nums">{last.schedule.batched.messages.toLocaleString()}</span>
+                <span className="text-muted-foreground/70 line-through tabular-nums">{last.schedule.baseline.messages.toLocaleString()}</span>
+              </div>
+              <div className="text-primary tabular-nums">−{(last.schedule.savings.messages * 100).toFixed(1)}%</div>
+            </div>
+            <div className="rounded-sm border border-border/60 p-2 space-y-1">
+              <div className="text-muted-foreground uppercase tracking-[0.14em]">bytes</div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-foreground tabular-nums">{last.schedule.batched.bytes.toLocaleString()}</span>
+                <span className="text-muted-foreground/70 line-through tabular-nums">{last.schedule.baseline.bytes.toLocaleString()}</span>
+              </div>
+              <div className="text-primary tabular-nums">−{(last.schedule.savings.bytes * 100).toFixed(1)}%</div>
+            </div>
+            <div className="rounded-sm border border-border/60 p-2 space-y-1">
+              <div className="text-muted-foreground uppercase tracking-[0.14em]">latency µs</div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-foreground tabular-nums">{last.schedule.batched.totalUs.toFixed(0)}</span>
+                <span className="text-muted-foreground/70 line-through tabular-nums">{last.schedule.baseline.totalUs.toFixed(0)}</span>
+              </div>
+              <div className="text-accent tabular-nums">−{(last.schedule.savings.latency * 100).toFixed(1)}%</div>
+            </div>
+          </div>
+          <div>
+            <div className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground mb-1">
+              per-round bytes (parallel max)
+            </div>
+            <div className="flex gap-[2px] items-end h-14">
+              {last.schedule.rounds.map((r, i) => {
+                const max = Math.max(1, ...last.schedule!.rounds.map((x) => x.parallelBytes));
+                return (
+                  <div
+                    key={i}
+                    className="flex-1 bg-primary/70 rounded-[1px]"
+                    style={{ height: `${(r.parallelBytes / max) * 100}%` }}
+                    title={`round ${r.index}: ${r.transfers.length} transfers, ${r.parallelBytes.toLocaleString()}B, ${r.roundUs.toFixed(1)}µs`}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="rounded-md border border-border bg-background/40 p-4 space-y-2">
         <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
           algorithm history (last 12)
