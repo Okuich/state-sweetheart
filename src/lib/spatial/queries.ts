@@ -61,7 +61,10 @@ export function rayQuery(bvh: BVH, origin: Vec3, dir: Vec3): RayHit[] {
 export function pointInSolid(bvh: BVH, p: Vec3): boolean {
   const hits = rayQuery(bvh, p, [1, 0.0001, 0.0001]);
   let parity = 0;
-  for (const h of hits) if (h.tEnter > 0) parity++;
+  for (const h of hits) {
+    if (h.tEnter <= 0 && h.tExit > 0) parity++; // origin inside this box
+    else if (h.tEnter > 0) parity += 2;          // box fully ahead: enter + exit
+  }
   return (parity & 1) === 1;
 }
 
