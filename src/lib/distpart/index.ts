@@ -49,6 +49,12 @@ export interface DistPartInput {
   rebalance?: boolean;
   /** Optional checkpoint step. */
   checkpointStep?: number;
+  /** Run partition-aware traversal simulation. */
+  traversal?: boolean;
+  /** Run cross-partition halo sync simulation (iterations). */
+  haloSyncIterations?: number;
+  /** Run partition-aware broadphase. */
+  broadphase?: boolean;
 }
 
 export interface DistPartResult {
@@ -61,6 +67,9 @@ export interface DistPartResult {
   rebalanced?: PartitionAssignment;
   rebalancedHalo?: HaloPlan;
   checkpoint?: DistributedCheckpoint;
+  traversal?: TraversalResult;
+  haloSync?: HaloSyncResult;
+  broadphase?: BroadphaseResult;
   totalMs: number;
 }
 
