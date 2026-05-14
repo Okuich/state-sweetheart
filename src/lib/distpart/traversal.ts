@@ -20,21 +20,37 @@ import type { AdjacencyTensors } from "../meshing/adjacency";
 import type { HaloPlan } from "./comm";
 import type { CommModelOptions } from "./comm";
 import { DEFAULT_COMM_MODEL } from "./comm";
+import type { BatchSchedule } from "./scheduler";
 
 export interface TraversalStep {
   step: number;
   /** Tets visited per rank during the local sweep this step. */
   localVisits: Uint32Array;
-  /** Cross-partition messages dispatched this step. */
+  /** Cross-partition messages dispatched this step (after coalescing). */
   haloMessages: number;
   /** Halo tets exchanged this step (sum across all sender→receiver pairs). */
   haloTets: number;
-  /** Bytes shipped this step using payload model. */
+  /** Bytes shipped this step using payload model (after compression). */
   haloBytes: number;
+  /** Was this a batched flush step. */
+  flushed: boolean;
   /** Max(localVisits) — the rank that bottlenecked this step. */
   parallelWork: number;
   /** Σ(localVisits) — equivalent serial work. */
   serialWork: number;
+}
+
+export interface BatchedTraversalStats {
+  /** Total physical NCCL launches across all flush steps. */
+  messages: number;
+  /** Total bytes physically transferred (post compression / coalescing). */
+  bytes: number;
+  /** Total wall μs spent on halo sync (sum of flush rounds). */
+  us: number;
+  /** Number of flush events. */
+  flushes: number;
+  /** Worst observed gap between produce-step and deliver-step (in steps). */
+  maxStaleness: number;
 }
 
 export interface TraversalResult {
@@ -51,6 +67,8 @@ export interface TraversalResult {
   estimatedUs: number;
   /** Compute-time budget per local visit (μs/tet) used in the estimate. */
   perTetUs: number;
+  /** Populated when traversal ran with a BatchSchedule. */
+  batched?: BatchedTraversalStats;
 }
 
 export interface TraversalOptions {
@@ -61,6 +79,14 @@ export interface TraversalOptions {
   /** Compute time per visited tet (microseconds), for the wall-clock model. */
   perTetUs?: number;
   comm?: CommModelOptions;
+  /**
+   * When provided, the traversal honours the batched-schedule protocol:
+   * halo seeds are accumulated for `batchSize` consecutive steps and shipped
+   * in one coalesced flush per src (up to `coalesceCap` dsts), with the
+   * scheduler's `deltaCompressionRatio` applied to repeated tets.
+   * This makes simulator wall μs / bytes match the BatchSchedule projection.
+   */
+  schedule?: BatchSchedule;
 }
 
 export function partitionAwareTraversal(
