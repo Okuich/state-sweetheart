@@ -439,9 +439,9 @@ function Stats({ stats }: { stats: BenchResult }) {
     ["build", `${stats.buildMs.toFixed(1)} ms`],
     ["partition", `${stats.partitionMs.toFixed(1)} ms`],
     ["embedding", `${stats.embeddingMs.toFixed(1)} ms`],
-    ["distance qps", `${(stats.distQps / 1000).toFixed(0)}k`],
-    ["gradient qps", `${(stats.gradQps / 1000).toFixed(0)}k`],
-    ["collide qps", `${(stats.collideQps / 1000).toFixed(0)}k`],
+    ["distance qps (avg)", fmtQps(stats.distQps.avg)],
+    ["gradient qps (avg)", fmtQps(stats.gradQps.avg)],
+    ["collide qps (avg)",  fmtQps(stats.collideQps.avg)],
     ["nearest err", `${stats.nearestErr.toExponential(1)}`],
   ];
   return (
