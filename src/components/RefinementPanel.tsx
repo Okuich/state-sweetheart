@@ -339,3 +339,21 @@ export function RefinementPanel() {
     </div>
   );
 }
+
+function FeedbackBadge({ mode, last }: { mode: "auto" | "synthetic"; last: AdaptivePassResult | null }) {
+  const snap = physicsFeedbackBus.latest();
+  const ageMs = snap ? Date.now() - snap.t : Infinity;
+  const fresh = ageMs <= 1500;
+  const willUsePhysics = mode === "auto" && fresh;
+  const lastSrc = last?.fieldSource ?? "—";
+  const color = willUsePhysics ? "text-emerald-500" : "text-amber-500";
+  return (
+    <span className="flex items-center gap-1.5">
+      <span className={`inline-block h-1.5 w-1.5 rounded-full ${willUsePhysics ? "bg-emerald-500" : "bg-amber-500"}`} />
+      <span className={color}>
+        {snap ? `physics · ${snap.N}p · ${(ageMs / 1000).toFixed(1)}s` : "no physics snapshot"}
+      </span>
+      <span className="text-muted-foreground">last · {lastSrc}</span>
+    </span>
+  );
+}
