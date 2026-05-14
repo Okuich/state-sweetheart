@@ -34,33 +34,35 @@ export interface KHopResult {
 export function kHopCpu(g: TopologyGraph, seedLabel: Uint32Array, k: number): KHopResult {
   const t0 = performance.now();
   const N = g.nodes.length;
-  const dist = new Uint8Array(N).fill(KHOP_INF);
-  const label = new Uint32Array(N);
+  let dist = new Uint8Array(N).fill(KHOP_INF);
+  let label = new Uint32Array(N);
   for (let i = 0; i < N; i++) {
     if (seedLabel[i] !== 0) { dist[i] = 0; label[i] = seedLabel[i]; }
   }
   const off = g.neighborOffsets;
   const nbr = g.neighborIdx;
-  let changed = true;
   let iters = 0;
-  while (changed && iters < k) {
-    changed = false;
-    iters++;
-    // single pass; with frontier wave this converges in `k` iterations.
+  // Strict synchronous relaxation (ping-pong) — wire-compatible with the GPU
+  // pass which always reads from the previous frame's buffers.
+  for (; iters < k; iters++) {
+    const nextDist = new Uint8Array(dist);
+    const nextLabel = new Uint32Array(label);
+    let changed = false;
     for (let i = 0; i < N; i++) {
-      if (dist[i] === 0) continue; // seeds never demoted
+      if (dist[i] === 0) continue;
       const a = off[i], b = off[i + 1];
-      let bestD = dist[i];
-      let bestL = label[i];
+      let bestD = dist[i], bestL = label[i];
       for (let p = a; p < b; p++) {
         const j = nbr[p];
         const dj = dist[j];
         if (dj >= KHOP_INF - 1) continue;
         const cand = dj + 1;
-        if (cand < bestD) { bestD = cand; bestL = label[j]; }
+        if (cand <= k && cand < bestD) { bestD = cand; bestL = label[j]; }
       }
-      if (bestD !== dist[i]) { dist[i] = bestD; label[i] = bestL; changed = true; }
+      if (bestD !== dist[i]) { nextDist[i] = bestD; nextLabel[i] = bestL; changed = true; }
     }
+    dist = nextDist; label = nextLabel;
+    if (!changed) break;
   }
   return { dist, label, iters, ms: performance.now() - t0 };
 }
