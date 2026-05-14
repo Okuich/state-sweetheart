@@ -57,6 +57,7 @@ interface BenchResult {
   leafCount: number;
   primCount: number;
   multiGpu: MultiGpuBench;
+  kernels: PersistentKernelSuite;
 }
 
 const PRESETS = [
@@ -225,6 +226,16 @@ export function SpatialAccelPanel() {
         traversal: true,
         haloSyncIterations: 8,
         broadphase: true,
+      });
+
+      // ── Persistent GPU traversal kernels (BVH/hash/KD) ────────────────────
+      const kernels = runPersistentSuite({
+        bvh,
+        hash,
+        kd,
+        bbox: mesh.bbox,
+        queryCount: 4096,
+        k: 8,
       });
 
       setBench({
