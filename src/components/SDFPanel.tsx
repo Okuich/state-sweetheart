@@ -457,6 +457,18 @@ function GpuCell({ label, qps, gpuMs, speedup }: { label: string; qps: number; g
   );
 }
 
+function ErrCell({ label, max, mean }: { label: string; max: number; mean: number }) {
+  // Heuristic threshold: SDF voxel-scale errors above ~5e-3 in world units start to matter.
+  const warn = max > 5e-3;
+  return (
+    <div className={`rounded border p-2 space-y-0.5 ${warn ? "border-amber-500/60 bg-amber-500/5" : "border-border/60 bg-background/40"}`}>
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="text-sm">max {max.toExponential(2)}</div>
+      <div className="text-[10px] text-muted-foreground">mean {mean.toExponential(2)}</div>
+    </div>
+  );
+}
+
 /**
  * Distributed-partition dashboard: per-partition stats, P×P comm
  * matrix (rows = receiver, cols = sender — entry counts halo bricks
