@@ -288,5 +288,72 @@ function solveSequential(
     }
   }
 
-  return { contacts: P, iters, totalPenetration: totalPen, maxPenetration: maxPen };
+  return { contacts: P, iters, totalPenetration: totalPen, maxPenetration: maxPen,
+    sdfContacts: 0, sdfTotalPenetration: 0, sdfMaxPenetration: 0 };
+}
+
+function emptyStats(): ContactStats {
+  return { contacts: 0, iters: 0, totalPenetration: 0, maxPenetration: 0,
+    sdfContacts: 0, sdfTotalPenetration: 0, sdfMaxPenetration: 0 };
+}
+
+/**
+ * Static SDF collision pass. Each particle is tested with `sphereCollide`
+ * against the supplied SDF; on contact, the SDF gradient is used as the
+ * surface normal and the particle is corrected against it (kinematic
+ * collider — invMass = 0 on the SDF side, so the full impulse / position
+ * correction is applied to the particle).
+ *
+ * The 2D simulation plane is lifted to z = `worldZ` (default 0) before
+ * sampling. Only the (x,y) components of the gradient drive the response;
+ * a strongly axial-Z normal indicates the particle is grazing the slice
+ * tangentially and contributes only depth statistics.
+ */
+function resolveSDFContacts(
+  s: ContactState,
+  radius: number,
+  e: number,
+  beta: number,
+  slop: number,
+  pinned: number,
+  collider: SDFColliderOptions,
+  stats: ContactStats,
+): void {
+  const N = s.N | 0;
+  const z = collider.worldZ ?? 0;
+  const r = Math.max(0, radius);
+  for (let i = 0; i < N; i++) {
+    const wi = invMass(s.m[i], pinned);
+    if (wi <= 0) continue;
+    const px = s.x[i * 2], py = s.x[i * 2 + 1];
+    // Cheap reject via penetration() before invoking the gradient.
+    const pen = penetration(collider.sdf, [px, py, z]) + r;
+    if (pen <= 0) continue;
+    const hit = sphereCollide(collider.sdf, [px, py, z], r);
+    if (!hit.hit) continue;
+
+    stats.sdfContacts++;
+    stats.sdfTotalPenetration += hit.depth;
+    if (hit.depth > stats.sdfMaxPenetration) stats.sdfMaxPenetration = hit.depth;
+
+    // Project gradient normal onto the simulation plane.
+    let nx = hit.normal[0], ny = hit.normal[1];
+    const nl = Math.hypot(nx, ny);
+    if (nl < 1e-6) continue; // normal is purely Z — no in-plane response
+    nx /= nl; ny /= nl;
+
+    // Velocity impulse (collider is kinematic → 1/wsum = 1/wi).
+    const vn = s.v[i * 2] * nx + s.v[i * 2 + 1] * ny;
+    if (vn < 0) {
+      const lambda = -(1 + e) * vn; // wsum = wi → wi/wsum = 1
+      s.v[i * 2]     += lambda * nx;
+      s.v[i * 2 + 1] += lambda * ny;
+    }
+    // Position correction.
+    const corr = Math.max(0, hit.depth - slop) * beta;
+    if (corr > 0) {
+      s.x[i * 2]     += corr * nx;
+      s.x[i * 2 + 1] += corr * ny;
+    }
+  }
 }
