@@ -86,15 +86,40 @@ export function RefinementPanel() {
   const runPass = () => {
     setRunning(true);
     try {
-      const r = runAdaptivePass({
-        bbox: BBOX,
-        baseSeeds: seeds,
-        baseMesh: baseSetup.mesh,
-        basePartition: baseSetup.part,
-        step,
-        feedbackSource: feedbackMode,
-        options: { splitThreshold: splitThr, extraDepth, maxNewLeaves: 5000 },
-      });
+      let r: AdaptivePassResult;
+      let act: DistributedAction | null = null;
+      if (distributed) {
+        const mesh = liveMesh ?? baseSetup.mesh;
+        const adj = liveAdj ?? baseSetup.adj;
+        const part = livePart ?? baseSetup.part;
+        const dr = runDistributedRefinement({
+          bbox: BBOX,
+          baseSeeds: seeds,
+          mesh,
+          partition: part,
+          adjacency: adj,
+          step,
+          feedbackSource: feedbackMode,
+          imbalanceThreshold: imbThr,
+          options: { splitThreshold: splitThr, extraDepth, maxNewLeaves: 5000 },
+        });
+        r = dr.adaptive;
+        act = dr.action;
+        setLiveMesh(dr.mesh);
+        setLivePart(dr.partition);
+        setLiveAdj(dr.adjacency);
+        setActions((a) => [...a, dr.action].slice(-10));
+      } else {
+        r = runAdaptivePass({
+          bbox: BBOX,
+          baseSeeds: seeds,
+          baseMesh: baseSetup.mesh,
+          basePartition: baseSetup.part,
+          step,
+          feedbackSource: feedbackMode,
+          options: { splitThreshold: splitThr, extraDepth, maxNewLeaves: 5000 },
+        });
+      }
       setLast(r);
       setStep((s) => s + 1);
       setPriorsCount(sharedPriorStore().size());
@@ -108,9 +133,9 @@ export function RefinementPanel() {
           : 0,
         p95Err: r.pass.plan.stats.p95Error,
         haloAdd: r.haloDelta.addedHalo,
-        imbalance: r.repartition.imbalance,
+        imbalance: act ? act.imbalanceAfter : r.repartition.imbalance,
         ms: r.totalMs,
-        repart: r.shouldRepartition,
+        repart: act ? act.repartitioned : r.shouldRepartition,
         source: r.fieldSource,
       };
       setHistory((h) => [...h, row].slice(-10));
@@ -121,8 +146,12 @@ export function RefinementPanel() {
 
   const reset = () => {
     setHistory([]);
+    setActions([]);
     setLast(null);
     setStep(0);
+    setLiveMesh(null);
+    setLivePart(null);
+    setLiveAdj(null);
     sharedPriorStore().clear();
     setPriorsCount(0);
   };
