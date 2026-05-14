@@ -7,10 +7,12 @@ import { partitionMesh, type PartitionPlan } from "@/lib/meshing/partition";
 import {
   runAdaptivePass,
   runDistributedRefinement,
+  exportRefinedMesh,
   sharedPriorStore,
   physicsFeedbackBus,
   type AdaptivePassResult,
   type DistributedAction,
+  type RefinementExportFormat,
 } from "@/lib/refinement";
 
 const BBOX = { min: [-1, -1, -1] as const, max: [1, 1, 1] as const };
