@@ -247,6 +247,29 @@ export function SDFPanel() {
             <h3 className="text-sm font-semibold pt-2">Geometry embedding (32-d)</h3>
             <EmbeddingStrip vec={result.embedding.geometry} />
           </div>
+
+          {result.gpu && (
+            <div className="lg:col-span-2 space-y-2 rounded-lg border border-border bg-muted/20 p-3">
+              <div className="flex items-baseline justify-between flex-wrap gap-2">
+                <h3 className="text-sm font-semibold">WebGPU backend</h3>
+                {result.gpu.available ? (
+                  <span className="text-[10px] font-mono text-muted-foreground">
+                    {result.gpu.brickCount} bricks · {result.gpu.levelCount} levels
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-mono text-amber-500">unavailable: {result.gpu.reason}</span>
+                )}
+              </div>
+              {result.gpu.available && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs font-mono">
+                  <GpuCell label="distance" qps={result.gpu.distQps!} gpuMs={result.gpu.distGpuMs!} speedup={result.gpu.speedupDist!} />
+                  <GpuCell label="gradient" qps={result.gpu.gradQps!} gpuMs={result.gpu.gradGpuMs!} speedup={result.gpu.speedupGrad!} />
+                  <GpuCell label="sphere collide" qps={result.gpu.collideQps!} gpuMs={result.gpu.collideGpuMs!} speedup={result.gpu.speedupCollide!} />
+                  <GpuCell label="nearest (Newton)" qps={result.gpu.nearestQps!} gpuMs={result.gpu.nearestGpuMs!} />
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </section>
