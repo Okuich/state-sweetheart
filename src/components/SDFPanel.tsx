@@ -241,6 +241,20 @@ export function SDFPanel() {
               imbalance {(result.partition.imbalance * 100).toFixed(1)}% · halo bricks {result.partition.totalHalo}
             </div>
 
+          </div>
+
+          <div className="lg:col-span-2 space-y-3 rounded-lg border border-border bg-muted/10 p-3">
+            <div className="flex items-baseline justify-between flex-wrap gap-2">
+              <h3 className="text-sm font-semibold">Distributed partition dashboard</h3>
+              <span className="text-[10px] font-mono text-muted-foreground">
+                P={result.partition.partitionCount} · halo=1 brick · split-axis {["X","Y","Z"][result.partition.axis]}
+              </span>
+            </div>
+            <PartitionDashboard partition={result.partition} colors={partitionColors} />
+          </div>
+
+          <div className="space-y-3">
+
             <h3 className="text-sm font-semibold pt-2">Manufacturability prior</h3>
             <FabBars m={result.embedding.manufacturability} />
 
