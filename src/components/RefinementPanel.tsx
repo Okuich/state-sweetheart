@@ -112,6 +112,8 @@ export function RefinementPanel() {
         setLiveMesh(dr.mesh);
         setLivePart(dr.partition);
         setLiveAdj(dr.adjacency);
+        setLastBaseMesh(mesh);
+        setLastPartition(dr.partition);
         setActions((a) => [...a, dr.action].slice(-10));
       } else {
         r = runAdaptivePass({
@@ -123,6 +125,8 @@ export function RefinementPanel() {
           feedbackSource: feedbackMode,
           options: { splitThreshold: splitThr, extraDepth, maxNewLeaves: 5000 },
         });
+        setLastBaseMesh(baseSetup.mesh);
+        setLastPartition(baseSetup.part);
       }
       setLast(r);
       setStep((s) => s + 1);
