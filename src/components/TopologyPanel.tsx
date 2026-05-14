@@ -4,9 +4,23 @@ import { Slider } from "@/components/ui/slider";
 import { buildOctreeMesh, type RefinementSeed } from "@/lib/meshing/octree";
 import {
   analyzeTopology, cosine, FEATURE_LABELS,
+  kHopCpu, computeHalosCpu, createCsrGpuBackend,
   type TopologyResult, type FeatureClass,
 } from "@/lib/topology";
 import { downloadReport } from "@/lib/topology/report";
+
+interface TraversalBench {
+  N: number; E: number;
+  cpuKHopMs: number;
+  cpuHaloMs: number;
+  gpuAvailable: boolean;
+  gpuReason?: string;
+  gpuKHopMs?: number;
+  gpuHaloMs?: number;
+  speedupKHop?: number;
+  speedupHalo?: number;
+  haloMatch?: boolean;
+}
 
 interface Preset {
   label: string;
