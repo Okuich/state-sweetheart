@@ -261,6 +261,7 @@ export function SpatialAccelPanel() {
           raySpeedup,
           dist,
         },
+        kernels,
       });
       setRunning(false);
     });
