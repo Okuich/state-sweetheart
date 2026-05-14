@@ -16,6 +16,11 @@ import type { AABB, OctreeMesh, OctreeOptions, RefinementSeed } from "../meshing
 import type { PartitionPlan } from "../meshing/partition";
 import { synthesizeFields, type PhysicsFields } from "./fields";
 import {
+  physicsFeedbackBus,
+  projectFeedbackToFields,
+  type PhysicsSnapshot,
+} from "./physicsFeedback";
+import {
   applyRefinement,
   computeLeafError,
   DEFAULT_REFINEMENT_OPTIONS,
@@ -36,14 +41,31 @@ export * from "./fields";
 export * from "./refine";
 export * from "./partition";
 export * from "./priors";
+export * from "./physicsFeedback";
+
+/** How the per-leaf physics fields are obtained for this pass. */
+export type FieldSource = "physics" | "synthetic" | "explicit";
 
 export interface AdaptivePassInput {
   bbox: AABB;
   baseSeeds: RefinementSeed[];
   baseMesh: OctreeMesh;
   basePartition: PartitionPlan;
-  /** Provide explicit physics fields (real solver) or omit to synthesize. */
+  /** Provide explicit physics fields (real solver) or omit to derive. */
   fields?: PhysicsFields;
+  /**
+   * Where to source per-leaf fields from when `fields` is not provided:
+   *   - "auto" (default): use a fresh `physicsFeedbackBus` snapshot if
+   *     available within `feedbackMaxAgeMs`, else fall back to synthetic.
+   *   - "physics": require a fresh snapshot; fall back to synthetic if
+   *     none is available (and surface that in `fieldSource`).
+   *   - "synthetic": always synthesize.
+   */
+  feedbackSource?: "auto" | "physics" | "synthetic";
+  /** Max age for a feedback snapshot to count as fresh, in ms. */
+  feedbackMaxAgeMs?: number;
+  /** Override snapshot lookup (tests). */
+  snapshot?: PhysicsSnapshot | null;
   step?: number;
   options?: Partial<RefinementOptions>;
   octreeOpts?: Partial<OctreeOptions>;
@@ -52,6 +74,11 @@ export interface AdaptivePassInput {
 
 export interface AdaptivePassResult {
   fields: PhysicsFields;
+  fieldSource: FieldSource;
+  /** Snapshot used (when fieldSource === "physics"). */
+  snapshot?: PhysicsSnapshot;
+  /** Age in ms of the snapshot at pass time. */
+  snapshotAgeMs?: number;
   error: LeafErrorReport;
   pass: RefinementPass;
   haloDelta: { addedHalo: number; perPartition: number[] };
@@ -61,9 +88,31 @@ export interface AdaptivePassResult {
   totalMs: number;
 }
 
+const DEFAULT_FEEDBACK_MAX_AGE_MS = 1500;
+
 export function runAdaptivePass(input: AdaptivePassInput): AdaptivePassResult {
   const t0 = Date.now();
-  const fields = input.fields ?? synthesizeFields(input.baseMesh, input.baseSeeds, input.step ?? 0);
+  const mode = input.feedbackSource ?? "auto";
+  const maxAge = input.feedbackMaxAgeMs ?? DEFAULT_FEEDBACK_MAX_AGE_MS;
+  const snap = input.snapshot !== undefined ? input.snapshot : physicsFeedbackBus.latest();
+  const snapshotAgeMs = snap ? t0 - snap.t : Infinity;
+
+  let fields: PhysicsFields;
+  let fieldSource: FieldSource;
+  let usedSnapshot: PhysicsSnapshot | undefined;
+
+  if (input.fields) {
+    fields = input.fields;
+    fieldSource = "explicit";
+  } else if (mode !== "synthetic" && snap && snapshotAgeMs <= maxAge) {
+    fields = projectFeedbackToFields(input.baseMesh, snap);
+    fieldSource = "physics";
+    usedSnapshot = snap;
+  } else {
+    fields = synthesizeFields(input.baseMesh, input.baseSeeds, input.step ?? 0);
+    fieldSource = "synthetic";
+  }
+
   const error = computeLeafError(input.baseMesh, fields, {
     ...DEFAULT_REFINEMENT_OPTIONS.weights,
     ...(input.options?.weights ?? {}),
@@ -75,6 +124,9 @@ export function runAdaptivePass(input: AdaptivePassInput): AdaptivePassResult {
   const priorsAdded = input.ingestPriors === false ? 0 : sharedPriorStore().ingest(input.baseMesh, error, plan);
   return {
     fields,
+    fieldSource,
+    snapshot: usedSnapshot,
+    snapshotAgeMs: usedSnapshot ? snapshotAgeMs : undefined,
     error,
     pass,
     haloDelta,
