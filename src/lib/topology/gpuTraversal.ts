@@ -194,9 +194,9 @@ export async function createCsrGpuBackend(g: TopologyGraph): Promise<CsrGpuBacke
   const E = g.neighborIdx.length;
 
   const offBuf = device.createBuffer({ size: g.neighborOffsets.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
-  device.queue.writeBuffer(offBuf, 0, g.neighborOffsets);
+  device.queue.writeBuffer(offBuf, 0, g.neighborOffsets as BufferSource);
   const nbrBuf = device.createBuffer({ size: Math.max(4, g.neighborIdx.byteLength), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
-  if (g.neighborIdx.byteLength > 0) device.queue.writeBuffer(nbrBuf, 0, g.neighborIdx);
+  if (g.neighborIdx.byteLength > 0) device.queue.writeBuffer(nbrBuf, 0, g.neighborIdx as BufferSource);
 
   // Pipelines
   const khopMod = device.createShaderModule({ code: KHOP_WGSL });
@@ -227,7 +227,7 @@ export async function createCsrGpuBackend(g: TopologyGraph): Promise<CsrGpuBacke
     const distInit = new Uint32Array(N);
     for (let i = 0; i < N; i++) distInit[i] = seedLabel[i] !== 0 ? 0 : INF;
     device.queue.writeBuffer(distA, 0, distInit);
-    device.queue.writeBuffer(labelA, 0, seedLabel);
+    device.queue.writeBuffer(labelA, 0, seedLabel as BufferSource);
     device.queue.writeBuffer(ctlKhopBuf, 0, new Uint32Array([N, INF, 0, 0]));
 
     let inDist = distA, outDist = distB;
@@ -280,7 +280,7 @@ export async function createCsrGpuBackend(g: TopologyGraph): Promise<CsrGpuBacke
     if (owners.length !== N) throw new Error(`computeHalos: owners length ${owners.length} ≠ N=${N}`);
     if (P > 32) throw new Error(`computeHalos: P=${P} exceeds 32-bit mask`);
     const t0 = performance.now();
-    device.queue.writeBuffer(ownerBuf, 0, owners);
+    device.queue.writeBuffer(ownerBuf, 0, owners as BufferSource);
     device.queue.writeBuffer(ctlHaloBuf, 0, new Uint32Array([N, P, 0, 0]));
     const bg = device.createBindGroup({
       layout: haloPipe.getBindGroupLayout(0),
