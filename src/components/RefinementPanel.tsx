@@ -7,6 +7,7 @@ import { partitionMesh } from "@/lib/meshing/partition";
 import {
   runAdaptivePass,
   sharedPriorStore,
+  physicsFeedbackBus,
   type AdaptivePassResult,
 } from "@/lib/refinement";
 
@@ -41,6 +42,7 @@ interface PassRow {
   imbalance: number;
   ms: number;
   repart: boolean;
+  source: "physics" | "synthetic" | "explicit";
 }
 
 export function RefinementPanel() {
