@@ -6,6 +6,7 @@ import {
   analyzeTopology, cosine, FEATURE_LABELS,
   type TopologyResult, type FeatureClass,
 } from "@/lib/topology";
+import { downloadReport } from "@/lib/topology/report";
 
 interface Preset {
   label: string;
