@@ -1,14 +1,16 @@
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { buildOctreeMesh, type RefinementSeed } from "@/lib/meshing/octree";
-import { buildAdjacency } from "@/lib/meshing/adjacency";
-import { partitionMesh } from "@/lib/meshing/partition";
+import { buildOctreeMesh, type RefinementSeed, type OctreeMesh } from "@/lib/meshing/octree";
+import { buildAdjacency, type AdjacencyTensors } from "@/lib/meshing/adjacency";
+import { partitionMesh, type PartitionPlan } from "@/lib/meshing/partition";
 import {
   runAdaptivePass,
+  runDistributedRefinement,
   sharedPriorStore,
   physicsFeedbackBus,
   type AdaptivePassResult,
+  type DistributedAction,
 } from "@/lib/refinement";
 
 const BBOX = { min: [-1, -1, -1] as const, max: [1, 1, 1] as const };
@@ -51,12 +53,19 @@ export function RefinementPanel() {
   const [extraDepth, setExtraDepth] = useState(2);
   const [partitions, setPartitions] = useState(8);
   const [feedbackMode, setFeedbackMode] = useState<"auto" | "synthetic">("auto");
+  const [distributed, setDistributed] = useState(false);
+  const [imbThr, setImbThr] = useState(1.15);
   const [last, setLast] = useState<AdaptivePassResult | null>(null);
   const [history, setHistory] = useState<PassRow[]>([]);
+  const [actions, setActions] = useState<DistributedAction[]>([]);
   const [running, setRunning] = useState(false);
   const [step, setStep] = useState(0);
   const [priorsCount, setPriorsCount] = useState(0);
   const [busTick, setBusTick] = useState(0);
+  // Live mesh / partition / adjacency for distributed mode.
+  const [liveMesh, setLiveMesh] = useState<OctreeMesh | null>(null);
+  const [livePart, setLivePart] = useState<PartitionPlan | null>(null);
+  const [liveAdj, setLiveAdj] = useState<AdjacencyTensors | null>(null);
 
   // Re-render at 2 Hz so the snapshot age indicator stays current.
   useMemo(() => {
@@ -71,21 +80,46 @@ export function RefinementPanel() {
     const mesh = buildOctreeMesh(BBOX, seeds, { maxDepth: 4, minDepth: 2 });
     const adj = buildAdjacency(mesh);
     const part = partitionMesh(mesh, adj, partitions);
-    return { mesh, part };
+    return { mesh, adj, part };
   }, [seeds, partitions]);
 
   const runPass = () => {
     setRunning(true);
     try {
-      const r = runAdaptivePass({
-        bbox: BBOX,
-        baseSeeds: seeds,
-        baseMesh: baseSetup.mesh,
-        basePartition: baseSetup.part,
-        step,
-        feedbackSource: feedbackMode,
-        options: { splitThreshold: splitThr, extraDepth, maxNewLeaves: 5000 },
-      });
+      let r: AdaptivePassResult;
+      let act: DistributedAction | null = null;
+      if (distributed) {
+        const mesh = liveMesh ?? baseSetup.mesh;
+        const adj = liveAdj ?? baseSetup.adj;
+        const part = livePart ?? baseSetup.part;
+        const dr = runDistributedRefinement({
+          bbox: BBOX,
+          baseSeeds: seeds,
+          mesh,
+          partition: part,
+          adjacency: adj,
+          step,
+          feedbackSource: feedbackMode,
+          imbalanceThreshold: imbThr,
+          options: { splitThreshold: splitThr, extraDepth, maxNewLeaves: 5000 },
+        });
+        r = dr.adaptive;
+        act = dr.action;
+        setLiveMesh(dr.mesh);
+        setLivePart(dr.partition);
+        setLiveAdj(dr.adjacency);
+        setActions((a) => [...a, dr.action].slice(-10));
+      } else {
+        r = runAdaptivePass({
+          bbox: BBOX,
+          baseSeeds: seeds,
+          baseMesh: baseSetup.mesh,
+          basePartition: baseSetup.part,
+          step,
+          feedbackSource: feedbackMode,
+          options: { splitThreshold: splitThr, extraDepth, maxNewLeaves: 5000 },
+        });
+      }
       setLast(r);
       setStep((s) => s + 1);
       setPriorsCount(sharedPriorStore().size());
@@ -99,9 +133,9 @@ export function RefinementPanel() {
           : 0,
         p95Err: r.pass.plan.stats.p95Error,
         haloAdd: r.haloDelta.addedHalo,
-        imbalance: r.repartition.imbalance,
+        imbalance: act ? act.imbalanceAfter : r.repartition.imbalance,
         ms: r.totalMs,
-        repart: r.shouldRepartition,
+        repart: act ? act.repartitioned : r.shouldRepartition,
         source: r.fieldSource,
       };
       setHistory((h) => [...h, row].slice(-10));
@@ -112,8 +146,12 @@ export function RefinementPanel() {
 
   const reset = () => {
     setHistory([]);
+    setActions([]);
     setLast(null);
     setStep(0);
+    setLiveMesh(null);
+    setLivePart(null);
+    setLiveAdj(null);
     sharedPriorStore().clear();
     setPriorsCount(0);
   };
@@ -147,6 +185,13 @@ export function RefinementPanel() {
             title="Toggle Physics OS feedback (auto = use real solver fields when fresh)"
           >
             feedback · <span className="text-primary">{feedbackMode}</span>
+          </button>
+          <button
+            onClick={() => { setDistributed((d) => !d); reset(); }}
+            className={`rounded border px-2 py-0.5 hover:text-foreground ${distributed ? "border-primary text-primary" : "border-border"}`}
+            title="When ON, halo sync runs every pass and repartition fires automatically when imbalance > threshold"
+          >
+            distributed · <span className={distributed ? "text-primary" : "text-muted-foreground"}>{distributed ? "on" : "off"}</span>
           </button>
           <span>step <span className="text-primary tabular-nums">{step}</span> · priors <span className="text-accent tabular-nums">{priorsCount}</span></span>
         </div>
@@ -183,9 +228,13 @@ export function RefinementPanel() {
             <span>partitions</span><span className="text-primary tabular-nums">{partitions}</span>
           </div>
           <Slider value={[partitions]} min={1} max={16} step={1} onValueChange={([v]) => setPartitions(v)} />
+          <div className={`flex justify-between text-[10px] uppercase tracking-[0.2em] ${distributed ? "text-muted-foreground" : "text-muted-foreground/40"}`}>
+            <span>imbalance trigger</span><span className={distributed ? "text-primary tabular-nums" : "tabular-nums"}>{imbThr.toFixed(2)}×</span>
+          </div>
+          <Slider value={[imbThr]} min={1.05} max={2} step={0.05} onValueChange={([v]) => setImbThr(v)} disabled={!distributed} />
           <div className="flex gap-2 pt-2">
             <Button onClick={runPass} disabled={running} className="flex-1 uppercase tracking-[0.18em] text-[10px]">
-              {running ? "refining…" : "run adaptive pass"}
+              {running ? "refining…" : distributed ? "step distributed" : "run adaptive pass"}
             </Button>
             <Button onClick={reset} variant="outline" className="uppercase tracking-[0.18em] text-[10px]">
               reset
@@ -291,6 +340,58 @@ export function RefinementPanel() {
           )}
         </div>
       </div>
+
+
+      {distributed && (
+        <div className="rounded-md border border-primary/40 bg-primary/5 p-4 space-y-2">
+          <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+            <span>distributed action log · trigger {imbThr.toFixed(2)}×</span>
+            <span>
+              repartitions · <span className="text-primary tabular-nums">{actions.filter((a) => a.repartitioned).length}</span>
+              {" · "}halo syncs · <span className="text-accent tabular-nums">{actions.filter((a) => a.haloSynced).length}</span>
+            </span>
+          </div>
+          {actions.length === 0 ? (
+            <div className="text-[11px] text-muted-foreground/70 py-3 text-center">
+              step the distributed engine — halo syncs and repartitions will be triggered automatically.
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-sm border border-border">
+              <table className="w-full text-[10px] font-mono">
+                <thead className="bg-muted/30 text-muted-foreground uppercase tracking-[0.14em]">
+                  <tr>
+                    <th className="text-left px-2 py-1">step</th>
+                    <th className="text-left px-2 py-1">reason</th>
+                    <th className="text-right px-2 py-1">imb</th>
+                    <th className="text-right px-2 py-1">migrated</th>
+                    <th className="text-right px-2 py-1">halo bytes</th>
+                    <th className="text-right px-2 py-1">rounds</th>
+                    <th className="text-right px-2 py-1">µs</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {actions.map((a, i) => (
+                    <tr key={i} className="odd:bg-background/30">
+                      <td className="px-2 py-1 text-foreground tabular-nums">{a.step}</td>
+                      <td className={`px-2 py-1 ${a.repartitioned ? "text-primary" : a.haloSynced ? "text-accent" : "text-muted-foreground"}`}>
+                        {a.reason}
+                      </td>
+                      <td className="px-2 py-1 text-right tabular-nums">
+                        {a.imbalanceBefore.toFixed(2)}
+                        {a.repartitioned && <span className="text-primary"> → {a.imbalanceAfter.toFixed(2)}</span>}
+                      </td>
+                      <td className="px-2 py-1 text-right tabular-nums">{a.migratedTets}</td>
+                      <td className="px-2 py-1 text-right text-muted-foreground tabular-nums">{a.haloBytes.toLocaleString()}</td>
+                      <td className="px-2 py-1 text-right tabular-nums">{a.haloRounds}</td>
+                      <td className="px-2 py-1 text-right text-accent tabular-nums">{a.haloUs.toFixed(1)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="rounded-md border border-border bg-background/40 p-4 space-y-2">
         <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
