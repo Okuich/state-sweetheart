@@ -501,13 +501,14 @@ async function refitStepGpu(ctx: AabbRefitContext): Promise<void> {
       readBox:   make(tree.boxes.byteLength,     GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ),
       readDirty: make(tree.N * 4,                GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ),
     };
-    device.queue.writeBuffer(res.primBuf,   0, scene.prims);
-    device.queue.writeBuffer(res.radBuf,    0, scene.radii);
-    device.queue.writeBuffer(res.leafIdBuf, 0, tree.levels[0]);
-    tree.levels.slice(1).forEach((l, i) => device.queue.writeBuffer(res!.layerBufs[i], 0, l));
-    device.queue.writeBuffer(res.child0Buf, 0, tree.child0);
-    device.queue.writeBuffer(res.child1Buf, 0, tree.child1);
-    device.queue.writeBuffer(res.boxBuf,    0, tree.boxes);
+    const wb = (b: GPUBuffer, d: ArrayBufferView) => device.queue.writeBuffer(b, 0, d as unknown as BufferSource);
+    wb(res.primBuf,   scene.prims);
+    wb(res.radBuf,    scene.radii);
+    wb(res.leafIdBuf, tree.levels[0]);
+    tree.levels.slice(1).forEach((l, i) => wb(res!.layerBufs[i], l));
+    wb(res.child0Buf, tree.child0);
+    wb(res.child1Buf, tree.child1);
+    wb(res.boxBuf,    tree.boxes);
     _gpuCache.set(ctx, res);
   }
 
