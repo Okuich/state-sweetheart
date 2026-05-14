@@ -162,8 +162,27 @@ export function RefinementPanel() {
     setLiveMesh(null);
     setLivePart(null);
     setLiveAdj(null);
+    setLastBaseMesh(null);
+    setLastPartition(null);
     sharedPriorStore().clear();
     setPriorsCount(0);
+  };
+
+  const exportPass = (format: RefinementExportFormat) => {
+    if (!last || !lastBaseMesh || !lastPartition) return;
+    const file = exportRefinedMesh(
+      { result: last, baseMesh: lastBaseMesh, partition: lastPartition, source: `physics-os/refinement/${presetName}` },
+      format,
+    );
+    const blob = new Blob([file.content], { type: file.mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = file.filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const dominantHist = useMemo(() => {
