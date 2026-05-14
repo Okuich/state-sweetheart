@@ -20,6 +20,7 @@ import {
   type FabIntelReport,
 } from "@/lib/spatial";
 import { planDistributed, type DistPartResult } from "@/lib/distpart";
+import { runPersistentSuite, type PersistentKernelSuite, type KernelMetrics } from "@/lib/gpu/persistentKernels";
 
 interface PartitionThroughput {
   rank: number;
@@ -56,6 +57,7 @@ interface BenchResult {
   leafCount: number;
   primCount: number;
   multiGpu: MultiGpuBench;
+  kernels: PersistentKernelSuite;
 }
 
 const PRESETS = [
@@ -226,6 +228,16 @@ export function SpatialAccelPanel() {
         broadphase: true,
       });
 
+      // ── Persistent GPU traversal kernels (BVH/hash/KD) ────────────────────
+      const kernels = runPersistentSuite({
+        bvh,
+        hash,
+        kd,
+        bbox: mesh.bbox,
+        queryCount: 4096,
+        k: 8,
+      });
+
       setBench({
         bvh,
         bvhBuildMs,
@@ -249,6 +261,7 @@ export function SpatialAccelPanel() {
           raySpeedup,
           dist,
         },
+        kernels,
       });
       setRunning(false);
     });
@@ -356,6 +369,9 @@ export function SpatialAccelPanel() {
 
           {/* Multi-GPU scaling + halo cost */}
           <MultiGpuSection bench={bench.multiGpu} />
+
+          {/* Persistent GPU traversal kernels */}
+          <PersistentKernelsSection suite={bench.kernels} />
 
           {/* Fabrication intelligence */}
           <div className="rounded-md border border-border bg-background/30 p-3 space-y-2">
@@ -533,6 +549,78 @@ function Stat({ label, value, highlight }: { label: string; value: string; highl
     <div className={`rounded border px-2 py-1 ${highlight ? "border-primary/60 bg-primary/[0.04]" : "border-border/60"}`}>
       <div className="uppercase tracking-[0.16em] text-muted-foreground">{label}</div>
       <div className={`font-mono tabular-nums ${highlight ? "text-primary" : "text-foreground/90"}`}>{value}</div>
+    </div>
+  );
+}
+
+const KERNEL_LABELS: Record<KernelMetrics["kind"], string> = {
+  "bvh-ray": "BVH ray",
+  "bvh-aabb": "BVH AABB",
+  "hash-point": "hash 27-cell",
+  "kd-knn": "KD kNN",
+};
+
+function PersistentKernelsSection({ suite }: { suite: PersistentKernelSuite }) {
+  const rows: KernelMetrics[] = [suite.bvhRay, suite.bvhAabb, suite.hashPoint, suite.kdKnn];
+  return (
+    <div className="rounded-md border border-border bg-background/30 p-3 space-y-3">
+      <div className="flex items-baseline justify-between">
+        <div className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+          persistent traversal kernels · warp-coalesced · branch-minimized
+        </div>
+        <div className="text-[10px] font-mono text-muted-foreground">
+          suite {suite.totalSpeedup.toFixed(1)}× · {(suite.totalKernelUs / 1000).toFixed(2)} ms persistent · {(suite.totalNaiveUs / 1000).toFixed(2)} ms naive
+        </div>
+      </div>
+
+      <div className="space-y-1 font-mono text-[10px]">
+        <div className="grid grid-cols-12 gap-2 text-muted-foreground/70 pb-0.5 border-b border-border/40 text-[9px] uppercase tracking-[0.15em]">
+          <span className="col-span-2">kernel</span>
+          <span className="col-span-1 text-right">queries</span>
+          <span className="col-span-1 text-right">warps</span>
+          <span className="col-span-2">occupancy</span>
+          <span className="col-span-2">coalesce</span>
+          <span className="col-span-1 text-right">divergence</span>
+          <span className="col-span-1 text-right">reuse</span>
+          <span className="col-span-2 text-right">µs · speedup</span>
+        </div>
+        {rows.map((m) => (
+          <div key={m.kind} className="grid grid-cols-12 gap-2 items-center">
+            <span className="col-span-2 text-foreground/85">{KERNEL_LABELS[m.kind]}</span>
+            <span className="col-span-1 text-right text-muted-foreground tabular-nums">{m.queries.toLocaleString()}</span>
+            <span className="col-span-1 text-right text-muted-foreground tabular-nums">{m.warpsDispatched}</span>
+            <div className="col-span-2 flex items-center gap-1.5">
+              <div className="flex-1 h-1.5 bg-muted-foreground/10 rounded">
+                <div className="h-full bg-primary/80 rounded" style={{ width: `${m.occupancy * 100}%` }} />
+              </div>
+              <span className="w-9 text-right text-foreground/85 tabular-nums">{(m.occupancy * 100).toFixed(0)}%</span>
+            </div>
+            <div className="col-span-2 flex items-center gap-1.5">
+              <div className="flex-1 h-1.5 bg-muted-foreground/10 rounded">
+                <div className="h-full bg-accent/80 rounded" style={{ width: `${m.coalesceRatio * 100}%` }} />
+              </div>
+              <span className="w-9 text-right text-foreground/85 tabular-nums">{(m.coalesceRatio * 100).toFixed(0)}%</span>
+            </div>
+            <span className="col-span-1 text-right tabular-nums" style={{ color: m.divergence > 0.4 ? "hsl(var(--destructive))" : undefined }}>
+              {(m.divergence * 100).toFixed(0)}%
+            </span>
+            <span className="col-span-1 text-right text-muted-foreground tabular-nums">{m.persistentReuse.toFixed(1)}×</span>
+            <span className="col-span-2 text-right text-foreground/90 tabular-nums">
+              {m.kernelUs.toFixed(1)} · <span className="text-primary">{m.speedup.toFixed(1)}×</span>
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[10px] pt-1">
+        <Stat label="suite speedup" value={`${suite.totalSpeedup.toFixed(2)}×`} highlight />
+        <Stat label="warp-clock steps" value={rows.reduce((a, m) => a + m.warpClockSteps, 0).toLocaleString()} />
+        <Stat label="bytes loaded" value={`${(rows.reduce((a, m) => a + m.bytesLoaded, 0) / 1e6).toFixed(2)} MB`} />
+        <Stat label="lanes per warp" value="32" />
+      </div>
+      <div className="text-[9px] text-muted-foreground/70 font-mono pt-0.5">
+        morton-sorted query batches · single launch · global atomic work queue · {KERNEL_LABELS["bvh-ray"]} divergence ↓ via shared traversal stack
+      </div>
     </div>
   );
 }
