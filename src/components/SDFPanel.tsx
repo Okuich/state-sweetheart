@@ -3,10 +3,10 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import {
   buildSparseSDF, distance, gradient, nearestSurface, sphereCollide,
-  partitionSDF, buildEmbedding,
+  partitionSDF, buildEmbedding, createGpuSdfBackend,
   type SDFPrim, type AdaptiveHint, type SparseSDF, type SDFPartitionPlan, type SDFEmbedding,
+  type GpuMode,
 } from "@/lib/sdf";
-import { createGpuSdfBackend } from "@/lib/sdf/gpu";
 
 interface Stat { min: number; avg: number; max: number; runs: number }
 
