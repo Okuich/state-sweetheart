@@ -22,6 +22,7 @@ import { MeshingPanel } from "@/components/MeshingPanel";
 import { SpatialAccelPanel } from "@/components/SpatialAccelPanel";
 import { SDFPanel } from "@/components/SDFPanel";
 import { TopologyPanel } from "@/components/TopologyPanel";
+import { TopologyPriorsPanel } from "@/components/TopologyPriorsPanel";
 import { RefinementPanel } from "@/components/RefinementPanel";
 import { DistPartPanel } from "@/components/DistPartPanel";
 import { LearningEnginePanel } from "@/components/LearningEnginePanel";
@@ -957,6 +958,12 @@ function Index() {
         <SpatialAccelPanel />
         <SDFPanel />
         <TopologyPanel />
+        <div className="mt-6">
+          <TopologyPriorsPanel
+            currentParams={params}
+            onApplyPatch={(patch) => setParams((p) => ({ ...p, ...patch }))}
+          />
+        </div>
         <div className="mt-6">
           <RefinementPanel />
         </div>
