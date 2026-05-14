@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { compileFieldExpr } from "@/lib/exprCompile";
 import { resolveContacts, type ContactStats } from "@/lib/contactSolver";
+import { physicsFeedbackBus, type PhysicsContactEvent } from "@/lib/refinement/physicsFeedback";
 
 export type ValidationIssue = { field: string; expected: string; got: string };
 export type ValidationReport = { ok: boolean; issues: ValidationIssue[]; checkedAt: number };
@@ -2274,6 +2275,63 @@ export function PhysicsCanvas({
         ctx.beginPath();
         ctx.arc(pointerRef.current.x, pointerRef.current.y, 28, 0, Math.PI * 2);
         ctx.stroke();
+      }
+
+      // ── Physics OS → refinement feedback bus ─────────────────────
+      // Publish a snapshot of real solver state at ~10 Hz so the adaptive
+      // refinement engine can build per-leaf stress / thermal / contact /
+      // deformation fields from real particles instead of synthetic seeds.
+      if (now - lastFeedbackPubRef.current > 100 && stateRef.current) {
+        lastFeedbackPubRef.current = now;
+        const ss = stateRef.current;
+        // Acceleration = f / m (Newton's 2nd law). Float32 copy is fine —
+        // physicsFeedback projects everything into a fresh field array.
+        const accel = new Float32Array(ss.N * ss.D);
+        for (let i = 0; i < ss.N; i++) {
+          const invM = 1 / ss.m[i];
+          for (let d = 0; d < ss.D; d++) accel[i * ss.D + d] = (ss.f[i * ss.D + d] || 0) * invM;
+        }
+        // Spatially distribute the aggregate contact penetration across the
+        // particles that participated, anchored at their current positions.
+        const contacts: PhysicsContactEvent[] = [];
+        const cs = lastContactStatsRef.current;
+        const totalPen = cs.totalPenetration + cs.sdfTotalPenetration;
+        if (p.contactsEnabled && cs.contacts > 0 && totalPen > 0 && ss.N > 0) {
+          const perParticle = totalPen / ss.N;
+          for (let i = 0; i < ss.N; i++) {
+            contacts.push({
+              pos: [ss.x[i * ss.D], ss.x[i * ss.D + 1], 0],
+              penetration: perParticle,
+            });
+          }
+        }
+        let vmax = 0;
+        for (let i = 0; i < ss.N; i++) {
+          const vx = ss.v[i * ss.D];
+          const vy = ss.v[i * ss.D + 1];
+          const v2 = vx * vx + vy * vy;
+          if (v2 > vmax) vmax = v2;
+        }
+        physicsFeedbackBus.publish({
+          t: Date.now(),
+          source: "PhysicsCanvas",
+          N: ss.N,
+          D: 2,
+          worldMin: [0, 0, 0],
+          worldMax: [r.width, r.height, 0],
+          x: ss.x as Float32Array | Float64Array,
+          v: ss.v as Float32Array | Float64Array,
+          a: accel,
+          m: ss.m as Float32Array | Float64Array,
+          contacts,
+          scalars: {
+            energyDriftPct: driftAbsEmaRef.current,
+            constraintL2: Math.sqrt(driftSqEmaRef.current),
+            divergenceRisk: Math.min(1, vmax > 0 ? Math.sqrt(vmax) / 2000 : 0),
+            velocityMax: Math.sqrt(vmax),
+            nanCount: 0,
+          },
+        });
       }
 
       raf = requestAnimationFrame(step);
