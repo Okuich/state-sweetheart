@@ -1,14 +1,16 @@
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { buildOctreeMesh, type RefinementSeed } from "@/lib/meshing/octree";
-import { buildAdjacency } from "@/lib/meshing/adjacency";
-import { partitionMesh } from "@/lib/meshing/partition";
+import { buildOctreeMesh, type RefinementSeed, type OctreeMesh } from "@/lib/meshing/octree";
+import { buildAdjacency, type AdjacencyTensors } from "@/lib/meshing/adjacency";
+import { partitionMesh, type PartitionPlan } from "@/lib/meshing/partition";
 import {
   runAdaptivePass,
+  runDistributedRefinement,
   sharedPriorStore,
   physicsFeedbackBus,
   type AdaptivePassResult,
+  type DistributedAction,
 } from "@/lib/refinement";
 
 const BBOX = { min: [-1, -1, -1] as const, max: [1, 1, 1] as const };
