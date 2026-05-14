@@ -959,6 +959,12 @@ function Index() {
         <SDFPanel />
         <TopologyPanel />
         <div className="mt-6">
+          <TopologyPriorsPanel
+            currentParams={params}
+            onApplyPatch={(patch) => setParams((p) => ({ ...p, ...patch }))}
+          />
+        </div>
+        <div className="mt-6">
           <RefinementPanel />
         </div>
         <div className="mt-6">
