@@ -53,12 +53,19 @@ export function RefinementPanel() {
   const [extraDepth, setExtraDepth] = useState(2);
   const [partitions, setPartitions] = useState(8);
   const [feedbackMode, setFeedbackMode] = useState<"auto" | "synthetic">("auto");
+  const [distributed, setDistributed] = useState(false);
+  const [imbThr, setImbThr] = useState(1.15);
   const [last, setLast] = useState<AdaptivePassResult | null>(null);
   const [history, setHistory] = useState<PassRow[]>([]);
+  const [actions, setActions] = useState<DistributedAction[]>([]);
   const [running, setRunning] = useState(false);
   const [step, setStep] = useState(0);
   const [priorsCount, setPriorsCount] = useState(0);
   const [busTick, setBusTick] = useState(0);
+  // Live mesh / partition / adjacency for distributed mode.
+  const [liveMesh, setLiveMesh] = useState<OctreeMesh | null>(null);
+  const [livePart, setLivePart] = useState<PartitionPlan | null>(null);
+  const [liveAdj, setLiveAdj] = useState<AdjacencyTensors | null>(null);
 
   // Re-render at 2 Hz so the snapshot age indicator stays current.
   useMemo(() => {
@@ -73,7 +80,7 @@ export function RefinementPanel() {
     const mesh = buildOctreeMesh(BBOX, seeds, { maxDepth: 4, minDepth: 2 });
     const adj = buildAdjacency(mesh);
     const part = partitionMesh(mesh, adj, partitions);
-    return { mesh, part };
+    return { mesh, adj, part };
   }, [seeds, partitions]);
 
   const runPass = () => {
