@@ -186,6 +186,13 @@ export function RefinementPanel() {
           >
             feedback · <span className="text-primary">{feedbackMode}</span>
           </button>
+          <button
+            onClick={() => { setDistributed((d) => !d); reset(); }}
+            className={`rounded border px-2 py-0.5 hover:text-foreground ${distributed ? "border-primary text-primary" : "border-border"}`}
+            title="When ON, halo sync runs every pass and repartition fires automatically when imbalance > threshold"
+          >
+            distributed · <span className={distributed ? "text-primary" : "text-muted-foreground"}>{distributed ? "on" : "off"}</span>
+          </button>
           <span>step <span className="text-primary tabular-nums">{step}</span> · priors <span className="text-accent tabular-nums">{priorsCount}</span></span>
         </div>
       </div>
