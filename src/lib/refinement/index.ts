@@ -43,6 +43,7 @@ export * from "./partition";
 export * from "./priors";
 export * from "./physicsFeedback";
 export * from "./distributed";
+export * from "./export";
 
 /** How the per-leaf physics fields are obtained for this pass. */
 export type FieldSource = "physics" | "synthetic" | "explicit";

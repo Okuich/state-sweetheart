@@ -7,10 +7,12 @@ import { partitionMesh, type PartitionPlan } from "@/lib/meshing/partition";
 import {
   runAdaptivePass,
   runDistributedRefinement,
+  exportRefinedMesh,
   sharedPriorStore,
   physicsFeedbackBus,
   type AdaptivePassResult,
   type DistributedAction,
+  type RefinementExportFormat,
 } from "@/lib/refinement";
 
 const BBOX = { min: [-1, -1, -1] as const, max: [1, 1, 1] as const };
@@ -66,6 +68,10 @@ export function RefinementPanel() {
   const [liveMesh, setLiveMesh] = useState<OctreeMesh | null>(null);
   const [livePart, setLivePart] = useState<PartitionPlan | null>(null);
   const [liveAdj, setLiveAdj] = useState<AdjacencyTensors | null>(null);
+  // Snapshot of (baseMesh, partition) used for the most recent pass — needed
+  // so the export flow can build a refinement mask aligned to that base.
+  const [lastBaseMesh, setLastBaseMesh] = useState<OctreeMesh | null>(null);
+  const [lastPartition, setLastPartition] = useState<PartitionPlan | null>(null);
 
   // Re-render at 2 Hz so the snapshot age indicator stays current.
   useMemo(() => {
@@ -108,6 +114,8 @@ export function RefinementPanel() {
         setLiveMesh(dr.mesh);
         setLivePart(dr.partition);
         setLiveAdj(dr.adjacency);
+        setLastBaseMesh(mesh);
+        setLastPartition(dr.partition);
         setActions((a) => [...a, dr.action].slice(-10));
       } else {
         r = runAdaptivePass({
@@ -119,6 +127,8 @@ export function RefinementPanel() {
           feedbackSource: feedbackMode,
           options: { splitThreshold: splitThr, extraDepth, maxNewLeaves: 5000 },
         });
+        setLastBaseMesh(baseSetup.mesh);
+        setLastPartition(baseSetup.part);
       }
       setLast(r);
       setStep((s) => s + 1);
@@ -152,8 +162,27 @@ export function RefinementPanel() {
     setLiveMesh(null);
     setLivePart(null);
     setLiveAdj(null);
+    setLastBaseMesh(null);
+    setLastPartition(null);
     sharedPriorStore().clear();
     setPriorsCount(0);
+  };
+
+  const exportPass = (format: RefinementExportFormat) => {
+    if (!last || !lastBaseMesh || !lastPartition) return;
+    const file = exportRefinedMesh(
+      { result: last, baseMesh: lastBaseMesh, partition: lastPartition, source: `physics-os/refinement/${presetName}` },
+      format,
+    );
+    const blob = new Blob([file.content], { type: file.mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = file.filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const dominantHist = useMemo(() => {
@@ -238,6 +267,26 @@ export function RefinementPanel() {
             </Button>
             <Button onClick={reset} variant="outline" className="uppercase tracking-[0.18em] text-[10px]">
               reset
+            </Button>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              onClick={() => exportPass("json")}
+              disabled={!last}
+              variant="outline"
+              className="flex-1 uppercase tracking-[0.18em] text-[10px]"
+              title="Refined mesh + refinement mask + plan stats (Fabrication OS)"
+            >
+              ↓ json
+            </Button>
+            <Button
+              onClick={() => exportPass("vtk")}
+              disabled={!last}
+              variant="outline"
+              className="flex-1 uppercase tracking-[0.18em] text-[10px]"
+              title="ParaView-compatible UnstructuredGrid with mask scalars"
+            >
+              ↓ vtk
             </Button>
           </div>
         </div>
