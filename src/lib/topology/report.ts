@@ -178,7 +178,7 @@ export function buildReportPDF(r: TopologyResult, label?: string): Blob {
   ]);
 
   h1("Feature classification");
-  for (const c of FEATURE_ORDER) bar(FEATURE_LABELS[c], rep.features.counts[c], Math.max(1, rep.graph.nodes));
+  for (const c of FEATURE_ORDER) bar(FEATURE_LABELS[c] as string, rep.features.counts[c], Math.max(1, rep.graph.nodes));
 
   h1("Manufacturability");
   const m = rep.manufacturability;
