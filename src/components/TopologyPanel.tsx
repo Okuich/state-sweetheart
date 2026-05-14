@@ -179,6 +179,7 @@ export function TopologyPanel() {
           <Button variant="outline" onClick={indexCorpus} disabled={running}>Index corpus</Button>
           <Button variant="outline" onClick={() => result && downloadReport(result, "json", PRESETS[presetIdx].label)} disabled={!result || running}>Export JSON</Button>
           <Button variant="outline" onClick={() => result && downloadReport(result, "pdf", PRESETS[presetIdx].label)} disabled={!result || running}>Export PDF</Button>
+          <Button variant="outline" onClick={benchTraversal} disabled={!result || running}>Bench GPU traversal</Button>
           <Button onClick={run} disabled={running}>{running ? "Analyzing…" : "Analyze"}</Button>
         </div>
       </header>
