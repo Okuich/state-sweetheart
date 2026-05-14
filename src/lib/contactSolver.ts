@@ -178,7 +178,9 @@ export function resolveContacts(
     }
   }
 
-  return solveSequential(s, pairsI, pairsJ, diam, iters, e, beta, slop, pinned);
+  const stats = solveSequential(s, pairsI, pairsJ, diam, iters, e, beta, slop, pinned);
+  if (opts.staticSDF) resolveSDFContacts(s, radius, e, beta, slop, pinned, opts.staticSDF, stats);
+  return stats;
 }
 
 function resolveAllPairs(s: ContactState, opts: ContactOptions): ContactStats {
