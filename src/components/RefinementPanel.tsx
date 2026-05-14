@@ -341,6 +341,58 @@ export function RefinementPanel() {
         </div>
       </div>
 
+
+      {distributed && (
+        <div className="rounded-md border border-primary/40 bg-primary/5 p-4 space-y-2">
+          <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+            <span>distributed action log · trigger {imbThr.toFixed(2)}×</span>
+            <span>
+              repartitions · <span className="text-primary tabular-nums">{actions.filter((a) => a.repartitioned).length}</span>
+              {" · "}halo syncs · <span className="text-accent tabular-nums">{actions.filter((a) => a.haloSynced).length}</span>
+            </span>
+          </div>
+          {actions.length === 0 ? (
+            <div className="text-[11px] text-muted-foreground/70 py-3 text-center">
+              step the distributed engine — halo syncs and repartitions will be triggered automatically.
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-sm border border-border">
+              <table className="w-full text-[10px] font-mono">
+                <thead className="bg-muted/30 text-muted-foreground uppercase tracking-[0.14em]">
+                  <tr>
+                    <th className="text-left px-2 py-1">step</th>
+                    <th className="text-left px-2 py-1">reason</th>
+                    <th className="text-right px-2 py-1">imb</th>
+                    <th className="text-right px-2 py-1">migrated</th>
+                    <th className="text-right px-2 py-1">halo bytes</th>
+                    <th className="text-right px-2 py-1">rounds</th>
+                    <th className="text-right px-2 py-1">µs</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {actions.map((a, i) => (
+                    <tr key={i} className="odd:bg-background/30">
+                      <td className="px-2 py-1 text-foreground tabular-nums">{a.step}</td>
+                      <td className={`px-2 py-1 ${a.repartitioned ? "text-primary" : a.haloSynced ? "text-accent" : "text-muted-foreground"}`}>
+                        {a.reason}
+                      </td>
+                      <td className="px-2 py-1 text-right tabular-nums">
+                        {a.imbalanceBefore.toFixed(2)}
+                        {a.repartitioned && <span className="text-primary"> → {a.imbalanceAfter.toFixed(2)}</span>}
+                      </td>
+                      <td className="px-2 py-1 text-right tabular-nums">{a.migratedTets}</td>
+                      <td className="px-2 py-1 text-right text-muted-foreground tabular-nums">{a.haloBytes.toLocaleString()}</td>
+                      <td className="px-2 py-1 text-right tabular-nums">{a.haloRounds}</td>
+                      <td className="px-2 py-1 text-right text-accent tabular-nums">{a.haloUs.toFixed(1)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="rounded-md border border-border bg-background/40 p-4 space-y-2">
         <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
           <span>pass history</span>
