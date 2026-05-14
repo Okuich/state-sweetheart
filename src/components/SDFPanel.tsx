@@ -162,6 +162,42 @@ export function SDFPanel() {
           const c = await back.run("collide", gflat, { radius: 0.05 });
           const nN = 5000;
           const n = await back.run("nearest", gflat.subarray(0, nN * 3), { iters: 6 });
+          // CPU↔GPU correctness check on a shared sample.
+          const NC = Math.min(2000, NG);
+          const sample = gflat.subarray(0, NC * 3);
+          const dRef = await back.run("distance", sample);
+          const gRef = await back.run("gradient", sample);
+          const cRef = await back.run("collide", sample, { radius: 0.05 });
+          const nRef = await back.run("nearest", sample, { iters: 6 });
+          let edMax = 0, edSum = 0, egMax = 0, egSum = 0, ecMax = 0, ecSum = 0, enMax = 0, enSum = 0;
+          for (let i = 0; i < NC; i++) {
+            const p: [number, number, number] = [sample[i * 3], sample[i * 3 + 1], sample[i * 3 + 2]];
+            // distance
+            const dCpu = distance(sdf, p);
+            const eD = Math.abs(dCpu - dRef.out[i * 4]);
+            edMax = Math.max(edMax, eD); edSum += eD;
+            // gradient
+            const gCpu = gradient(sdf, p);
+            const dgx = gCpu[0] - gRef.out[i * 4];
+            const dgy = gCpu[1] - gRef.out[i * 4 + 1];
+            const dgz = gCpu[2] - gRef.out[i * 4 + 2];
+            const eG = Math.hypot(dgx, dgy, dgz);
+            egMax = Math.max(egMax, eG); egSum += eG;
+            // sphere-collide depth
+            const cCpu = sphereCollide(sdf, p, 0.05);
+            const depthCpu = cCpu.hit ? cCpu.depth : 0;
+            const depthGpu = cRef.out[i * 4];
+            const eC = Math.abs(depthCpu - depthGpu);
+            ecMax = Math.max(ecMax, eC); ecSum += eC;
+            // nearest surface point
+            const nCpu = nearestSurface(sdf, p, 6);
+            const dnx = nCpu.point[0] - nRef.out[i * 4];
+            const dny = nCpu.point[1] - nRef.out[i * 4 + 1];
+            const dnz = nCpu.point[2] - nRef.out[i * 4 + 2];
+            const eN = Math.hypot(dnx, dny, dnz);
+            enMax = Math.max(enMax, eN); enSum += eN;
+          }
+
           gpu = {
             available: true,
             brickCount: back.brickCount,
@@ -177,6 +213,11 @@ export function SDFPanel() {
             speedupDist:    (NG / Math.max(0.001, d.totalMs / 1000)) / Math.max(1, distQps),
             speedupGrad:    (NG / Math.max(0.001, g.totalMs / 1000)) / Math.max(1, gradQps),
             speedupCollide: (NG / Math.max(0.001, c.totalMs / 1000)) / Math.max(1, collideQps),
+            errSampleN: NC,
+            errDistMax: edMax,       errDistMean: edSum / NC,
+            errGradMax: egMax,       errGradMean: egSum / NC,
+            errCollideMax: ecMax,    errCollideMean: ecSum / NC,
+            errNearestMax: enMax,    errNearestMean: enSum / NC,
           };
           back.destroy();
         }
