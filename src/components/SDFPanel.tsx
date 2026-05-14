@@ -380,6 +380,20 @@ export function SDFPanel() {
             <EmbeddingStrip vec={result.embedding.geometry} />
           </div>
 
+          <div className="lg:col-span-2 space-y-2 rounded-lg border border-border bg-muted/20 p-3">
+            <div className="flex items-baseline justify-between flex-wrap gap-2">
+              <h3 className="text-sm font-semibold">CPU benchmark</h3>
+              <span className="text-[10px] font-mono text-muted-foreground">
+                N={result.config.cpuQueries.toLocaleString()} · warmup={result.config.warmup} · runs={result.config.runs} · r={result.config.radius.toFixed(2)} · iters={result.config.newtonIters}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs font-mono">
+              <CpuStatCell label="distance" qps={result.distQps} />
+              <CpuStatCell label="gradient" qps={result.gradQps} />
+              <CpuStatCell label="sphere collide" qps={result.collideQps} />
+            </div>
+          </div>
+
           {result.gpu && (
             <div className="lg:col-span-2 space-y-2 rounded-lg border border-border bg-muted/20 p-3">
               <div className="flex items-baseline justify-between flex-wrap gap-2">
