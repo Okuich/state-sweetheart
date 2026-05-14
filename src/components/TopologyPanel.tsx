@@ -388,3 +388,37 @@ function EmbeddingStrip({ vec, slices }: { vec: Float32Array; slices: { curvatur
     </div>
   );
 }
+
+function TraversalBenchView({ b }: { b: TraversalBench }) {
+  const fmt = (ms?: number) => (ms == null ? "—" : `${ms.toFixed(3)} ms`);
+  const fmtX = (s?: number) => (s == null ? "—" : `${s.toFixed(2)}×`);
+  return (
+    <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
+      <div className="flex items-baseline justify-between">
+        <h3 className="text-sm font-semibold">GPU CSR traversal · N={b.N} · E={b.E}</h3>
+        {b.gpuAvailable
+          ? <span className="text-[10px] uppercase tracking-wide text-emerald-500">webgpu live</span>
+          : <span className="text-[10px] uppercase tracking-wide text-amber-500">cpu only · {b.gpuReason}</span>}
+      </div>
+      <div className="grid grid-cols-4 gap-2 text-xs font-mono">
+        <div className="text-muted-foreground">op</div>
+        <div className="text-muted-foreground">cpu</div>
+        <div className="text-muted-foreground">gpu</div>
+        <div className="text-muted-foreground">speedup</div>
+        <div>k-hop BFS (k=4)</div>
+        <div>{fmt(b.cpuKHopMs)}</div>
+        <div>{fmt(b.gpuKHopMs)}</div>
+        <div className="text-primary">{fmtX(b.speedupKHop)}</div>
+        <div>halo masks (P)</div>
+        <div>{fmt(b.cpuHaloMs)}</div>
+        <div>{fmt(b.gpuHaloMs)}</div>
+        <div className="text-primary">{fmtX(b.speedupHalo)}</div>
+      </div>
+      {b.gpuAvailable && (
+        <div className="text-[11px] text-muted-foreground">
+          halo parity vs partition plan: {b.haloMatch ? <span className="text-emerald-500">✓ match</span> : <span className="text-destructive">✗ mismatch</span>}
+        </div>
+      )}
+    </div>
+  );
+}
