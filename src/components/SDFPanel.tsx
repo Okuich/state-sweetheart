@@ -389,3 +389,135 @@ function GpuCell({ label, qps, gpuMs, speedup }: { label: string; qps: number; g
     </div>
   );
 }
+
+/**
+ * Distributed-partition dashboard: per-partition stats, P×P comm
+ * matrix (rows = receiver, cols = sender — entry counts halo bricks
+ * pulled from sender to receiver), and a halo-set strip per partition.
+ */
+function PartitionDashboard({
+  partition,
+  colors,
+}: { partition: SDFPartitionPlan; colors: string[] }) {
+  const { partitionCount: P, resident, halos, commMatrix } = partition;
+
+  const totalBricks = resident.reduce((a, b) => a + b.length, 0);
+  const haloOut = new Array(P).fill(0);
+  const haloIn = new Array(P).fill(0);
+  let maxFlow = 0;
+  for (let r = 0; r < P; r++) {
+    for (let c = 0; c < P; c++) {
+      const v = commMatrix[r * P + c];
+      haloIn[r] += v;
+      haloOut[c] += v;
+      if (v > maxFlow) maxFlow = v;
+    }
+  }
+  const meanRes = totalBricks / Math.max(1, P);
+
+  const cellStyle = (v: number): React.CSSProperties => {
+    if (v === 0) return { backgroundColor: "hsl(var(--muted) / 0.25)" };
+    const t = v / Math.max(1, maxFlow);
+    return { backgroundColor: `hsl(var(--primary) / ${(0.18 + t * 0.7).toFixed(2)})` };
+  };
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="lg:col-span-2 space-y-2">
+        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Per-partition stats</div>
+        <div className="overflow-x-auto rounded border border-border/60">
+          <table className="w-full text-[11px] font-mono">
+            <thead className="bg-muted/30 text-muted-foreground">
+              <tr>
+                <th className="px-2 py-1 text-left">part</th>
+                <th className="px-2 py-1 text-right">resident</th>
+                <th className="px-2 py-1 text-right">share %</th>
+                <th className="px-2 py-1 text-right">halo in</th>
+                <th className="px-2 py-1 text-right">halo out</th>
+                <th className="px-2 py-1 text-right">vs mean</th>
+              </tr>
+            </thead>
+            <tbody>
+              {resident.map((r, i) => {
+                const share = totalBricks > 0 ? (r.length / totalBricks) * 100 : 0;
+                const skew = meanRes > 0 ? ((r.length - meanRes) / meanRes) * 100 : 0;
+                const skewColor = Math.abs(skew) > 25 ? "text-amber-500" : skew >= 0 ? "text-emerald-500" : "text-sky-400";
+                return (
+                  <tr key={i} className="border-t border-border/40">
+                    <td className="px-2 py-1">
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className={`inline-block h-2 w-2 rounded-sm ${colors[i % colors.length]}`} />
+                        P{i}
+                      </span>
+                    </td>
+                    <td className="px-2 py-1 text-right">{r.length}</td>
+                    <td className="px-2 py-1 text-right text-muted-foreground">{share.toFixed(1)}</td>
+                    <td className="px-2 py-1 text-right">{haloIn[i]}</td>
+                    <td className="px-2 py-1 text-right">{haloOut[i]}</td>
+                    <td className={`px-2 py-1 text-right ${skewColor}`}>{skew >= 0 ? "+" : ""}{skew.toFixed(0)}%</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="text-[11px] uppercase tracking-wide text-muted-foreground pt-1">Halo brick sets</div>
+        <div className="space-y-1">
+          {halos.map((h, i) => {
+            const max = Math.max(...halos.map((x) => x.length), 1);
+            return (
+              <div key={i} className="flex items-center gap-2 text-[11px] font-mono">
+                <span className="w-6 text-muted-foreground">P{i}</span>
+                <div className="flex-1 h-2 rounded bg-muted/40 overflow-hidden">
+                  <div className={`h-full ${colors[i % colors.length]} opacity-70`} style={{ width: `${(h.length / max) * 100}%` }} />
+                </div>
+                <span className="w-12 text-right">{h.length}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+          P×P comm matrix <span className="normal-case">(row = receiver, col = sender)</span>
+        </div>
+        <div
+          className="grid gap-px rounded border border-border/60 bg-border/40 p-px"
+          style={{ gridTemplateColumns: `auto repeat(${P}, minmax(0, 1fr))` }}
+        >
+          <div className="bg-muted/30" />
+          {Array.from({ length: P }, (_, c) => (
+            <div key={`h-${c}`} className="bg-muted/30 text-center text-[10px] font-mono text-muted-foreground py-0.5">
+              P{c}
+            </div>
+          ))}
+          {Array.from({ length: P }, (_, r) => (
+            <div key={`row-${r}`} className="contents">
+              <div className="bg-muted/30 text-center text-[10px] font-mono text-muted-foreground px-1 flex items-center justify-center">P{r}</div>
+              {Array.from({ length: P }, (_, c) => {
+                const v = commMatrix[r * P + c];
+                return (
+                  <div
+                    key={`c-${r}-${c}`}
+                    className="aspect-square flex items-center justify-center text-[9px] font-mono"
+                    style={cellStyle(v)}
+                    title={`P${c} → P${r}: ${v} halo bricks`}
+                  >
+                    {v > 0 ? v : ""}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+        <div className="flex items-center justify-between text-[10px] text-muted-foreground font-mono">
+          <span>0</span>
+          <div className="flex-1 mx-2 h-1.5 rounded bg-gradient-to-r from-muted/40 to-primary/80" />
+          <span>{maxFlow}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
