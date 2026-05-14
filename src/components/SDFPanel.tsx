@@ -363,3 +363,15 @@ function EmbeddingStrip({ vec }: { vec: Float32Array }) {
     </div>
   );
 }
+
+function GpuCell({ label, qps, gpuMs, speedup }: { label: string; qps: number; gpuMs: number; speedup?: number }) {
+  return (
+    <div className="rounded border border-border/60 bg-background/40 p-2 space-y-0.5">
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="text-sm">{(qps / 1000).toFixed(1)}k qps</div>
+      <div className="text-[10px] text-muted-foreground">
+        gpu {gpuMs.toFixed(2)} ms{speedup !== undefined ? ` · ${speedup.toFixed(1)}× cpu` : ""}
+      </div>
+    </div>
+  );
+}
