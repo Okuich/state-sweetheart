@@ -63,6 +63,77 @@ export function TopologyPanel() {
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<TopologyResult | null>(null);
   const [corpus, setCorpus] = useState<CorpusEntry[]>([]);
+  const [bench, setBench] = useState<TraversalBench | null>(null);
+
+  const benchTraversal = async () => {
+    if (!result) return;
+    setRunning(true);
+    try {
+      const g = result.graph;
+      const N = g.nodes.length;
+      const owners = new Uint32Array(result.partition.owners);
+      const P = result.partition.partitionCount;
+      // Seed labels: one per partition, picked deterministically.
+      const seedLabel = new Uint32Array(N);
+      for (let p = 0; p < P; p++) {
+        const res = result.partition.resident[p];
+        if (res.length) seedLabel[res[0]] = p + 1;
+      }
+      const K = 4;
+      const REP = 8;
+
+      // CPU warm-up + average
+      kHopCpu(g, seedLabel, K);
+      let cpuKHopMs = 0;
+      for (let i = 0; i < REP; i++) cpuKHopMs += kHopCpu(g, seedLabel, K).ms;
+      cpuKHopMs /= REP;
+      let cpuHaloMs = 0;
+      for (let i = 0; i < REP; i++) cpuHaloMs += computeHalosCpu(g, owners, P).ms;
+      cpuHaloMs /= REP;
+
+      // GPU
+      const backend = await createCsrGpuBackend(g);
+      if (!backend.available) {
+        setBench({ N, E: g.neighborIdx.length, cpuKHopMs, cpuHaloMs, gpuAvailable: false, gpuReason: backend.reason });
+        return;
+      }
+      // Warm
+      await backend.kHop(seedLabel, K);
+      await backend.computeHalos(owners, P);
+      let gpuKHopMs = 0;
+      for (let i = 0; i < REP; i++) gpuKHopMs += (await backend.kHop(seedLabel, K)).ms;
+      gpuKHopMs /= REP;
+      let gpuHaloMs = 0;
+      let gpuHalo: Awaited<ReturnType<typeof backend.computeHalos>> | null = null;
+      for (let i = 0; i < REP; i++) {
+        const r = await backend.computeHalos(owners, P);
+        gpuHaloMs += r.ms;
+        gpuHalo = r;
+      }
+      gpuHaloMs /= REP;
+
+      // Validate halos against the partition plan (sanity check).
+      let haloMatch = true;
+      if (gpuHalo) {
+        for (let p = 0; p < P; p++) {
+          const ref = new Set(result.partition.halos[p]);
+          const got = new Set(gpuHalo.halos[p]);
+          if (ref.size !== got.size) { haloMatch = false; break; }
+          for (const x of ref) if (!got.has(x)) { haloMatch = false; break; }
+          if (!haloMatch) break;
+        }
+      }
+
+      backend.destroy();
+      setBench({
+        N, E: g.neighborIdx.length, cpuKHopMs, cpuHaloMs,
+        gpuAvailable: true, gpuKHopMs, gpuHaloMs,
+        speedupKHop: cpuKHopMs / Math.max(0.001, gpuKHopMs),
+        speedupHalo: cpuHaloMs / Math.max(0.001, gpuHaloMs),
+        haloMatch,
+      });
+    } finally { setRunning(false); }
+  };
 
   const run = () => {
     setRunning(true);
