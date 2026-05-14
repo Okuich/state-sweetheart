@@ -4,7 +4,7 @@ import { Slider } from "@/components/ui/slider";
 import {
   buildSparseSDF, distance, gradient, nearestSurface, sphereCollide,
   partitionSDF, buildEmbedding,
-  type SDFPrim, type SparseSDF, type SDFPartitionPlan, type SDFEmbedding,
+  type SDFPrim, type AdaptiveHint, type SparseSDF, type SDFPartitionPlan, type SDFEmbedding,
 } from "@/lib/sdf";
 import { createGpuSdfBackend } from "@/lib/sdf/gpu";
 
