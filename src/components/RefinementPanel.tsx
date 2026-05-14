@@ -269,6 +269,26 @@ export function RefinementPanel() {
               reset
             </Button>
           </div>
+          <div className="flex gap-2">
+            <Button
+              onClick={() => exportPass("json")}
+              disabled={!last}
+              variant="outline"
+              className="flex-1 uppercase tracking-[0.18em] text-[10px]"
+              title="Refined mesh + refinement mask + plan stats (Fabrication OS)"
+            >
+              ↓ json
+            </Button>
+            <Button
+              onClick={() => exportPass("vtk")}
+              disabled={!last}
+              variant="outline"
+              className="flex-1 uppercase tracking-[0.18em] text-[10px]"
+              title="ParaView-compatible UnstructuredGrid with mask scalars"
+            >
+              ↓ vtk
+            </Button>
+          </div>
         </div>
       </div>
 
