@@ -139,8 +139,16 @@ export function RefinementPanel() {
             Mesh follows physics. <span className="text-primary">Where it must.</span>
           </div>
         </div>
-        <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-          step <span className="text-primary tabular-nums">{step}</span> · priors <span className="text-accent tabular-nums">{priorsCount}</span>
+        <div className="flex items-center gap-3 text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+          <FeedbackBadge mode={feedbackMode} last={last} />
+          <button
+            onClick={() => setFeedbackMode((m) => (m === "auto" ? "synthetic" : "auto"))}
+            className="rounded border border-border px-2 py-0.5 hover:text-foreground"
+            title="Toggle Physics OS feedback (auto = use real solver fields when fresh)"
+          >
+            feedback · <span className="text-primary">{feedbackMode}</span>
+          </button>
+          <span>step <span className="text-primary tabular-nums">{step}</span> · priors <span className="text-accent tabular-nums">{priorsCount}</span></span>
         </div>
       </div>
 
