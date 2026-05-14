@@ -370,6 +370,9 @@ export function SpatialAccelPanel() {
           {/* Multi-GPU scaling + halo cost */}
           <MultiGpuSection bench={bench.multiGpu} />
 
+          {/* Persistent GPU traversal kernels */}
+          <PersistentKernelsSection suite={bench.kernels} />
+
           {/* Fabrication intelligence */}
           <div className="rounded-md border border-border bg-background/30 p-3 space-y-2">
             <div className="flex items-baseline justify-between">
