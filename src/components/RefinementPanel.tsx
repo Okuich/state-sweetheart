@@ -390,6 +390,9 @@ export function RefinementPanel() {
         </div>
       </div>
 
+      {last && lastBaseMesh && (
+        <RefinementOverlay3D baseMesh={lastBaseMesh} result={last} height={340} />
+      )}
 
       {distributed && (
         <div className="rounded-md border border-primary/40 bg-primary/5 p-4 space-y-2">
