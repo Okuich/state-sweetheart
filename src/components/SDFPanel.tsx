@@ -324,6 +324,19 @@ export function SDFPanel() {
         <SliderRow label="Partitions (GPUs)" value={partitionCount} min={1} max={8} step={1} onChange={setPartitionCount} fmt={(v) => `${v}`} />
       </div>
 
+      <div className="rounded-lg border border-border/60 bg-muted/10 p-3 space-y-3">
+        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Benchmark configuration</div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+          <SliderRow label="CPU queries"    value={cpuQueries} min={500}  max={20000}  step={500}  onChange={setCpuQueries} fmt={(v) => `${(v/1000).toFixed(1)}k`} />
+          <SliderRow label="GPU queries"    value={gpuQueries} min={5000} max={500000} step={5000} onChange={setGpuQueries} fmt={(v) => `${(v/1000).toFixed(0)}k`} />
+          <SliderRow label="Warmup passes"  value={warmup}     min={0}    max={5}      step={1}    onChange={setWarmup}     fmt={(v) => `${v}`} />
+          <SliderRow label="Runs / mode"    value={runs}       min={1}    max={20}     step={1}    onChange={setRuns}       fmt={(v) => `${v}`} />
+          <SliderRow label="Sphere radius"  value={radius}     min={0.01} max={0.2}    step={0.01} onChange={setRadius}     fmt={(v) => v.toFixed(2)} />
+          <SliderRow label="Newton iters"   value={newtonIters} min={1}   max={16}     step={1}    onChange={setNewtonIters} fmt={(v) => `${v}`} />
+          <SliderRow label="GPU batch size" value={batchSize}  min={1000} max={200000} step={1000} onChange={setBatchSize}  fmt={(v) => `${(v/1000).toFixed(0)}k`} />
+        </div>
+      </div>
+
       {result && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           <div className="space-y-3">
