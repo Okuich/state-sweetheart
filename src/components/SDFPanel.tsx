@@ -24,6 +24,12 @@ interface GpuBench {
   speedupDist?: number;
   speedupGrad?: number;
   speedupCollide?: number;
+  // CPU↔GPU correctness (max / mean absolute error per mode).
+  errDistMax?: number;     errDistMean?: number;
+  errGradMax?: number;     errGradMean?: number;
+  errCollideMax?: number;  errCollideMean?: number;
+  errNearestMax?: number;  errNearestMean?: number;
+  errSampleN?: number;
 }
 
 interface BenchResult {
@@ -156,6 +162,42 @@ export function SDFPanel() {
           const c = await back.run("collide", gflat, { radius: 0.05 });
           const nN = 5000;
           const n = await back.run("nearest", gflat.subarray(0, nN * 3), { iters: 6 });
+          // CPU↔GPU correctness check on a shared sample.
+          const NC = Math.min(2000, NG);
+          const sample = gflat.subarray(0, NC * 3);
+          const dRef = await back.run("distance", sample);
+          const gRef = await back.run("gradient", sample);
+          const cRef = await back.run("collide", sample, { radius: 0.05 });
+          const nRef = await back.run("nearest", sample, { iters: 6 });
+          let edMax = 0, edSum = 0, egMax = 0, egSum = 0, ecMax = 0, ecSum = 0, enMax = 0, enSum = 0;
+          for (let i = 0; i < NC; i++) {
+            const p: [number, number, number] = [sample[i * 3], sample[i * 3 + 1], sample[i * 3 + 2]];
+            // distance
+            const dCpu = distance(sdf, p);
+            const eD = Math.abs(dCpu - dRef.out[i * 4]);
+            edMax = Math.max(edMax, eD); edSum += eD;
+            // gradient
+            const gCpu = gradient(sdf, p);
+            const dgx = gCpu[0] - gRef.out[i * 4];
+            const dgy = gCpu[1] - gRef.out[i * 4 + 1];
+            const dgz = gCpu[2] - gRef.out[i * 4 + 2];
+            const eG = Math.hypot(dgx, dgy, dgz);
+            egMax = Math.max(egMax, eG); egSum += eG;
+            // sphere-collide depth
+            const cCpu = sphereCollide(sdf, p, 0.05);
+            const depthCpu = cCpu.hit ? cCpu.depth : 0;
+            const depthGpu = cRef.out[i * 4];
+            const eC = Math.abs(depthCpu - depthGpu);
+            ecMax = Math.max(ecMax, eC); ecSum += eC;
+            // nearest surface point
+            const nCpu = nearestSurface(sdf, p, 6);
+            const dnx = nCpu.point[0] - nRef.out[i * 4];
+            const dny = nCpu.point[1] - nRef.out[i * 4 + 1];
+            const dnz = nCpu.point[2] - nRef.out[i * 4 + 2];
+            const eN = Math.hypot(dnx, dny, dnz);
+            enMax = Math.max(enMax, eN); enSum += eN;
+          }
+
           gpu = {
             available: true,
             brickCount: back.brickCount,
@@ -171,6 +213,11 @@ export function SDFPanel() {
             speedupDist:    (NG / Math.max(0.001, d.totalMs / 1000)) / Math.max(1, distQps),
             speedupGrad:    (NG / Math.max(0.001, g.totalMs / 1000)) / Math.max(1, gradQps),
             speedupCollide: (NG / Math.max(0.001, c.totalMs / 1000)) / Math.max(1, collideQps),
+            errSampleN: NC,
+            errDistMax: edMax,       errDistMean: edSum / NC,
+            errGradMax: egMax,       errGradMean: egSum / NC,
+            errCollideMax: ecMax,    errCollideMean: ecSum / NC,
+            errNearestMax: enMax,    errNearestMean: enSum / NC,
           };
           back.destroy();
         }
@@ -275,12 +322,32 @@ export function SDFPanel() {
                 )}
               </div>
               {result.gpu.available && (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs font-mono">
-                  <GpuCell label="distance" qps={result.gpu.distQps!} gpuMs={result.gpu.distGpuMs!} speedup={result.gpu.speedupDist!} />
-                  <GpuCell label="gradient" qps={result.gpu.gradQps!} gpuMs={result.gpu.gradGpuMs!} speedup={result.gpu.speedupGrad!} />
-                  <GpuCell label="sphere collide" qps={result.gpu.collideQps!} gpuMs={result.gpu.collideGpuMs!} speedup={result.gpu.speedupCollide!} />
-                  <GpuCell label="nearest (Newton)" qps={result.gpu.nearestQps!} gpuMs={result.gpu.nearestGpuMs!} />
-                </div>
+                <>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs font-mono">
+                    <GpuCell label="distance" qps={result.gpu.distQps!} gpuMs={result.gpu.distGpuMs!} speedup={result.gpu.speedupDist!} />
+                    <GpuCell label="gradient" qps={result.gpu.gradQps!} gpuMs={result.gpu.gradGpuMs!} speedup={result.gpu.speedupGrad!} />
+                    <GpuCell label="sphere collide" qps={result.gpu.collideQps!} gpuMs={result.gpu.collideGpuMs!} speedup={result.gpu.speedupCollide!} />
+                    <GpuCell label="nearest (Newton)" qps={result.gpu.nearestQps!} gpuMs={result.gpu.nearestGpuMs!} />
+                  </div>
+                  {result.gpu.errSampleN !== undefined && (
+                    <div className="space-y-1 pt-1">
+                      <div className="flex items-baseline justify-between">
+                        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          GPU↔CPU correctness
+                        </h4>
+                        <span className="text-[10px] font-mono text-muted-foreground">
+                          n={result.gpu.errSampleN} samples · |Δ| in world units
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs font-mono">
+                        <ErrCell label="distance"       max={result.gpu.errDistMax!}    mean={result.gpu.errDistMean!} />
+                        <ErrCell label="gradient"       max={result.gpu.errGradMax!}    mean={result.gpu.errGradMean!} />
+                        <ErrCell label="sphere collide" max={result.gpu.errCollideMax!} mean={result.gpu.errCollideMean!} />
+                        <ErrCell label="nearest"        max={result.gpu.errNearestMax!} mean={result.gpu.errNearestMean!} />
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -386,6 +453,18 @@ function GpuCell({ label, qps, gpuMs, speedup }: { label: string; qps: number; g
       <div className="text-[10px] text-muted-foreground">
         gpu {gpuMs.toFixed(2)} ms{speedup !== undefined ? ` · ${speedup.toFixed(1)}× cpu` : ""}
       </div>
+    </div>
+  );
+}
+
+function ErrCell({ label, max, mean }: { label: string; max: number; mean: number }) {
+  // Heuristic threshold: SDF voxel-scale errors above ~5e-3 in world units start to matter.
+  const warn = max > 5e-3;
+  return (
+    <div className={`rounded border p-2 space-y-0.5 ${warn ? "border-amber-500/60 bg-amber-500/5" : "border-border/60 bg-background/40"}`}>
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="text-sm">max {max.toExponential(2)}</div>
+      <div className="text-[10px] text-muted-foreground">mean {mean.toExponential(2)}</div>
     </div>
   );
 }
