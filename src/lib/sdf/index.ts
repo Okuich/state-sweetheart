@@ -20,4 +20,8 @@ export {
 } from "./differentiable";
 export { partitionSDF, type SDFPartitionPlan } from "./partition";
 export { buildEmbedding, interiorCentroid, type SDFEmbedding } from "./embeddings";
+export {
+  createGpuSdfBackend,
+  type GpuMode, type GpuBackend, type GpuUnavailable,
+} from "./gpu";
 export type { SDFPrim, AdaptiveHint, AdaptiveHintKind, AABB, Vec3 } from "./types";

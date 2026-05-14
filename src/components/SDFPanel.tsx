@@ -3,10 +3,10 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import {
   buildSparseSDF, distance, gradient, nearestSurface, sphereCollide,
-  partitionSDF, buildEmbedding,
+  partitionSDF, buildEmbedding, createGpuSdfBackend,
   type SDFPrim, type AdaptiveHint, type SparseSDF, type SDFPartitionPlan, type SDFEmbedding,
+  type GpuMode,
 } from "@/lib/sdf";
-import { createGpuSdfBackend } from "@/lib/sdf/gpu";
 
 interface Stat { min: number; avg: number; max: number; runs: number }
 
@@ -209,7 +209,7 @@ export function SDFPanel() {
           // Run a mode end-to-end as configured `runs` times. Each run dispatches
           // ceil(N/batchSize) batches and returns total wall-clock + gpu time.
           const runMode = async (
-            mode: "distance" | "gradient" | "collide" | "nearest",
+            mode: GpuMode,
             buf: Float32Array,
             count: number,
           ) => {
