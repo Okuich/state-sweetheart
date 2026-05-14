@@ -7,6 +7,7 @@ import { partitionMesh } from "@/lib/meshing/partition";
 import {
   runAdaptivePass,
   sharedPriorStore,
+  physicsFeedbackBus,
   type AdaptivePassResult,
 } from "@/lib/refinement";
 
@@ -41,6 +42,7 @@ interface PassRow {
   imbalance: number;
   ms: number;
   repart: boolean;
+  source: "physics" | "synthetic" | "explicit";
 }
 
 export function RefinementPanel() {
@@ -48,11 +50,20 @@ export function RefinementPanel() {
   const [splitThr, setSplitThr] = useState(0.45);
   const [extraDepth, setExtraDepth] = useState(2);
   const [partitions, setPartitions] = useState(8);
+  const [feedbackMode, setFeedbackMode] = useState<"auto" | "synthetic">("auto");
   const [last, setLast] = useState<AdaptivePassResult | null>(null);
   const [history, setHistory] = useState<PassRow[]>([]);
   const [running, setRunning] = useState(false);
   const [step, setStep] = useState(0);
   const [priorsCount, setPriorsCount] = useState(0);
+  const [busTick, setBusTick] = useState(0);
+
+  // Re-render at 2 Hz so the snapshot age indicator stays current.
+  useMemo(() => {
+    const id = setInterval(() => setBusTick((t) => t + 1), 500);
+    return () => clearInterval(id);
+  }, []);
+  void busTick;
 
   const seeds = PRESET_SEEDS[presetName];
 
@@ -72,30 +83,28 @@ export function RefinementPanel() {
         baseMesh: baseSetup.mesh,
         basePartition: baseSetup.part,
         step,
+        feedbackSource: feedbackMode,
         options: { splitThreshold: splitThr, extraDepth, maxNewLeaves: 5000 },
       });
       setLast(r);
       setStep((s) => s + 1);
       setPriorsCount(sharedPriorStore().size());
-      setHistory((h) =>
-        [
-          ...h,
-          {
-            step,
-            baseLeaves: r.pass.baseLeafCount,
-            refinedLeaves: r.pass.refinedLeafCount,
-            added: r.pass.added,
-            meanErr: r.error.combined.length
-              ? Array.from(r.error.combined).reduce((a, b) => a + b, 0) / r.error.combined.length
-              : 0,
-            p95Err: r.pass.plan.stats.p95Error,
-            haloAdd: r.haloDelta.addedHalo,
-            imbalance: r.repartition.imbalance,
-            ms: r.totalMs,
-            repart: r.shouldRepartition,
-          },
-        ].slice(-10),
-      );
+      const row: PassRow = {
+        step,
+        baseLeaves: r.pass.baseLeafCount,
+        refinedLeaves: r.pass.refinedLeafCount,
+        added: r.pass.added,
+        meanErr: r.error.combined.length
+          ? Array.from(r.error.combined).reduce((a, b) => a + b, 0) / r.error.combined.length
+          : 0,
+        p95Err: r.pass.plan.stats.p95Error,
+        haloAdd: r.haloDelta.addedHalo,
+        imbalance: r.repartition.imbalance,
+        ms: r.totalMs,
+        repart: r.shouldRepartition,
+        source: r.fieldSource,
+      };
+      setHistory((h) => [...h, row].slice(-10));
     } finally {
       setRunning(false);
     }
@@ -130,8 +139,16 @@ export function RefinementPanel() {
             Mesh follows physics. <span className="text-primary">Where it must.</span>
           </div>
         </div>
-        <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-          step <span className="text-primary tabular-nums">{step}</span> · priors <span className="text-accent tabular-nums">{priorsCount}</span>
+        <div className="flex items-center gap-3 text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+          <FeedbackBadge mode={feedbackMode} last={last} />
+          <button
+            onClick={() => setFeedbackMode((m) => (m === "auto" ? "synthetic" : "auto"))}
+            className="rounded border border-border px-2 py-0.5 hover:text-foreground"
+            title="Toggle Physics OS feedback (auto = use real solver fields when fresh)"
+          >
+            feedback · <span className="text-primary">{feedbackMode}</span>
+          </button>
+          <span>step <span className="text-primary tabular-nums">{step}</span> · priors <span className="text-accent tabular-nums">{priorsCount}</span></span>
         </div>
       </div>
 
@@ -320,5 +337,23 @@ export function RefinementPanel() {
         )}
       </div>
     </div>
+  );
+}
+
+function FeedbackBadge({ mode, last }: { mode: "auto" | "synthetic"; last: AdaptivePassResult | null }) {
+  const snap = physicsFeedbackBus.latest();
+  const ageMs = snap ? Date.now() - snap.t : Infinity;
+  const fresh = ageMs <= 1500;
+  const willUsePhysics = mode === "auto" && fresh;
+  const lastSrc = last?.fieldSource ?? "—";
+  const color = willUsePhysics ? "text-emerald-500" : "text-amber-500";
+  return (
+    <span className="flex items-center gap-1.5">
+      <span className={`inline-block h-1.5 w-1.5 rounded-full ${willUsePhysics ? "bg-emerald-500" : "bg-amber-500"}`} />
+      <span className={color}>
+        {snap ? `physics · ${snap.N}p · ${(ageMs / 1000).toFixed(1)}s` : "no physics snapshot"}
+      </span>
+      <span className="text-muted-foreground">last · {lastSrc}</span>
+    </span>
   );
 }
