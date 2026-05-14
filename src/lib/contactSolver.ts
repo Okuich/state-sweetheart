@@ -29,6 +29,9 @@
  * output is bit-stable across runs.
  */
 
+import { sphereCollide, penetration } from "@/lib/sdf/queries";
+import type { SparseSDF } from "@/lib/sdf/sparseField";
+
 export interface ContactStats {
   /** Number of (i, j) overlapping pairs detected this call. */
   contacts: number;
@@ -38,6 +41,12 @@ export interface ContactStats {
   totalPenetration: number;
   /** Max single-contact penetration depth before correction. */
   maxPenetration: number;
+  /** Particles found penetrating the static SDF collider this call. */
+  sdfContacts: number;
+  /** Sum of SDF penetration depths before correction. */
+  sdfTotalPenetration: number;
+  /** Max single-particle SDF penetration depth before correction. */
+  sdfMaxPenetration: number;
 }
 
 /** Minimum state shape this solver requires. */
@@ -48,21 +57,25 @@ export interface ContactState {
   m: Float32Array | Float64Array;
 }
 
+/** Static SDF collider lifted to the 2D simulation plane (XY at z=worldZ). */
+export interface SDFColliderOptions {
+  sdf: SparseSDF;
+  /** World-space Z slice the 2D sim lives on. Default 0. */
+  worldZ?: number;
+}
+
 export interface ContactOptions {
-  /** Per-particle contact radius. Two particles collide when
-   *  |xᵢ − xⱼ| < 2·radius. */
+  /** Per-particle contact radius. */
   radius: number;
-  /** Solver iterations. 1 = single pass; 2–4 stabilizes piles. */
   iters?: number;
-  /** Restitution e ∈ [0, 1] for the normal impulse. */
   restitution?: number;
-  /** Baumgarte position-correction factor in (0, 1].
-   *  1 = full correction in one step; ~0.5 is gentler. */
   beta?: number;
-  /** Penetration slop (no correction below this depth). */
   slop?: number;
-  /** Treat particles with this mass as kinematic (invMass = 0). */
   pinnedMass?: number;
+  /** Optional static SDF collider. When provided, every particle is
+   *  tested with `sphereCollide` and resolved using the SDF gradient as
+   *  the contact normal. */
+  staticSDF?: SDFColliderOptions;
 }
 
 /**
@@ -82,7 +95,9 @@ export function resolveContacts(
   const pinned = opts.pinnedMass ?? Infinity;
 
   if (N < 2 || radius <= 0) {
-    return { contacts: 0, iters: 0, totalPenetration: 0, maxPenetration: 0 };
+    const empty = emptyStats();
+    if (opts.staticSDF) resolveSDFContacts(s, radius, e, beta, slop, pinned, opts.staticSDF, empty);
+    return empty;
   }
 
   const diam = 2 * radius;
@@ -98,7 +113,7 @@ export function resolveContacts(
   }
   // Guard degenerate.
   if (!isFinite(minX) || !isFinite(minY)) {
-    return { contacts: 0, iters: 0, totalPenetration: 0, maxPenetration: 0 };
+    return emptyStats();
   }
   const gw = Math.max(1, Math.ceil((maxX - minX) / diam) + 1);
   const gh = Math.max(1, Math.ceil((maxY - minY) / diam) + 1);
@@ -163,7 +178,9 @@ export function resolveContacts(
     }
   }
 
-  return solveSequential(s, pairsI, pairsJ, diam, iters, e, beta, slop, pinned);
+  const stats = solveSequential(s, pairsI, pairsJ, diam, iters, e, beta, slop, pinned);
+  if (opts.staticSDF) resolveSDFContacts(s, radius, e, beta, slop, pinned, opts.staticSDF, stats);
+  return stats;
 }
 
 function resolveAllPairs(s: ContactState, opts: ContactOptions): ContactStats {
@@ -188,7 +205,9 @@ function resolveAllPairs(s: ContactState, opts: ContactOptions): ContactStats {
       }
     }
   }
-  return solveSequential(s, pairsI, pairsJ, diam, iters, e, beta, slop, pinned);
+  const stats = solveSequential(s, pairsI, pairsJ, diam, iters, e, beta, slop, pinned);
+  if (opts.staticSDF) resolveSDFContacts(s, radius, e, beta, slop, pinned, opts.staticSDF, stats);
+  return stats;
 }
 
 function invMass(m: number, pinned: number): number {
@@ -269,5 +288,72 @@ function solveSequential(
     }
   }
 
-  return { contacts: P, iters, totalPenetration: totalPen, maxPenetration: maxPen };
+  return { contacts: P, iters, totalPenetration: totalPen, maxPenetration: maxPen,
+    sdfContacts: 0, sdfTotalPenetration: 0, sdfMaxPenetration: 0 };
+}
+
+function emptyStats(): ContactStats {
+  return { contacts: 0, iters: 0, totalPenetration: 0, maxPenetration: 0,
+    sdfContacts: 0, sdfTotalPenetration: 0, sdfMaxPenetration: 0 };
+}
+
+/**
+ * Static SDF collision pass. Each particle is tested with `sphereCollide`
+ * against the supplied SDF; on contact, the SDF gradient is used as the
+ * surface normal and the particle is corrected against it (kinematic
+ * collider — invMass = 0 on the SDF side, so the full impulse / position
+ * correction is applied to the particle).
+ *
+ * The 2D simulation plane is lifted to z = `worldZ` (default 0) before
+ * sampling. Only the (x,y) components of the gradient drive the response;
+ * a strongly axial-Z normal indicates the particle is grazing the slice
+ * tangentially and contributes only depth statistics.
+ */
+function resolveSDFContacts(
+  s: ContactState,
+  radius: number,
+  e: number,
+  beta: number,
+  slop: number,
+  pinned: number,
+  collider: SDFColliderOptions,
+  stats: ContactStats,
+): void {
+  const N = s.N | 0;
+  const z = collider.worldZ ?? 0;
+  const r = Math.max(0, radius);
+  for (let i = 0; i < N; i++) {
+    const wi = invMass(s.m[i], pinned);
+    if (wi <= 0) continue;
+    const px = s.x[i * 2], py = s.x[i * 2 + 1];
+    // Cheap reject via penetration() before invoking the gradient.
+    const pen = penetration(collider.sdf, [px, py, z]) + r;
+    if (pen <= 0) continue;
+    const hit = sphereCollide(collider.sdf, [px, py, z], r);
+    if (!hit.hit) continue;
+
+    stats.sdfContacts++;
+    stats.sdfTotalPenetration += hit.depth;
+    if (hit.depth > stats.sdfMaxPenetration) stats.sdfMaxPenetration = hit.depth;
+
+    // Project gradient normal onto the simulation plane.
+    let nx = hit.normal[0], ny = hit.normal[1];
+    const nl = Math.hypot(nx, ny);
+    if (nl < 1e-6) continue; // normal is purely Z — no in-plane response
+    nx /= nl; ny /= nl;
+
+    // Velocity impulse (collider is kinematic → 1/wsum = 1/wi).
+    const vn = s.v[i * 2] * nx + s.v[i * 2 + 1] * ny;
+    if (vn < 0) {
+      const lambda = -(1 + e) * vn; // wsum = wi → wi/wsum = 1
+      s.v[i * 2]     += lambda * nx;
+      s.v[i * 2 + 1] += lambda * ny;
+    }
+    // Position correction.
+    const corr = Math.max(0, hit.depth - slop) * beta;
+    if (corr > 0) {
+      s.x[i * 2]     += corr * nx;
+      s.x[i * 2 + 1] += corr * ny;
+    }
+  }
 }
