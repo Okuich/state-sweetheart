@@ -128,21 +128,21 @@ export function planDistributed(input: DistPartInput): DistPartResult {
   const finalPart = (rebalanced ?? assignment).tetPart;
   const finalHalo = rebalancedHalo ?? halo;
 
-  const traversal = input.traversal
-    ? partitionAwareTraversal(finalPart, input.adj, finalHalo, { comm })
-    : undefined;
-  const haloSync = input.haloSyncIterations
-    ? simulateHaloSync(finalHalo, { iterations: input.haloSyncIterations, comm })
-    : undefined;
-  const broadphase = input.broadphase
-    ? partitionBroadphase(input.mesh, finalPart, finalHalo)
-    : undefined;
   const schedule = input.schedule
     ? buildBatchSchedule(finalHalo, {
         comm,
         iterations: input.haloSyncIterations ?? 16,
         ...(typeof input.schedule === "object" ? input.schedule : {}),
       })
+    : undefined;
+  const traversal = input.traversal
+    ? partitionAwareTraversal(finalPart, input.adj, finalHalo, { comm, schedule })
+    : undefined;
+  const haloSync = input.haloSyncIterations
+    ? simulateHaloSync(finalHalo, { iterations: input.haloSyncIterations, comm })
+    : undefined;
+  const broadphase = input.broadphase
+    ? partitionBroadphase(input.mesh, finalPart, finalHalo)
     : undefined;
 
   return {
