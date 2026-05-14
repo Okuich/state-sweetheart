@@ -92,6 +92,8 @@ export function TopologyPanel() {
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={indexCorpus} disabled={running}>Index corpus</Button>
+          <Button variant="outline" onClick={() => result && downloadReport(result, "json", PRESETS[presetIdx].label)} disabled={!result || running}>Export JSON</Button>
+          <Button variant="outline" onClick={() => result && downloadReport(result, "pdf", PRESETS[presetIdx].label)} disabled={!result || running}>Export PDF</Button>
           <Button onClick={run} disabled={running}>{running ? "Analyzing…" : "Analyze"}</Button>
         </div>
       </header>
