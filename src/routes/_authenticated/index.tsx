@@ -23,6 +23,7 @@ import { SpatialAccelPanel } from "@/components/SpatialAccelPanel";
 import { SDFPanel } from "@/components/SDFPanel";
 import { TopologyPanel } from "@/components/TopologyPanel";
 import { TopologyPriorsPanel } from "@/components/TopologyPriorsPanel";
+import { GeometryQueryPanel } from "@/components/GeometryQueryPanel";
 import { RefinementPanel } from "@/components/RefinementPanel";
 import { DistPartPanel } from "@/components/DistPartPanel";
 import { LearningEnginePanel } from "@/components/LearningEnginePanel";
@@ -963,6 +964,9 @@ function Index() {
             currentParams={params}
             onApplyPatch={(patch) => setParams((p) => ({ ...p, ...patch }))}
           />
+        </div>
+        <div className="mt-6">
+          <GeometryQueryPanel />
         </div>
         <div className="mt-6">
           <RefinementPanel />
