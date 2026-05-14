@@ -4,6 +4,7 @@ import { Slider } from "@/components/ui/slider";
 import { buildOctreeMesh, type RefinementSeed, type OctreeMesh } from "@/lib/meshing/octree";
 import { buildAdjacency, type AdjacencyTensors } from "@/lib/meshing/adjacency";
 import { partitionMesh, type PartitionPlan } from "@/lib/meshing/partition";
+import { RefinementOverlay3D } from "@/components/RefinementOverlay3D";
 import {
   runAdaptivePass,
   runDistributedRefinement,
@@ -390,6 +391,9 @@ export function RefinementPanel() {
         </div>
       </div>
 
+      {last && lastBaseMesh && (
+        <RefinementOverlay3D baseMesh={lastBaseMesh} result={last} height={340} />
+      )}
 
       {distributed && (
         <div className="rounded-md border border-primary/40 bg-primary/5 p-4 space-y-2">
