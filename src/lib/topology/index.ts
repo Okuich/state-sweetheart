@@ -26,6 +26,10 @@ export type { TopologyPartitionPlan } from "./partition";
 export type { TopoNode, TopoEdge, FeatureClass } from "./types";
 export { FEATURE_LABELS } from "./types";
 export { cosine, buildTopologyGraph, classifyFeatures, scoreManufacturability, buildStructuralEmbedding, partitionTopology };
+export {
+  kHopCpu, computeHalosCpu, createCsrGpuBackend, KHOP_INF,
+  type KHopResult, type HaloResult, type CsrGpuBackend, type CsrGpuUnavailable,
+} from "./gpuTraversal";
 
 export interface TopologyResult {
   graph: TopologyGraph;

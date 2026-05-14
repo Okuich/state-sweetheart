@@ -4,9 +4,23 @@ import { Slider } from "@/components/ui/slider";
 import { buildOctreeMesh, type RefinementSeed } from "@/lib/meshing/octree";
 import {
   analyzeTopology, cosine, FEATURE_LABELS,
+  kHopCpu, computeHalosCpu, createCsrGpuBackend,
   type TopologyResult, type FeatureClass,
 } from "@/lib/topology";
 import { downloadReport } from "@/lib/topology/report";
+
+interface TraversalBench {
+  N: number; E: number;
+  cpuKHopMs: number;
+  cpuHaloMs: number;
+  gpuAvailable: boolean;
+  gpuReason?: string;
+  gpuKHopMs?: number;
+  gpuHaloMs?: number;
+  speedupKHop?: number;
+  speedupHalo?: number;
+  haloMatch?: boolean;
+}
 
 interface Preset {
   label: string;
@@ -49,6 +63,77 @@ export function TopologyPanel() {
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<TopologyResult | null>(null);
   const [corpus, setCorpus] = useState<CorpusEntry[]>([]);
+  const [bench, setBench] = useState<TraversalBench | null>(null);
+
+  const benchTraversal = async () => {
+    if (!result) return;
+    setRunning(true);
+    try {
+      const g = result.graph;
+      const N = g.nodes.length;
+      const owners = new Uint32Array(result.partition.owners);
+      const P = result.partition.partitionCount;
+      // Seed labels: one per partition, picked deterministically.
+      const seedLabel = new Uint32Array(N);
+      for (let p = 0; p < P; p++) {
+        const res = result.partition.resident[p];
+        if (res.length) seedLabel[res[0]] = p + 1;
+      }
+      const K = 4;
+      const REP = 8;
+
+      // CPU warm-up + average
+      kHopCpu(g, seedLabel, K);
+      let cpuKHopMs = 0;
+      for (let i = 0; i < REP; i++) cpuKHopMs += kHopCpu(g, seedLabel, K).ms;
+      cpuKHopMs /= REP;
+      let cpuHaloMs = 0;
+      for (let i = 0; i < REP; i++) cpuHaloMs += computeHalosCpu(g, owners, P).ms;
+      cpuHaloMs /= REP;
+
+      // GPU
+      const backend = await createCsrGpuBackend(g);
+      if (!backend.available) {
+        setBench({ N, E: g.neighborIdx.length, cpuKHopMs, cpuHaloMs, gpuAvailable: false, gpuReason: backend.reason });
+        return;
+      }
+      // Warm
+      await backend.kHop(seedLabel, K);
+      await backend.computeHalos(owners, P);
+      let gpuKHopMs = 0;
+      for (let i = 0; i < REP; i++) gpuKHopMs += (await backend.kHop(seedLabel, K)).ms;
+      gpuKHopMs /= REP;
+      let gpuHaloMs = 0;
+      let gpuHalo: Awaited<ReturnType<typeof backend.computeHalos>> | null = null;
+      for (let i = 0; i < REP; i++) {
+        const r = await backend.computeHalos(owners, P);
+        gpuHaloMs += r.ms;
+        gpuHalo = r;
+      }
+      gpuHaloMs /= REP;
+
+      // Validate halos against the partition plan (sanity check).
+      let haloMatch = true;
+      if (gpuHalo) {
+        for (let p = 0; p < P; p++) {
+          const ref = new Set(result.partition.halos[p]);
+          const got = new Set(gpuHalo.halos[p]);
+          if (ref.size !== got.size) { haloMatch = false; break; }
+          for (const x of ref) if (!got.has(x)) { haloMatch = false; break; }
+          if (!haloMatch) break;
+        }
+      }
+
+      backend.destroy();
+      setBench({
+        N, E: g.neighborIdx.length, cpuKHopMs, cpuHaloMs,
+        gpuAvailable: true, gpuKHopMs, gpuHaloMs,
+        speedupKHop: cpuKHopMs / Math.max(0.001, gpuKHopMs),
+        speedupHalo: cpuHaloMs / Math.max(0.001, gpuHaloMs),
+        haloMatch,
+      });
+    } finally { setRunning(false); }
+  };
 
   const run = () => {
     setRunning(true);
@@ -94,6 +179,7 @@ export function TopologyPanel() {
           <Button variant="outline" onClick={indexCorpus} disabled={running}>Index corpus</Button>
           <Button variant="outline" onClick={() => result && downloadReport(result, "json", PRESETS[presetIdx].label)} disabled={!result || running}>Export JSON</Button>
           <Button variant="outline" onClick={() => result && downloadReport(result, "pdf", PRESETS[presetIdx].label)} disabled={!result || running}>Export PDF</Button>
+          <Button variant="outline" onClick={benchTraversal} disabled={!result || running}>Bench GPU traversal</Button>
           <Button onClick={run} disabled={running}>{running ? "Analyzing…" : "Analyze"}</Button>
         </div>
       </header>
@@ -154,6 +240,8 @@ export function TopologyPanel() {
           </div>
         </div>
       )}
+
+      {bench && <TraversalBenchView b={bench} />}
     </section>
   );
 }
@@ -297,6 +385,40 @@ function EmbeddingStrip({ vec, slices }: { vec: Float32Array; slices: { curvatur
           <div key={l.label} className="text-center" style={{ width: `${((l.range[1] - l.range[0]) / vec.length) * 100}%` }}>{l.label}</div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function TraversalBenchView({ b }: { b: TraversalBench }) {
+  const fmt = (ms?: number) => (ms == null ? "—" : `${ms.toFixed(3)} ms`);
+  const fmtX = (s?: number) => (s == null ? "—" : `${s.toFixed(2)}×`);
+  return (
+    <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
+      <div className="flex items-baseline justify-between">
+        <h3 className="text-sm font-semibold">GPU CSR traversal · N={b.N} · E={b.E}</h3>
+        {b.gpuAvailable
+          ? <span className="text-[10px] uppercase tracking-wide text-emerald-500">webgpu live</span>
+          : <span className="text-[10px] uppercase tracking-wide text-amber-500">cpu only · {b.gpuReason}</span>}
+      </div>
+      <div className="grid grid-cols-4 gap-2 text-xs font-mono">
+        <div className="text-muted-foreground">op</div>
+        <div className="text-muted-foreground">cpu</div>
+        <div className="text-muted-foreground">gpu</div>
+        <div className="text-muted-foreground">speedup</div>
+        <div>k-hop BFS (k=4)</div>
+        <div>{fmt(b.cpuKHopMs)}</div>
+        <div>{fmt(b.gpuKHopMs)}</div>
+        <div className="text-primary">{fmtX(b.speedupKHop)}</div>
+        <div>halo masks (P)</div>
+        <div>{fmt(b.cpuHaloMs)}</div>
+        <div>{fmt(b.gpuHaloMs)}</div>
+        <div className="text-primary">{fmtX(b.speedupHalo)}</div>
+      </div>
+      {b.gpuAvailable && (
+        <div className="text-[11px] text-muted-foreground">
+          halo parity vs partition plan: {b.haloMatch ? <span className="text-emerald-500">✓ match</span> : <span className="text-destructive">✗ mismatch</span>}
+        </div>
+      )}
     </div>
   );
 }
