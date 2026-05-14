@@ -209,7 +209,7 @@ export function SDFPanel() {
           // Run a mode end-to-end as configured `runs` times. Each run dispatches
           // ceil(N/batchSize) batches and returns total wall-clock + gpu time.
           const runMode = async (
-            mode: "distance" | "gradient" | "collide" | "nearest",
+            mode: GpuMode,
             buf: Float32Array,
             count: number,
           ) => {
