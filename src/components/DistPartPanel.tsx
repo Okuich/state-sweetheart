@@ -265,6 +265,19 @@ export function DistPartPanel() {
               <div className="text-[9px] font-mono text-muted-foreground">
                 halo bytes · <span className="text-foreground">{last.traversal.totalHaloBytes.toLocaleString()}</span>
               </div>
+              {last.traversal.batched && (
+                <div className="text-[9px] font-mono text-muted-foreground border-t border-border/40 pt-1 mt-1 space-y-0.5">
+                  <div>
+                    batched · <span className="text-primary">{last.traversal.batched.flushes}</span> flushes
+                    {" · "}<span className="text-primary">{last.traversal.batched.messages}</span> launches
+                    {" · "}<span className="text-foreground">{last.traversal.batched.bytes.toLocaleString()}</span> B
+                  </div>
+                  <div>
+                    sync µs · <span className="text-accent">{last.traversal.batched.us.toFixed(1)}</span>
+                    {" · "}max staleness · <span className="text-foreground">{last.traversal.batched.maxStaleness}</span> steps
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
