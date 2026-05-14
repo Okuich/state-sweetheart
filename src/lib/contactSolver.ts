@@ -29,6 +29,9 @@
  * output is bit-stable across runs.
  */
 
+import { sphereCollide, penetration } from "@/lib/sdf/queries";
+import type { SparseSDF } from "@/lib/sdf/sparseField";
+
 export interface ContactStats {
   /** Number of (i, j) overlapping pairs detected this call. */
   contacts: number;
@@ -38,6 +41,12 @@ export interface ContactStats {
   totalPenetration: number;
   /** Max single-contact penetration depth before correction. */
   maxPenetration: number;
+  /** Particles found penetrating the static SDF collider this call. */
+  sdfContacts: number;
+  /** Sum of SDF penetration depths before correction. */
+  sdfTotalPenetration: number;
+  /** Max single-particle SDF penetration depth before correction. */
+  sdfMaxPenetration: number;
 }
 
 /** Minimum state shape this solver requires. */
@@ -48,21 +57,25 @@ export interface ContactState {
   m: Float32Array | Float64Array;
 }
 
+/** Static SDF collider lifted to the 2D simulation plane (XY at z=worldZ). */
+export interface SDFColliderOptions {
+  sdf: SparseSDF;
+  /** World-space Z slice the 2D sim lives on. Default 0. */
+  worldZ?: number;
+}
+
 export interface ContactOptions {
-  /** Per-particle contact radius. Two particles collide when
-   *  |xᵢ − xⱼ| < 2·radius. */
+  /** Per-particle contact radius. */
   radius: number;
-  /** Solver iterations. 1 = single pass; 2–4 stabilizes piles. */
   iters?: number;
-  /** Restitution e ∈ [0, 1] for the normal impulse. */
   restitution?: number;
-  /** Baumgarte position-correction factor in (0, 1].
-   *  1 = full correction in one step; ~0.5 is gentler. */
   beta?: number;
-  /** Penetration slop (no correction below this depth). */
   slop?: number;
-  /** Treat particles with this mass as kinematic (invMass = 0). */
   pinnedMass?: number;
+  /** Optional static SDF collider. When provided, every particle is
+   *  tested with `sphereCollide` and resolved using the SDF gradient as
+   *  the contact normal. */
+  staticSDF?: SDFColliderOptions;
 }
 
 /**
