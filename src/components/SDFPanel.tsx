@@ -8,15 +8,24 @@ import {
 } from "@/lib/sdf";
 import { createGpuSdfBackend } from "@/lib/sdf/gpu";
 
+interface Stat { min: number; avg: number; max: number; runs: number }
+
+function makeStat(samples: number[]): Stat {
+  if (!samples.length) return { min: 0, avg: 0, max: 0, runs: 0 };
+  let mn = Infinity, mx = -Infinity, s = 0;
+  for (const v of samples) { mn = Math.min(mn, v); mx = Math.max(mx, v); s += v; }
+  return { min: mn, avg: s / samples.length, max: mx, runs: samples.length };
+}
+
 interface GpuBench {
   available: boolean;
   reason?: string;
   brickCount?: number;
   levelCount?: number;
-  distQps?: number;
-  gradQps?: number;
-  collideQps?: number;
-  nearestQps?: number;
+  distQps?: Stat;
+  gradQps?: Stat;
+  collideQps?: Stat;
+  nearestQps?: Stat;
   distGpuMs?: number;
   gradGpuMs?: number;
   collideGpuMs?: number;
@@ -39,11 +48,22 @@ interface BenchResult {
   buildMs: number;
   partitionMs: number;
   embeddingMs: number;
-  distQps: number;
-  gradQps: number;
-  collideQps: number;
+  distQps: Stat;
+  gradQps: Stat;
+  collideQps: Stat;
   nearestErr: number;
   gpu?: GpuBench;
+  config: BenchConfig;
+}
+
+interface BenchConfig {
+  cpuQueries: number;
+  gpuQueries: number;
+  warmup: number;
+  radius: number;
+  newtonIters: number;
+  batchSize: number;
+  runs: number;
 }
 
 const PRESETS: { label: string; prims: SDFPrim[]; hints: AdaptiveHint[] }[] = [
@@ -83,6 +103,16 @@ export function SDFPanel() {
   const [bandWidth, setBandWidth] = useState(3);
   const [adaptive, setAdaptive] = useState(1);
   const [partitionCount, setPartitionCount] = useState(4);
+
+  // Benchmark configuration
+  const [cpuQueries, setCpuQueries] = useState(5000);
+  const [gpuQueries, setGpuQueries] = useState(50000);
+  const [warmup, setWarmup] = useState(2);
+  const [radius, setRadius] = useState(0.05);
+  const [newtonIters, setNewtonIters] = useState(6);
+  const [batchSize, setBatchSize] = useState(50000);
+  const [runs, setRuns] = useState(5);
+
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<BenchResult | null>(null);
 
@@ -91,6 +121,8 @@ export function SDFPanel() {
   const run = () => {
     setRunning(true);
     setTimeout(async () => {
+      const config: BenchConfig = { cpuQueries, gpuQueries, warmup, radius, newtonIters, batchSize, runs };
+
       const t0 = performance.now();
       const sdf = buildSparseSDF(BBOX, preset.prims, {
         voxelSize, bandWidth, hints: preset.hints, maxAdaptiveLevels: adaptive,
@@ -105,41 +137,53 @@ export function SDFPanel() {
       const embedding = buildEmbedding(sdf);
       const embeddingMs = performance.now() - t2;
 
-      // Microbenchmarks (CPU).
-      const N = 5000;
+      // Random points used by both CPU and GPU paths.
+      const N = Math.max(1, cpuQueries);
       const pts: [number, number, number][] = [];
-      const flat = new Float32Array(N * 3);
       for (let i = 0; i < N; i++) {
-        const x = BBOX.min[0] + Math.random() * (BBOX.max[0] - BBOX.min[0]);
-        const y = BBOX.min[1] + Math.random() * (BBOX.max[1] - BBOX.min[1]);
-        const z = BBOX.min[2] + Math.random() * (BBOX.max[2] - BBOX.min[2]);
-        pts.push([x, y, z]);
-        flat[i * 3] = x; flat[i * 3 + 1] = y; flat[i * 3 + 2] = z;
+        pts.push([
+          BBOX.min[0] + Math.random() * (BBOX.max[0] - BBOX.min[0]),
+          BBOX.min[1] + Math.random() * (BBOX.max[1] - BBOX.min[1]),
+          BBOX.min[2] + Math.random() * (BBOX.max[2] - BBOX.min[2]),
+        ]);
       }
-      const td0 = performance.now();
-      let acc = 0;
-      for (const p of pts) acc += distance(sdf, p);
-      const distMs = performance.now() - td0;
-      const distQps = N / Math.max(0.001, distMs / 1000);
 
-      const tg0 = performance.now();
-      let ga = 0;
-      for (const p of pts) { const g = gradient(sdf, p); ga += g[0]; }
-      const gradMs = performance.now() - tg0;
-      const gradQps = N / Math.max(0.001, gradMs / 1000);
+      // CPU warmup
+      for (let w = 0; w < warmup; w++) {
+        for (let i = 0; i < Math.min(N, 256); i++) {
+          distance(sdf, pts[i]); gradient(sdf, pts[i]); sphereCollide(sdf, pts[i], radius);
+        }
+      }
 
-      const tc0 = performance.now();
-      let hits = 0;
-      for (const p of pts) if (sphereCollide(sdf, p, 0.05).hit) hits++;
-      const colMs = performance.now() - tc0;
-      const collideQps = N / Math.max(0.001, colMs / 1000);
+      // CPU benchmark — multi-run for min/avg/max stats.
+      const distSamples: number[] = [], gradSamples: number[] = [], collSamples: number[] = [];
+      for (let r = 0; r < Math.max(1, runs); r++) {
+        let acc = 0;
+        const td0 = performance.now();
+        for (const p of pts) acc += distance(sdf, p);
+        const distMs = performance.now() - td0;
+        distSamples.push(N / Math.max(0.001, distMs / 1000));
 
-      // Nearest-surface accuracy on sphere preset.
-      let nearestErr = 0;
-      const r = nearestSurface(sdf, [0.7, 0, 0]);
-      nearestErr = Math.abs(distance(sdf, r.point));
+        let ga = 0;
+        const tg0 = performance.now();
+        for (const p of pts) { const g = gradient(sdf, p); ga += g[0]; }
+        const gradMs = performance.now() - tg0;
+        gradSamples.push(N / Math.max(0.001, gradMs / 1000));
 
-      void acc; void ga; void hits;
+        let hits = 0;
+        const tc0 = performance.now();
+        for (const p of pts) if (sphereCollide(sdf, p, radius).hit) hits++;
+        const colMs = performance.now() - tc0;
+        collSamples.push(N / Math.max(0.001, colMs / 1000));
+        void acc; void ga; void hits;
+      }
+      const distQps = makeStat(distSamples);
+      const gradQps = makeStat(gradSamples);
+      const collideQps = makeStat(collSamples);
+
+      // Nearest-surface accuracy on a fixed off-surface probe.
+      const rNear = nearestSurface(sdf, [0.7, 0, 0], newtonIters);
+      const nearestErr = Math.abs(distance(sdf, rNear.point));
 
       // GPU benchmark
       let gpu: GpuBench | undefined;
@@ -148,53 +192,73 @@ export function SDFPanel() {
         if (!back.available) {
           gpu = { available: false, reason: back.reason };
         } else {
-          const NG = 50000;
+          const NG = Math.max(1, gpuQueries);
           const gflat = new Float32Array(NG * 3);
           for (let i = 0; i < NG; i++) {
             gflat[i * 3]     = BBOX.min[0] + Math.random() * (BBOX.max[0] - BBOX.min[0]);
             gflat[i * 3 + 1] = BBOX.min[1] + Math.random() * (BBOX.max[1] - BBOX.min[1]);
             gflat[i * 3 + 2] = BBOX.min[2] + Math.random() * (BBOX.max[2] - BBOX.min[2]);
           }
-          // warmup
-          await back.run("distance", gflat.subarray(0, 300));
-          const d = await back.run("distance", gflat);
-          const g = await back.run("gradient", gflat);
-          const c = await back.run("collide", gflat, { radius: 0.05 });
-          const nN = 5000;
-          const n = await back.run("nearest", gflat.subarray(0, nN * 3), { iters: 6 });
+          const bs = Math.max(1, Math.min(batchSize, NG));
+
+          // GPU warmup
+          for (let w = 0; w < warmup; w++) {
+            await back.run("distance", gflat.subarray(0, Math.min(NG, 1024) * 3));
+          }
+
+          // Run a mode end-to-end as configured `runs` times. Each run dispatches
+          // ceil(N/batchSize) batches and returns total wall-clock + gpu time.
+          const runMode = async (
+            mode: "distance" | "gradient" | "collide" | "nearest",
+            buf: Float32Array,
+            count: number,
+          ) => {
+            const totals: number[] = [];
+            let lastGpuMs = 0, totalMs = 0;
+            for (let r = 0; r < Math.max(1, runs); r++) {
+              const t = performance.now();
+              let gpuAcc = 0;
+              for (let off = 0; off < count; off += bs) {
+                const sliceN = Math.min(bs, count - off);
+                const slice = buf.subarray(off * 3, (off + sliceN) * 3);
+                const res = await back.run(mode, slice, { radius, iters: newtonIters });
+                gpuAcc += res.gpuMs;
+              }
+              const ms = performance.now() - t;
+              totals.push(count / Math.max(0.001, ms / 1000));
+              lastGpuMs = gpuAcc;
+              totalMs = ms;
+            }
+            return { qps: makeStat(totals), gpuMs: lastGpuMs, totalMs };
+          };
+
+          const nN = Math.min(5000, NG);
+          const d = await runMode("distance", gflat, NG);
+          const g = await runMode("gradient", gflat, NG);
+          const c = await runMode("collide",  gflat, NG);
+          const n = await runMode("nearest",  gflat.subarray(0, nN * 3), nN);
+
           // CPU↔GPU correctness check on a shared sample.
           const NC = Math.min(2000, NG);
           const sample = gflat.subarray(0, NC * 3);
           const dRef = await back.run("distance", sample);
           const gRef = await back.run("gradient", sample);
-          const cRef = await back.run("collide", sample, { radius: 0.05 });
-          const nRef = await back.run("nearest", sample, { iters: 6 });
+          const cRef = await back.run("collide",  sample, { radius });
+          const nRef = await back.run("nearest",  sample, { iters: newtonIters });
           let edMax = 0, edSum = 0, egMax = 0, egSum = 0, ecMax = 0, ecSum = 0, enMax = 0, enSum = 0;
           for (let i = 0; i < NC; i++) {
             const p: [number, number, number] = [sample[i * 3], sample[i * 3 + 1], sample[i * 3 + 2]];
-            // distance
             const dCpu = distance(sdf, p);
             const eD = Math.abs(dCpu - dRef.out[i * 4]);
             edMax = Math.max(edMax, eD); edSum += eD;
-            // gradient
             const gCpu = gradient(sdf, p);
-            const dgx = gCpu[0] - gRef.out[i * 4];
-            const dgy = gCpu[1] - gRef.out[i * 4 + 1];
-            const dgz = gCpu[2] - gRef.out[i * 4 + 2];
-            const eG = Math.hypot(dgx, dgy, dgz);
+            const eG = Math.hypot(gCpu[0] - gRef.out[i * 4], gCpu[1] - gRef.out[i * 4 + 1], gCpu[2] - gRef.out[i * 4 + 2]);
             egMax = Math.max(egMax, eG); egSum += eG;
-            // sphere-collide depth
-            const cCpu = sphereCollide(sdf, p, 0.05);
-            const depthCpu = cCpu.hit ? cCpu.depth : 0;
-            const depthGpu = cRef.out[i * 4];
-            const eC = Math.abs(depthCpu - depthGpu);
+            const cCpu = sphereCollide(sdf, p, radius);
+            const eC = Math.abs((cCpu.hit ? cCpu.depth : 0) - cRef.out[i * 4]);
             ecMax = Math.max(ecMax, eC); ecSum += eC;
-            // nearest surface point
-            const nCpu = nearestSurface(sdf, p, 6);
-            const dnx = nCpu.point[0] - nRef.out[i * 4];
-            const dny = nCpu.point[1] - nRef.out[i * 4 + 1];
-            const dnz = nCpu.point[2] - nRef.out[i * 4 + 2];
-            const eN = Math.hypot(dnx, dny, dnz);
+            const nCpu = nearestSurface(sdf, p, newtonIters);
+            const eN = Math.hypot(nCpu.point[0] - nRef.out[i * 4], nCpu.point[1] - nRef.out[i * 4 + 1], nCpu.point[2] - nRef.out[i * 4 + 2]);
             enMax = Math.max(enMax, eN); enSum += eN;
           }
 
@@ -202,22 +266,16 @@ export function SDFPanel() {
             available: true,
             brickCount: back.brickCount,
             levelCount: back.levelCount,
-            distQps:    NG / Math.max(0.001, d.totalMs / 1000),
-            gradQps:    NG / Math.max(0.001, g.totalMs / 1000),
-            collideQps: NG / Math.max(0.001, c.totalMs / 1000),
-            nearestQps: nN / Math.max(0.001, n.totalMs / 1000),
-            distGpuMs: d.gpuMs,
-            gradGpuMs: g.gpuMs,
-            collideGpuMs: c.gpuMs,
-            nearestGpuMs: n.gpuMs,
-            speedupDist:    (NG / Math.max(0.001, d.totalMs / 1000)) / Math.max(1, distQps),
-            speedupGrad:    (NG / Math.max(0.001, g.totalMs / 1000)) / Math.max(1, gradQps),
-            speedupCollide: (NG / Math.max(0.001, c.totalMs / 1000)) / Math.max(1, collideQps),
+            distQps: d.qps, gradQps: g.qps, collideQps: c.qps, nearestQps: n.qps,
+            distGpuMs: d.gpuMs, gradGpuMs: g.gpuMs, collideGpuMs: c.gpuMs, nearestGpuMs: n.gpuMs,
+            speedupDist:    d.qps.avg / Math.max(1, distQps.avg),
+            speedupGrad:    g.qps.avg / Math.max(1, gradQps.avg),
+            speedupCollide: c.qps.avg / Math.max(1, collideQps.avg),
             errSampleN: NC,
-            errDistMax: edMax,       errDistMean: edSum / NC,
-            errGradMax: egMax,       errGradMean: egSum / NC,
-            errCollideMax: ecMax,    errCollideMean: ecSum / NC,
-            errNearestMax: enMax,    errNearestMean: enSum / NC,
+            errDistMax: edMax,    errDistMean: edSum / NC,
+            errGradMax: egMax,    errGradMean: egSum / NC,
+            errCollideMax: ecMax, errCollideMean: ecSum / NC,
+            errNearestMax: enMax, errNearestMean: enSum / NC,
           };
           back.destroy();
         }
@@ -225,7 +283,7 @@ export function SDFPanel() {
         gpu = { available: false, reason: e instanceof Error ? e.message : String(e) };
       }
 
-      setResult({ sdf, partition, embedding, buildMs, partitionMs, embeddingMs, distQps, gradQps, collideQps, nearestErr, gpu });
+      setResult({ sdf, partition, embedding, buildMs, partitionMs, embeddingMs, distQps, gradQps, collideQps, nearestErr, gpu, config });
       setRunning(false);
     }, 0);
   };
@@ -264,6 +322,19 @@ export function SDFPanel() {
         <SliderRow label="Narrow band" value={bandWidth} min={1} max={6} step={1} onChange={setBandWidth} fmt={(v) => `${v} vx`} />
         <SliderRow label="Adaptive levels" value={adaptive} min={0} max={3} step={1} onChange={setAdaptive} fmt={(v) => `${v}`} />
         <SliderRow label="Partitions (GPUs)" value={partitionCount} min={1} max={8} step={1} onChange={setPartitionCount} fmt={(v) => `${v}`} />
+      </div>
+
+      <div className="rounded-lg border border-border/60 bg-muted/10 p-3 space-y-3">
+        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Benchmark configuration</div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+          <SliderRow label="CPU queries"    value={cpuQueries} min={500}  max={20000}  step={500}  onChange={setCpuQueries} fmt={(v) => `${(v/1000).toFixed(1)}k`} />
+          <SliderRow label="GPU queries"    value={gpuQueries} min={5000} max={500000} step={5000} onChange={setGpuQueries} fmt={(v) => `${(v/1000).toFixed(0)}k`} />
+          <SliderRow label="Warmup passes"  value={warmup}     min={0}    max={5}      step={1}    onChange={setWarmup}     fmt={(v) => `${v}`} />
+          <SliderRow label="Runs / mode"    value={runs}       min={1}    max={20}     step={1}    onChange={setRuns}       fmt={(v) => `${v}`} />
+          <SliderRow label="Sphere radius"  value={radius}     min={0.01} max={0.2}    step={0.01} onChange={setRadius}     fmt={(v) => v.toFixed(2)} />
+          <SliderRow label="Newton iters"   value={newtonIters} min={1}   max={16}     step={1}    onChange={setNewtonIters} fmt={(v) => `${v}`} />
+          <SliderRow label="GPU batch size" value={batchSize}  min={1000} max={200000} step={1000} onChange={setBatchSize}  fmt={(v) => `${(v/1000).toFixed(0)}k`} />
+        </div>
       </div>
 
       {result && (
@@ -309,13 +380,27 @@ export function SDFPanel() {
             <EmbeddingStrip vec={result.embedding.geometry} />
           </div>
 
+          <div className="lg:col-span-2 space-y-2 rounded-lg border border-border bg-muted/20 p-3">
+            <div className="flex items-baseline justify-between flex-wrap gap-2">
+              <h3 className="text-sm font-semibold">CPU benchmark</h3>
+              <span className="text-[10px] font-mono text-muted-foreground">
+                N={result.config.cpuQueries.toLocaleString()} · warmup={result.config.warmup} · runs={result.config.runs} · r={result.config.radius.toFixed(2)} · iters={result.config.newtonIters}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs font-mono">
+              <CpuStatCell label="distance" qps={result.distQps} />
+              <CpuStatCell label="gradient" qps={result.gradQps} />
+              <CpuStatCell label="sphere collide" qps={result.collideQps} />
+            </div>
+          </div>
+
           {result.gpu && (
             <div className="lg:col-span-2 space-y-2 rounded-lg border border-border bg-muted/20 p-3">
               <div className="flex items-baseline justify-between flex-wrap gap-2">
                 <h3 className="text-sm font-semibold">WebGPU backend</h3>
                 {result.gpu.available ? (
                   <span className="text-[10px] font-mono text-muted-foreground">
-                    {result.gpu.brickCount} bricks · {result.gpu.levelCount} levels
+                    {result.gpu.brickCount} bricks · {result.gpu.levelCount} levels · N={result.config.gpuQueries.toLocaleString()} · batch={result.config.batchSize.toLocaleString()} · runs={result.config.runs}
                   </span>
                 ) : (
                   <span className="text-[10px] font-mono text-amber-500">unavailable: {result.gpu.reason}</span>
@@ -381,9 +466,9 @@ function Stats({ stats }: { stats: BenchResult }) {
     ["build", `${stats.buildMs.toFixed(1)} ms`],
     ["partition", `${stats.partitionMs.toFixed(1)} ms`],
     ["embedding", `${stats.embeddingMs.toFixed(1)} ms`],
-    ["distance qps", `${(stats.distQps / 1000).toFixed(0)}k`],
-    ["gradient qps", `${(stats.gradQps / 1000).toFixed(0)}k`],
-    ["collide qps", `${(stats.collideQps / 1000).toFixed(0)}k`],
+    ["distance qps (avg)", fmtQps(stats.distQps.avg)],
+    ["gradient qps (avg)", fmtQps(stats.gradQps.avg)],
+    ["collide qps (avg)",  fmtQps(stats.collideQps.avg)],
     ["nearest err", `${stats.nearestErr.toExponential(1)}`],
   ];
   return (
@@ -445,13 +530,34 @@ function EmbeddingStrip({ vec }: { vec: Float32Array }) {
   );
 }
 
-function GpuCell({ label, qps, gpuMs, speedup }: { label: string; qps: number; gpuMs: number; speedup?: number }) {
+function fmtQps(v: number): string {
+  if (v >= 1e6) return `${(v / 1e6).toFixed(2)}M`;
+  if (v >= 1e3) return `${(v / 1e3).toFixed(1)}k`;
+  return v.toFixed(0);
+}
+
+function GpuCell({ label, qps, gpuMs, speedup }: { label: string; qps: Stat; gpuMs: number; speedup?: number }) {
   return (
     <div className="rounded border border-border/60 bg-background/40 p-2 space-y-0.5">
       <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
-      <div className="text-sm">{(qps / 1000).toFixed(1)}k qps</div>
+      <div className="text-sm">{fmtQps(qps.avg)} qps</div>
+      <div className="text-[10px] text-muted-foreground">
+        min {fmtQps(qps.min)} · max {fmtQps(qps.max)} · n={qps.runs}
+      </div>
       <div className="text-[10px] text-muted-foreground">
         gpu {gpuMs.toFixed(2)} ms{speedup !== undefined ? ` · ${speedup.toFixed(1)}× cpu` : ""}
+      </div>
+    </div>
+  );
+}
+
+function CpuStatCell({ label, qps }: { label: string; qps: Stat }) {
+  return (
+    <div className="rounded border border-border/60 bg-background/40 p-2 space-y-0.5">
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="text-sm">{fmtQps(qps.avg)} qps</div>
+      <div className="text-[10px] text-muted-foreground">
+        min {fmtQps(qps.min)} · max {fmtQps(qps.max)} · n={qps.runs}
       </div>
     </div>
   );
