@@ -400,7 +400,7 @@ export function SDFPanel() {
                 <h3 className="text-sm font-semibold">WebGPU backend</h3>
                 {result.gpu.available ? (
                   <span className="text-[10px] font-mono text-muted-foreground">
-                    {result.gpu.brickCount} bricks · {result.gpu.levelCount} levels
+                    {result.gpu.brickCount} bricks · {result.gpu.levelCount} levels · N={result.config.gpuQueries.toLocaleString()} · batch={result.config.batchSize.toLocaleString()} · runs={result.config.runs}
                   </span>
                 ) : (
                   <span className="text-[10px] font-mono text-amber-500">unavailable: {result.gpu.reason}</span>
