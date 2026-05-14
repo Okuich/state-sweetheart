@@ -14,6 +14,10 @@ export {
 export {
   distance, gradient, nearestSurface, penetration, sphereCollide,
 } from "./queries";
+export {
+  dPrim, dScene, dField,
+  type PrimGradients, type DiffSceneResult,
+} from "./differentiable";
 export { partitionSDF, type SDFPartitionPlan } from "./partition";
 export { buildEmbedding, interiorCentroid, type SDFEmbedding } from "./embeddings";
 export type { SDFPrim, AdaptiveHint, AdaptiveHintKind, AABB, Vec3 } from "./types";
