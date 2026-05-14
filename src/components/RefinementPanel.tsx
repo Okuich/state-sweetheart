@@ -66,6 +66,10 @@ export function RefinementPanel() {
   const [liveMesh, setLiveMesh] = useState<OctreeMesh | null>(null);
   const [livePart, setLivePart] = useState<PartitionPlan | null>(null);
   const [liveAdj, setLiveAdj] = useState<AdjacencyTensors | null>(null);
+  // Snapshot of (baseMesh, partition) used for the most recent pass — needed
+  // so the export flow can build a refinement mask aligned to that base.
+  const [lastBaseMesh, setLastBaseMesh] = useState<OctreeMesh | null>(null);
+  const [lastPartition, setLastPartition] = useState<PartitionPlan | null>(null);
 
   // Re-render at 2 Hz so the snapshot age indicator stays current.
   useMemo(() => {
