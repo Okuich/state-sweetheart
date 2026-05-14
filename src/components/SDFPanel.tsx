@@ -4,8 +4,27 @@ import { Slider } from "@/components/ui/slider";
 import {
   buildSparseSDF, distance, gradient, nearestSurface, sphereCollide,
   partitionSDF, buildEmbedding,
-  type SDFPrim, type AdaptiveHint, type SparseSDF, type SDFPartitionPlan, type SDFEmbedding,
+  type SDFPrim, type SparseSDF, type SDFPartitionPlan, type SDFEmbedding,
 } from "@/lib/sdf";
+import { createGpuSdfBackend } from "@/lib/sdf/gpu";
+
+interface GpuBench {
+  available: boolean;
+  reason?: string;
+  brickCount?: number;
+  levelCount?: number;
+  distQps?: number;
+  gradQps?: number;
+  collideQps?: number;
+  nearestQps?: number;
+  distGpuMs?: number;
+  gradGpuMs?: number;
+  collideGpuMs?: number;
+  nearestGpuMs?: number;
+  speedupDist?: number;
+  speedupGrad?: number;
+  speedupCollide?: number;
+}
 
 interface BenchResult {
   sdf: SparseSDF;
@@ -18,6 +37,7 @@ interface BenchResult {
   gradQps: number;
   collideQps: number;
   nearestErr: number;
+  gpu?: GpuBench;
 }
 
 const PRESETS: { label: string; prims: SDFPrim[]; hints: AdaptiveHint[] }[] = [
