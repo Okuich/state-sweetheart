@@ -20,6 +20,7 @@ import {
   type FabIntelReport,
 } from "@/lib/spatial";
 import { planDistributed, type DistPartResult } from "@/lib/distpart";
+import { runPersistentSuite, type PersistentKernelSuite, type KernelMetrics } from "@/lib/gpu/persistentKernels";
 
 interface PartitionThroughput {
   rank: number;
