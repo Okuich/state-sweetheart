@@ -322,12 +322,32 @@ export function SDFPanel() {
                 )}
               </div>
               {result.gpu.available && (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs font-mono">
-                  <GpuCell label="distance" qps={result.gpu.distQps!} gpuMs={result.gpu.distGpuMs!} speedup={result.gpu.speedupDist!} />
-                  <GpuCell label="gradient" qps={result.gpu.gradQps!} gpuMs={result.gpu.gradGpuMs!} speedup={result.gpu.speedupGrad!} />
-                  <GpuCell label="sphere collide" qps={result.gpu.collideQps!} gpuMs={result.gpu.collideGpuMs!} speedup={result.gpu.speedupCollide!} />
-                  <GpuCell label="nearest (Newton)" qps={result.gpu.nearestQps!} gpuMs={result.gpu.nearestGpuMs!} />
-                </div>
+                <>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs font-mono">
+                    <GpuCell label="distance" qps={result.gpu.distQps!} gpuMs={result.gpu.distGpuMs!} speedup={result.gpu.speedupDist!} />
+                    <GpuCell label="gradient" qps={result.gpu.gradQps!} gpuMs={result.gpu.gradGpuMs!} speedup={result.gpu.speedupGrad!} />
+                    <GpuCell label="sphere collide" qps={result.gpu.collideQps!} gpuMs={result.gpu.collideGpuMs!} speedup={result.gpu.speedupCollide!} />
+                    <GpuCell label="nearest (Newton)" qps={result.gpu.nearestQps!} gpuMs={result.gpu.nearestGpuMs!} />
+                  </div>
+                  {result.gpu.errSampleN !== undefined && (
+                    <div className="space-y-1 pt-1">
+                      <div className="flex items-baseline justify-between">
+                        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          GPU↔CPU correctness
+                        </h4>
+                        <span className="text-[10px] font-mono text-muted-foreground">
+                          n={result.gpu.errSampleN} samples · |Δ| in world units
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs font-mono">
+                        <ErrCell label="distance"       max={result.gpu.errDistMax!}    mean={result.gpu.errDistMean!} />
+                        <ErrCell label="gradient"       max={result.gpu.errGradMax!}    mean={result.gpu.errGradMean!} />
+                        <ErrCell label="sphere collide" max={result.gpu.errCollideMax!} mean={result.gpu.errCollideMean!} />
+                        <ErrCell label="nearest"        max={result.gpu.errNearestMax!} mean={result.gpu.errNearestMean!} />
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
