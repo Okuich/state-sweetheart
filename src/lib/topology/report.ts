@@ -148,7 +148,7 @@ export function buildReportPDF(r: TopologyResult, label?: string): Blob {
     doc.setFont("helvetica", "normal"); doc.setFontSize(9);
     doc.setTextColor(80); doc.text(label, M, y);
     const bx = M + 160, bw = W - M - bx - 60;
-    doc.setDrawColor(220); doc.setFillColor(235);
+    doc.setDrawColor(220); doc.setFillColor(235, 235, 235);
     doc.rect(bx, y - 8, bw, 9, "FD");
     const pct = Math.max(0, Math.min(1, value / max));
     doc.setFillColor(60, 110, 200);
