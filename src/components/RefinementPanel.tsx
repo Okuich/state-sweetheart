@@ -50,11 +50,20 @@ export function RefinementPanel() {
   const [splitThr, setSplitThr] = useState(0.45);
   const [extraDepth, setExtraDepth] = useState(2);
   const [partitions, setPartitions] = useState(8);
+  const [feedbackMode, setFeedbackMode] = useState<"auto" | "synthetic">("auto");
   const [last, setLast] = useState<AdaptivePassResult | null>(null);
   const [history, setHistory] = useState<PassRow[]>([]);
   const [running, setRunning] = useState(false);
   const [step, setStep] = useState(0);
   const [priorsCount, setPriorsCount] = useState(0);
+  const [busTick, setBusTick] = useState(0);
+
+  // Re-render at 2 Hz so the snapshot age indicator stays current.
+  useMemo(() => {
+    const id = setInterval(() => setBusTick((t) => t + 1), 500);
+    return () => clearInterval(id);
+  }, []);
+  void busTick;
 
   const seeds = PRESET_SEEDS[presetName];
 
@@ -74,30 +83,28 @@ export function RefinementPanel() {
         baseMesh: baseSetup.mesh,
         basePartition: baseSetup.part,
         step,
+        feedbackSource: feedbackMode,
         options: { splitThreshold: splitThr, extraDepth, maxNewLeaves: 5000 },
       });
       setLast(r);
       setStep((s) => s + 1);
       setPriorsCount(sharedPriorStore().size());
-      setHistory((h) =>
-        [
-          ...h,
-          {
-            step,
-            baseLeaves: r.pass.baseLeafCount,
-            refinedLeaves: r.pass.refinedLeafCount,
-            added: r.pass.added,
-            meanErr: r.error.combined.length
-              ? Array.from(r.error.combined).reduce((a, b) => a + b, 0) / r.error.combined.length
-              : 0,
-            p95Err: r.pass.plan.stats.p95Error,
-            haloAdd: r.haloDelta.addedHalo,
-            imbalance: r.repartition.imbalance,
-            ms: r.totalMs,
-            repart: r.shouldRepartition,
-          },
-        ].slice(-10),
-      );
+      const row: PassRow = {
+        step,
+        baseLeaves: r.pass.baseLeafCount,
+        refinedLeaves: r.pass.refinedLeafCount,
+        added: r.pass.added,
+        meanErr: r.error.combined.length
+          ? Array.from(r.error.combined).reduce((a, b) => a + b, 0) / r.error.combined.length
+          : 0,
+        p95Err: r.pass.plan.stats.p95Error,
+        haloAdd: r.haloDelta.addedHalo,
+        imbalance: r.repartition.imbalance,
+        ms: r.totalMs,
+        repart: r.shouldRepartition,
+        source: r.fieldSource,
+      };
+      setHistory((h) => [...h, row].slice(-10));
     } finally {
       setRunning(false);
     }
