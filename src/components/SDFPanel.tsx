@@ -8,15 +8,24 @@ import {
 } from "@/lib/sdf";
 import { createGpuSdfBackend } from "@/lib/sdf/gpu";
 
+interface Stat { min: number; avg: number; max: number; runs: number }
+
+function makeStat(samples: number[]): Stat {
+  if (!samples.length) return { min: 0, avg: 0, max: 0, runs: 0 };
+  let mn = Infinity, mx = -Infinity, s = 0;
+  for (const v of samples) { mn = Math.min(mn, v); mx = Math.max(mx, v); s += v; }
+  return { min: mn, avg: s / samples.length, max: mx, runs: samples.length };
+}
+
 interface GpuBench {
   available: boolean;
   reason?: string;
   brickCount?: number;
   levelCount?: number;
-  distQps?: number;
-  gradQps?: number;
-  collideQps?: number;
-  nearestQps?: number;
+  distQps?: Stat;
+  gradQps?: Stat;
+  collideQps?: Stat;
+  nearestQps?: Stat;
   distGpuMs?: number;
   gradGpuMs?: number;
   collideGpuMs?: number;
@@ -39,11 +48,22 @@ interface BenchResult {
   buildMs: number;
   partitionMs: number;
   embeddingMs: number;
-  distQps: number;
-  gradQps: number;
-  collideQps: number;
+  distQps: Stat;
+  gradQps: Stat;
+  collideQps: Stat;
   nearestErr: number;
   gpu?: GpuBench;
+  config: BenchConfig;
+}
+
+interface BenchConfig {
+  cpuQueries: number;
+  gpuQueries: number;
+  warmup: number;
+  radius: number;
+  newtonIters: number;
+  batchSize: number;
+  runs: number;
 }
 
 const PRESETS: { label: string; prims: SDFPrim[]; hints: AdaptiveHint[] }[] = [
