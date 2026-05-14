@@ -1396,7 +1396,7 @@ export function PhysicsCanvas({
               slop: p.contactSlop,
             });
           } else {
-            lastContactStatsRef.current = { contacts: 0, iters: 0, totalPenetration: 0, maxPenetration: 0 };
+            lastContactStatsRef.current = { contacts: 0, iters: 0, totalPenetration: 0, maxPenetration: 0, sdfContacts: 0, sdfTotalPenetration: 0, sdfMaxPenetration: 0 };
           }
 
           {
