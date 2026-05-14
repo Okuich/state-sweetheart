@@ -24,6 +24,12 @@ interface GpuBench {
   speedupDist?: number;
   speedupGrad?: number;
   speedupCollide?: number;
+  // CPU↔GPU correctness (max / mean absolute error per mode).
+  errDistMax?: number;     errDistMean?: number;
+  errGradMax?: number;     errGradMean?: number;
+  errCollideMax?: number;  errCollideMean?: number;
+  errNearestMax?: number;  errNearestMean?: number;
+  errSampleN?: number;
 }
 
 interface BenchResult {
