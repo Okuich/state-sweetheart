@@ -228,9 +228,13 @@ export function RefinementPanel() {
             <span>partitions</span><span className="text-primary tabular-nums">{partitions}</span>
           </div>
           <Slider value={[partitions]} min={1} max={16} step={1} onValueChange={([v]) => setPartitions(v)} />
+          <div className={`flex justify-between text-[10px] uppercase tracking-[0.2em] ${distributed ? "text-muted-foreground" : "text-muted-foreground/40"}`}>
+            <span>imbalance trigger</span><span className={distributed ? "text-primary tabular-nums" : "tabular-nums"}>{imbThr.toFixed(2)}×</span>
+          </div>
+          <Slider value={[imbThr]} min={1.05} max={2} step={0.05} onValueChange={([v]) => setImbThr(v)} disabled={!distributed} />
           <div className="flex gap-2 pt-2">
             <Button onClick={runPass} disabled={running} className="flex-1 uppercase tracking-[0.18em] text-[10px]">
-              {running ? "refining…" : "run adaptive pass"}
+              {running ? "refining…" : distributed ? "step distributed" : "run adaptive pass"}
             </Button>
             <Button onClick={reset} variant="outline" className="uppercase tracking-[0.18em] text-[10px]">
               reset
