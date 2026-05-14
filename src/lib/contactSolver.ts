@@ -95,7 +95,9 @@ export function resolveContacts(
   const pinned = opts.pinnedMass ?? Infinity;
 
   if (N < 2 || radius <= 0) {
-    return { contacts: 0, iters: 0, totalPenetration: 0, maxPenetration: 0 };
+    const empty = emptyStats();
+    if (opts.staticSDF) resolveSDFContacts(s, radius, e, beta, slop, pinned, opts.staticSDF, empty);
+    return empty;
   }
 
   const diam = 2 * radius;
