@@ -113,7 +113,7 @@ export function resolveContacts(
   }
   // Guard degenerate.
   if (!isFinite(minX) || !isFinite(minY)) {
-    return { contacts: 0, iters: 0, totalPenetration: 0, maxPenetration: 0 };
+    return emptyStats();
   }
   const gw = Math.max(1, Math.ceil((maxX - minX) / diam) + 1);
   const gh = Math.max(1, Math.ceil((maxY - minY) / diam) + 1);
