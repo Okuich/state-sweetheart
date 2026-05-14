@@ -240,6 +240,8 @@ export function TopologyPanel() {
           </div>
         </div>
       )}
+
+      {bench && <TraversalBenchView b={bench} />}
     </section>
   );
 }
