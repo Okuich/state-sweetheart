@@ -359,12 +359,24 @@ export function DistPartPanel() {
                 } else {
                   bg = `hsl(var(--primary) / ${0.15 + intensity * 0.85})`;
                 }
+                const isSelected = drill !== null && drill.src === rOrig && drill.dst === cOrig;
+                const clickable = v > 0 && rOrig !== cOrig;
                 return (
-                  <div
+                  <button
                     key={idx}
-                    className="aspect-square rounded-[1px]"
+                    type="button"
+                    disabled={!clickable}
+                    onClick={() => {
+                      if (!clickable) return;
+                      setDrill((d) =>
+                        d && d.src === rOrig && d.dst === cOrig ? null : { src: rOrig, dst: cOrig },
+                      );
+                    }}
+                    className={`aspect-square rounded-[1px] transition-shadow ${
+                      clickable ? "cursor-pointer hover:ring-1 hover:ring-foreground/40" : "cursor-default"
+                    } ${isSelected ? "ring-2 ring-foreground outline-none" : ""}`}
                     style={{ background: bg, opacity: filtered ? 0.55 : 1 }}
-                    title={`rank ${rOrig} → ${cOrig}: ${v}${filtered && topK > 0 ? " (below top-K)" : ""}`}
+                    title={`rank ${rOrig} → ${cOrig}: ${v}${clickable ? " · click to drill" : ""}${filtered && topK > 0 ? " (below top-K)" : ""}`}
                   />
                 );
               })}
@@ -372,6 +384,47 @@ export function DistPartPanel() {
           ) : (
             <div className="text-[11px] text-muted-foreground/70">no plan yet.</div>
           )}
+          {last && drill && (() => {
+            const key = `${drill.src}>${drill.dst}`;
+            const sent = last.halo.sendLists.get(key);
+            const recvKey = `${drill.dst}>${drill.src}`;
+            const recvBack = last.halo.sendLists.get(recvKey);
+            const ids = sent ? Array.from(sent) : [];
+            const preview = ids.slice(0, 64);
+            return (
+              <div className="rounded border border-foreground/30 bg-background/60 p-2 space-y-1">
+                <div className="flex items-center justify-between text-[10px] font-mono">
+                  <span className="uppercase tracking-[0.16em] text-muted-foreground">
+                    drill · rank <span className="text-primary">{drill.src}</span> → <span className="text-accent">{drill.dst}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setDrill(null)}
+                    className="text-muted-foreground hover:text-foreground"
+                    aria-label="Close drill"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="text-[10px] font-mono text-muted-foreground">
+                  bricks sent · <span className="text-foreground">{ids.length}</span>
+                  {recvBack && (
+                    <> · reverse ({drill.dst}→{drill.src}) · <span className="text-foreground">{recvBack.length}</span></>
+                  )}
+                </div>
+                {ids.length ? (
+                  <div className="font-mono text-[10px] leading-relaxed text-foreground/80 break-all">
+                    {preview.map((t) => `#${t}`).join(" ")}
+                    {ids.length > preview.length && (
+                      <span className="text-muted-foreground"> … +{ids.length - preview.length} more</span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-[10px] text-muted-foreground/70">no bricks exchanged on this edge.</div>
+                )}
+              </div>
+            );
+          })()}
           {last && (
             <div className="text-[10px] font-mono text-muted-foreground">
               sync bytes · <span className="text-foreground">{last.halo.syncBytes.toLocaleString()}</span>
