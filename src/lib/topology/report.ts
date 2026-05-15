@@ -404,34 +404,33 @@ export function buildReportPDF(r: TopologyResult, label?: string, sections?: Rep
     y += 2;
   }
 
-  h1(`Structural embedding (${rep.embedding.dim}-d)`);
-  doc.setFontSize(8); doc.setTextColor(110);
-  const sl = rep.embedding.slices;
-  doc.text(`slices: curvature [${sl.curvature[0]}–${sl.curvature[1]}] · features [${sl.features[0]}–${sl.features[1]}] · structural [${sl.structural[0]}–${sl.structural[1]}] · manuf [${sl.manuf[0]}–${sl.manuf[1]}]`, M, y);
-  y += 12; doc.setTextColor(20);
+  if (rep.embedding) {
+    h1(`Structural embedding (${rep.embedding.dim}-d)`);
+    doc.setFontSize(8); doc.setTextColor(110);
+    const sl = rep.embedding.slices;
+    doc.text(`slices: curvature [${sl.curvature[0]}–${sl.curvature[1]}] · features [${sl.features[0]}–${sl.features[1]}] · structural [${sl.structural[0]}–${sl.structural[1]}] · manuf [${sl.manuf[0]}–${sl.manuf[1]}]`, M, y);
+    y += 12; doc.setTextColor(20);
 
-  ensure(40);
-  const stripW = W - M * 2;
-  const cw = stripW / rep.embedding.dim;
-  const maxAbs = Math.max(1e-6, ...rep.embedding.vector.map((v) => Math.abs(v)));
-  for (let i = 0; i < rep.embedding.dim; i++) {
-    const v = rep.embedding.vector[i];
-    const t = Math.abs(v) / maxAbs;
-    if (v >= 0) doc.setFillColor(40, 90, 200, );
-    else doc.setFillColor(200, 70, 40);
-    const shade = 40 + Math.round(t * 200);
-    if (v >= 0) doc.setFillColor(255 - shade, 255 - shade, 255);
-    else doc.setFillColor(255, 255 - shade, 255 - shade);
-    doc.rect(M + i * cw, y, cw, 22, "F");
+    ensure(40);
+    const stripW = W - M * 2;
+    const cw = stripW / rep.embedding.dim;
+    const maxAbs = Math.max(1e-6, ...rep.embedding.vector.map((v) => Math.abs(v)));
+    for (let i = 0; i < rep.embedding.dim; i++) {
+      const v = rep.embedding.vector[i];
+      const t = Math.abs(v) / maxAbs;
+      const shade = 40 + Math.round(t * 200);
+      if (v >= 0) doc.setFillColor(255 - shade, 255 - shade, 255);
+      else doc.setFillColor(255, 255 - shade, 255 - shade);
+      doc.rect(M + i * cw, y, cw, 22, "F");
+    }
+    y += 28;
+
+    // Raw vector
+    doc.setFont("courier", "normal"); doc.setFontSize(7); doc.setTextColor(70);
+    const raw = rep.embedding.vector.map((v) => v.toFixed(3)).join(", ");
+    const lines = doc.splitTextToSize(raw, W - M * 2) as string[];
+    for (const ln of lines) { ensure(9); doc.text(ln, M, y); y += 9; }
   }
-  y += 28;
-
-  // Raw vector
-  doc.setFont("courier", "normal"); doc.setFontSize(7); doc.setTextColor(70);
-  const raw = rep.embedding.vector.map((v) => v.toFixed(3)).join(", ");
-  const lines = doc.splitTextToSize(raw, W - M * 2) as string[];
-  for (const ln of lines) { ensure(9); doc.text(ln, M, y); y += 9; }
-
   return doc.output("blob");
 }
 
