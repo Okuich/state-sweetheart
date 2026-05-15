@@ -131,7 +131,7 @@ export function RefinementPanel() {
           basePartition: baseSetup.part,
           step,
           feedbackSource: feedbackMode,
-          options: { splitThreshold: splitThr, extraDepth, maxNewLeaves: 5000 },
+          options: { splitThreshold: splitThr, extraDepth, maxNewLeaves: 5000, weights: { ...DEFAULT_WEIGHTS, ...weights } },
         });
         setLastBaseMesh(baseSetup.mesh);
         setLastPartition(baseSetup.part);
