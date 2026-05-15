@@ -58,6 +58,10 @@ export function RefinementPanel() {
   const [feedbackMode, setFeedbackMode] = useState<"physics" | "auto" | "synthetic">("physics");
   const [distributed, setDistributed] = useState(false);
   const [imbThr, setImbThr] = useState(1.15);
+  const [weights, setWeights] = useState<{ stress: number; thermal: number; deformation: number; contact: number }>({
+    stress: 1.0, thermal: 0.6, deformation: 0.8, contact: 0.9,
+  });
+  const setWeight = (k: keyof typeof weights, v: number) => setWeights((w) => ({ ...w, [k]: v }));
   const [last, setLast] = useState<AdaptivePassResult | null>(null);
   const [history, setHistory] = useState<PassRow[]>([]);
   const [actions, setActions] = useState<DistributedAction[]>([]);
