@@ -610,14 +610,37 @@ function PhysicsChannelStrip({ last, weights, onWeightChange }: { last: Adaptive
     });
   }, [last]);
 
+  const [smoothWindow, setSmoothWindow] = useState(1);
+  const SMOOTH_OPTIONS = [1, 3, 5, 9];
+
   return (
     <div className="rounded-md border border-border bg-background/40 p-4 space-y-3">
-      <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+      <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-muted-foreground gap-3">
         <span>physics OS feedback channels</span>
-        <span className={realPhysics ? "text-emerald-500" : last.fieldSource === "synthetic" ? "text-amber-500" : "text-primary"}>
-          source · {last.fieldSource}
-          {realPhysics && <> · {N}p · age {ageStr} · contacts {contactCount}</>}
-        </span>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 normal-case tracking-normal">
+            <span className="text-[9px]">smooth</span>
+            {SMOOTH_OPTIONS.map((w) => (
+              <button
+                key={w}
+                type="button"
+                onClick={() => setSmoothWindow(w)}
+                className={`px-1.5 py-0.5 rounded border text-[9px] font-mono transition ${
+                  smoothWindow === w
+                    ? "border-primary bg-primary/15 text-foreground"
+                    : "border-border hover:bg-muted/40"
+                }`}
+                title={w === 1 ? "raw values, no smoothing" : `moving average over ${w} frames`}
+              >
+                {w === 1 ? "off" : `${w}`}
+              </button>
+            ))}
+          </div>
+          <span className={realPhysics ? "text-emerald-500" : last.fieldSource === "synthetic" ? "text-amber-500" : "text-primary"}>
+            source · {last.fieldSource}
+            {realPhysics && <> · {N}p · age {ageStr} · contacts {contactCount}</>}
+          </span>
+        </div>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         {CHANNEL_DEFS.map((c) => {
