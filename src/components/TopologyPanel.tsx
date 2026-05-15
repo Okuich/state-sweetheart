@@ -64,6 +64,25 @@ export function TopologyPanel() {
   const [result, setResult] = useState<TopologyResult | null>(null);
   const [corpus, setCorpus] = useState<CorpusEntry[]>([]);
   const [bench, setBench] = useState<TraversalBench | null>(null);
+  const [imported, setImported] = useState<{ name: string; generatedAt: string } | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  const onImportFile = async (file: File) => {
+    setImportError(null);
+    try {
+      const text = await file.text();
+      const json = JSON.parse(text);
+      const rep = parseTopologyReport(json);
+      const r = rehydrateFromReport(rep);
+      setResult(r);
+      setBench(null);
+      setImported({ name: file.name, generatedAt: rep.generatedAt });
+    } catch (e) {
+      setImported(null);
+      setImportError(e instanceof Error ? e.message : "failed to import report");
+    }
+  };
 
   const benchTraversal = async () => {
     if (!result) return;
