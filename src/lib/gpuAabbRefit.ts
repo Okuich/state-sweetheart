@@ -501,7 +501,7 @@ async function refitStepGpu(ctx: AabbRefitContext): Promise<void> {
       readBox:   make(tree.boxes.byteLength,     GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ),
       readDirty: make(tree.N * 4,                GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ),
     };
-    const wb = (b: GPUBuffer, d: ArrayBufferView) => device.queue.writeBuffer(b, 0, d as unknown as BufferSource);
+    const wb = (b: GPUBuffer, d: ArrayBufferView) => writeTypedBuffer(device, b, d);
     wb(res.primBuf,   scene.prims);
     wb(res.radBuf,    scene.radii);
     wb(res.leafIdBuf, tree.levels[0]);
