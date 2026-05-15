@@ -204,7 +204,7 @@ export function FabPredictionsPanel() {
                 const hist = snap.history[pr.partId] ?? [];
                 const isOpen = expanded.has(pr.partId);
                 return (
-                <>
+                <Fragment key={pr.partId}>
                 <tr key={pr.partId} className="border-t border-border">
                   <td className="px-2 py-2">
                     <button
