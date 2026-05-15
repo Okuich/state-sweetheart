@@ -391,6 +391,10 @@ export function RefinementPanel() {
         </div>
       </div>
 
+      {last && (
+        <PhysicsChannelStrip last={last} />
+      )}
+
       {last && lastBaseMesh && (
         <RefinementOverlay3D baseMesh={lastBaseMesh} result={last} height={340} />
       )}
