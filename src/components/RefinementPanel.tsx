@@ -657,7 +657,7 @@ function PhysicsChannelStrip({ last, weights, onWeightChange }: { last: Adaptive
               <div className="h-1.5 rounded-sm bg-muted/40 overflow-hidden">
                 <div className="h-full rounded-sm" style={{ width: `${cover}%`, background: c.color }} />
               </div>
-              <Sparkline values={series} color={c.color} />
+              <Sparkline values={series} color={c.color} smoothWindow={smoothWindow} />
               <div className="flex justify-between text-[9px] font-mono text-muted-foreground tabular-nums">
                 <span>cover {cover}%</span>
                 <span>peak {stats.peak.toFixed(2)}</span>
