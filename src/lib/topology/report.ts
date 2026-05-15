@@ -375,15 +375,17 @@ export function buildReportPDF(r: TopologyResult, label?: string, sections?: Rep
     const availW = W - M * 2 - labelW;
     const availH = H - M - y - 4; // remaining height on current page
     // Pick a target cell size that keeps the whole matrix legible. Cells
-    // shrink with P, but never below 4pt (pure heatmap, no inline text).
-    const idealCell = Math.min(36, Math.max(4, Math.floor(720 / Math.max(8, P))));
-    const cellW = Math.max(4, Math.min(idealCell, Math.floor(availW)));
+    // shrink with P, but never below 4pt (or 2pt in compact mode).
+    const minCell = opts.compactMatrix ? 2 : 4;
+    const maxCell = opts.compactMatrix ? 14 : 36;
+    const idealCell = Math.min(maxCell, Math.max(minCell, Math.floor(720 / Math.max(8, P))));
+    const cellW = Math.max(minCell, Math.min(idealCell, Math.floor(availW)));
     const cellH = cellW; // square cells regardless of page
     // How many cols fit across one page; how many rows fit per page block.
     const colsPerPage = Math.max(1, Math.min(P, Math.floor(availW / cellW)));
     const rowsFirstPage = Math.max(1, Math.floor((availH - headerH) / cellH));
     const rowsFullPage = Math.max(1, Math.floor((H - M * 2 - headerH) / cellH));
-    const showText = cellW >= 18 && cellH >= 14;
+    const showText = !opts.compactMatrix && cellW >= 18 && cellH >= 14;
     const numCol = (n: number) => `P${n}`;
 
     for (let c0 = 0; c0 < P; c0 += colsPerPage) {
