@@ -490,12 +490,10 @@ export function parseTopologyReport(input: unknown): TopologyReport {
  * bench, retrieval) should be gated by an `imported` flag in the UI.
  */
 export function rehydrateFromReport(rep: TopologyReport): TopologyResult {
-  const N = rep.graph.nodes;
-  const E = rep.graph.edges;
-  const P = rep.partition.partitionCount;
+  const N = rep.graph?.nodes ?? 0;
+  const E = rep.graph?.edges ?? 0;
+  const P = rep.partition?.partitionCount ?? 0;
 
-  // Placeholder node objects — shape-correct, content irrelevant for the
-  // panels (which only read .length).
   const nodes = new Array(N).fill(null).map((_, i) => ({
     leaf: i,
     center: [0, 0, 0] as [number, number, number],
@@ -510,17 +508,25 @@ export function rehydrateFromReport(rep: TopologyReport): TopologyResult {
   }));
   const edges = new Array(E).fill(null).map(() => ({ a: 0, b: 0, shared: 0, axis: 0 as const }));
 
-  // Placeholder resident lists with the right cardinality per partition.
   const resident: number[][] = new Array(P).fill(null).map((_, p) => {
-    const len = rep.partition.resident[p] ?? 0;
+    const len = rep.partition?.resident[p] ?? 0;
     const arr = new Array(len);
     for (let i = 0; i < len; i++) arr[i] = i;
     return arr;
   });
   const halos: number[][] = new Array(P).fill(null).map((_, p) => {
-    const len = rep.partition.halos[p] ?? 0;
+    const len = rep.partition?.halos[p] ?? 0;
     return new Array(len).fill(0);
   });
+
+  // Defaults for omitted sections.
+  const zeroFeatureCounts = {
+    bulk: 0, boundary: 0, thin_wall: 0, overhang: 0,
+    cavity: 0, stress_concentrator: 0, thermal_bottleneck: 0, symmetry_seed: 0,
+  } as Record<FeatureClass, number>;
+  const zeroRefHints = { ...zeroFeatureCounts };
+  const zeroDrivers = { overhangPenalty: 0, cavityPenalty: 0, thinWallPenalty: 0, stressPenalty: 0, thermalPenalty: 0 };
+  const zeroSlices = { curvature: [0, 0] as [number, number], features: [0, 0] as [number, number], structural: [0, 0] as [number, number], manuf: [0, 0] as [number, number] };
 
   return {
     totalMs: rep.pipelineMs,
@@ -530,40 +536,40 @@ export function rehydrateFromReport(rep: TopologyReport): TopologyResult {
       neighborOffsets: new Uint32Array(N + 1),
       neighborIdx: new Uint32Array(0),
       neighborEdge: new Uint32Array(0),
-      buildMs: rep.graph.buildMs,
+      buildMs: rep.graph?.buildMs ?? 0,
     },
     features: {
-      counts: rep.features.counts,
-      symmetryScore: rep.features.symmetryScore,
-      minWallThickness: rep.features.minWallThickness,
-      avgThinWallThickness: rep.features.avgThinWallThickness,
+      counts: rep.features?.counts ?? zeroFeatureCounts,
+      symmetryScore: rep.features?.symmetryScore ?? 0,
+      minWallThickness: rep.features?.minWallThickness ?? 0,
+      avgThinWallThickness: rep.features?.avgThinWallThickness ?? 0,
     },
     manufacturability: {
-      feasibility: rep.manufacturability.feasibility,
-      machiningAccess: rep.manufacturability.machiningAccess,
-      supportFraction: rep.manufacturability.supportFraction,
-      thermalDistortionRisk: rep.manufacturability.thermalDistortionRisk,
-      assemblyComplexity: rep.manufacturability.assemblyComplexity,
-      drivers: rep.manufacturability.drivers,
+      feasibility: rep.manufacturability?.feasibility ?? 0,
+      machiningAccess: rep.manufacturability?.machiningAccess ?? 0,
+      supportFraction: rep.manufacturability?.supportFraction ?? 0,
+      thermalDistortionRisk: rep.manufacturability?.thermalDistortionRisk ?? 0,
+      assemblyComplexity: rep.manufacturability?.assemblyComplexity ?? 0,
+      drivers: rep.manufacturability?.drivers ?? zeroDrivers,
     },
     priors: {
-      timestepScale: rep.priors.timestepScale,
-      damping: rep.priors.damping,
-      contactStiffness: rep.priors.contactStiffness,
-      refinementHints: rep.priors.refinementHints,
+      timestepScale: rep.priors?.timestepScale ?? 1,
+      damping: rep.priors?.damping ?? 0,
+      contactStiffness: rep.priors?.contactStiffness ?? 0,
+      refinementHints: rep.priors?.refinementHints ?? zeroRefHints,
     },
     partition: {
       partitionCount: P,
-      edgeCut: rep.partition.edgeCut,
-      imbalance: rep.partition.imbalance,
+      edgeCut: rep.partition?.edgeCut ?? 0,
+      imbalance: rep.partition?.imbalance ?? 0,
       owners: new Int32Array(N),
       resident,
       halos,
-      commMatrix: rep.partition.commMatrix.slice(),
+      commMatrix: (rep.partition?.commMatrix ?? []).slice(),
     },
     embedding: {
-      vector: new Float32Array(rep.embedding.vector),
-      slices: rep.embedding.slices,
+      vector: new Float32Array(rep.embedding?.vector ?? []),
+      slices: rep.embedding?.slices ?? zeroSlices,
     },
   } as unknown as TopologyResult;
 }
