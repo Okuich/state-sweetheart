@@ -4,6 +4,7 @@
  * The underlying engine is intentionally not named in the UI.
  */
 import { useEffect, useState } from "react";
+import { Loader2 } from "lucide-react";
 import {
   physicsFabFeed,
   type FeedSnapshot,
@@ -34,7 +35,11 @@ function StatusPill({ status }: { status: PartStatus }) {
     <span
       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] ${STATUS_STYLES[status]}`}
     >
-      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      {status === "processing" || status === "queued" ? (
+        <Loader2 className="h-2.5 w-2.5 animate-spin" />
+      ) : (
+        <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      )}
       {STATUS_LABEL[status]}
     </span>
   );
