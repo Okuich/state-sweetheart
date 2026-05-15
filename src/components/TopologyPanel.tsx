@@ -7,7 +7,9 @@ import {
   kHopCpu, computeHalosCpu, createCsrGpuBackend,
   type TopologyResult, type FeatureClass,
 } from "@/lib/topology";
-import { downloadReport, parseTopologyReport, rehydrateFromReport } from "@/lib/topology/report";
+import { downloadReport, parseTopologyReport, rehydrateFromReport, ALL_SECTIONS, type ReportSections } from "@/lib/topology/report";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface TraversalBench {
   N: number; E: number;
@@ -64,6 +66,8 @@ export function TopologyPanel() {
   const [result, setResult] = useState<TopologyResult | null>(null);
   const [corpus, setCorpus] = useState<CorpusEntry[]>([]);
   const [bench, setBench] = useState<TraversalBench | null>(null);
+  const [exportSections, setExportSections] = useState<ReportSections>({ ...ALL_SECTIONS });
+  const toggleSection = (k: keyof ReportSections) => setExportSections((s) => ({ ...s, [k]: !s[k] }));
   const [imported, setImported] = useState<{ name: string; generatedAt: string } | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);

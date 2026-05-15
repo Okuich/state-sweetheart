@@ -19,19 +19,21 @@ const FEATURE_ORDER: FeatureClass[] = [
 export interface TopologyReport {
   generatedAt: string;
   pipelineMs: number;
-  graph: {
+  /** Sections that were included in this snapshot (omitted = all). */
+  sections?: ReportSections;
+  graph?: {
     nodes: number;
     edges: number;
     meanValence: number;
     buildMs: number;
   };
-  features: {
+  features?: {
     counts: Record<FeatureClass, number>;
     symmetryScore: number;
     minWallThickness: number;
     avgThinWallThickness: number;
   };
-  manufacturability: {
+  manufacturability?: {
     feasibility: number;
     machiningAccess: number;
     supportFraction: number;
@@ -45,13 +47,13 @@ export interface TopologyReport {
       thermalPenalty: number;
     };
   };
-  priors: {
+  priors?: {
     timestepScale: number;
     damping: number;
     contactStiffness: number;
     refinementHints: Record<FeatureClass, number>;
   };
-  partition: {
+  partition?: {
     partitionCount: number;
     edgeCut: number;
     imbalance: number;
@@ -59,58 +61,94 @@ export interface TopologyReport {
     halos: number[];
     commMatrix: number[];
   };
-  embedding: {
+  embedding?: {
     dim: number;
     slices: { curvature: [number, number]; features: [number, number]; structural: [number, number]; manuf: [number, number] };
     vector: number[];
   };
 }
 
-export function buildReportJSON(r: TopologyResult): TopologyReport {
+export interface ReportSections {
+  graph?: boolean;
+  features?: boolean;
+  manufacturability?: boolean;
+  partition?: boolean;
+  embedding?: boolean;
+  /** PDF-only: include the auto-generated topology thumbnail page. */
+  thumbnails?: boolean;
+}
+
+export const ALL_SECTIONS: Required<ReportSections> = {
+  graph: true,
+  features: true,
+  manufacturability: true,
+  partition: true,
+  embedding: true,
+  thumbnails: true,
+};
+
+function resolveSections(s?: ReportSections): Required<ReportSections> {
+  return { ...ALL_SECTIONS, ...(s ?? {}) };
+}
+
+export function buildReportJSON(r: TopologyResult, sections?: ReportSections): TopologyReport {
+  const sec = resolveSections(sections);
   const meanValence = (r.graph.edges.length * 2) / Math.max(1, r.graph.nodes.length);
-  return {
+  const out: TopologyReport = {
     generatedAt: new Date().toISOString(),
     pipelineMs: r.totalMs,
-    graph: {
+    sections: sec,
+  };
+  if (sec.graph) {
+    out.graph = {
       nodes: r.graph.nodes.length,
       edges: r.graph.edges.length,
       meanValence,
       buildMs: r.graph.buildMs,
-    },
-    features: {
+    };
+  }
+  if (sec.features) {
+    out.features = {
       counts: r.features.counts,
       symmetryScore: r.features.symmetryScore,
       minWallThickness: r.features.minWallThickness,
       avgThinWallThickness: r.features.avgThinWallThickness,
-    },
-    manufacturability: {
+    };
+  }
+  if (sec.manufacturability) {
+    out.manufacturability = {
       feasibility: r.manufacturability.feasibility,
       machiningAccess: r.manufacturability.machiningAccess,
       supportFraction: r.manufacturability.supportFraction,
       thermalDistortionRisk: r.manufacturability.thermalDistortionRisk,
       assemblyComplexity: r.manufacturability.assemblyComplexity,
       drivers: r.manufacturability.drivers,
-    },
-    priors: {
+    };
+    out.priors = {
       timestepScale: r.priors.timestepScale,
       damping: r.priors.damping,
       contactStiffness: r.priors.contactStiffness,
       refinementHints: r.priors.refinementHints,
-    },
-    partition: {
+    };
+  }
+  if (sec.partition) {
+    out.partition = {
       partitionCount: r.partition.partitionCount,
       edgeCut: r.partition.edgeCut,
       imbalance: r.partition.imbalance,
       resident: r.partition.resident.map((p) => p.length),
       halos: r.partition.halos.map((p) => p.length),
       commMatrix: Array.from(r.partition.commMatrix),
-    },
-    embedding: {
+    };
+  }
+  if (sec.embedding) {
+    out.embedding = {
       dim: r.embedding.vector.length,
       slices: r.embedding.slices,
       vector: Array.from(r.embedding.vector),
-    },
-  };
+    };
+  }
+  return out;
 }
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -119,8 +157,9 @@ function hexToRgb(hex: string): [number, number, number] {
   return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
 }
 
-export function buildReportPDF(r: TopologyResult, label?: string): Blob {
-  const rep = buildReportJSON(r);
+export function buildReportPDF(r: TopologyResult, label?: string, sections?: ReportSections): Blob {
+  const sec = resolveSections(sections);
+  const rep = buildReportJSON(r, sec);
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const W = doc.internal.pageSize.getWidth();
   const H = doc.internal.pageSize.getHeight();
@@ -173,7 +212,7 @@ export function buildReportPDF(r: TopologyResult, label?: string): Blob {
   doc.setTextColor(20);
 
   // Auto-generated thumbnails of the topology (XY/XZ/YZ + partition view).
-  const thumbs = renderTopologyThumbnails(r, { size: 220, scale: 2 });
+  const thumbs = sec.thumbnails ? renderTopologyThumbnails(r, { size: 220, scale: 2 }) : [];
   if (thumbs.length) {
     h1("Topology views");
     const cols = 2;
@@ -222,158 +261,176 @@ export function buildReportPDF(r: TopologyResult, label?: string): Blob {
     y += 10;
   }
 
-  h1("Topology graph");
-  kv([
-    ["nodes", `${rep.graph.nodes}`],
-    ["edges", `${rep.graph.edges}`],
-    ["mean valence", rep.graph.meanValence.toFixed(2)],
-    ["graph build", `${rep.graph.buildMs} ms`],
-    ["pipeline total", `${rep.pipelineMs} ms`],
-    ["symmetry", `${(rep.features.symmetryScore * 100).toFixed(1)}%`],
-    ["min wall thickness", rep.features.minWallThickness.toFixed(3)],
-    ["avg thin-wall thickness", rep.features.avgThinWallThickness.toFixed(3)],
-  ]);
-
-  h1("Feature classification");
-  for (const c of FEATURE_ORDER) bar(FEATURE_LABELS[c] as string, rep.features.counts[c], Math.max(1, rep.graph.nodes));
-
-  h1("Manufacturability");
-  const m = rep.manufacturability;
-  bar("feasibility", m.feasibility);
-  bar("machining access", m.machiningAccess);
-  bar("support fraction", m.supportFraction);
-  bar("thermal distortion risk", m.thermalDistortionRisk);
-  bar("assembly complexity", m.assemblyComplexity);
-
-  h2("Drivers");
-  bar("overhang penalty", m.drivers.overhangPenalty);
-  bar("cavity penalty", m.drivers.cavityPenalty);
-  bar("thin-wall penalty", m.drivers.thinWallPenalty);
-  bar("stress penalty", m.drivers.stressPenalty);
-  bar("thermal penalty", m.drivers.thermalPenalty);
-
-  h1("Physics priors");
-  kv([
-    ["timestep scale", rep.priors.timestepScale.toFixed(3)],
-    ["damping", rep.priors.damping.toFixed(3)],
-    ["contact stiffness", rep.priors.contactStiffness.toFixed(3)],
-  ]);
-  h2("Refinement hints");
-  for (const c of FEATURE_ORDER) bar(FEATURE_LABELS[c], rep.priors.refinementHints[c], 2);
-
-  h1(`Partitions · P=${rep.partition.partitionCount}`);
-  kv([
-    ["edge cut", `${rep.partition.edgeCut}`],
-    ["imbalance", `${(rep.partition.imbalance * 100).toFixed(1)}%`],
-  ]);
-  h2("Resident / halo per partition");
-  doc.setFont("helvetica", "normal"); doc.setFontSize(9);
-  for (let i = 0; i < rep.partition.partitionCount; i++) {
-    ensure(12);
-    doc.text(`P${i}: resident ${rep.partition.resident[i]} · halo ${rep.partition.halos[i]}`, M, y);
-    y += 12;
-  }
-
-  h2("Communication matrix (rows = receiver)");
-  const P = rep.partition.partitionCount;
-  const maxFlow = Math.max(1, ...rep.partition.commMatrix);
-  const labelW = 30;        // left "P##" gutter
-  const headerH = 12;       // top "P##" header strip
-  const availW = W - M * 2 - labelW;
-  const availH = H - M - y - 4; // remaining height on current page
-  // Pick a target cell size that keeps the whole matrix legible. Cells
-  // shrink with P, but never below 4pt (pure heatmap, no inline text).
-  const idealCell = Math.min(36, Math.max(4, Math.floor(720 / Math.max(8, P))));
-  const cellW = Math.max(4, Math.min(idealCell, Math.floor(availW)));
-  const cellH = cellW; // square cells regardless of page
-  // How many cols fit across one page; how many rows fit per page block.
-  const colsPerPage = Math.max(1, Math.min(P, Math.floor(availW / cellW)));
-  const rowsFirstPage = Math.max(1, Math.floor((availH - headerH) / cellH));
-  const rowsFullPage = Math.max(1, Math.floor((H - M * 2 - headerH) / cellH));
-  const showText = cellW >= 18 && cellH >= 14;
-  const numCol = (n: number) => `P${n}`;
-
-  for (let c0 = 0; c0 < P; c0 += colsPerPage) {
-    const cN = Math.min(P, c0 + colsPerPage);
-    let r0 = 0;
-    let firstBlockOnThisColRange = true;
-    while (r0 < P) {
-      // Decide capacity: first block reuses leftover space on the current
-      // page; subsequent blocks for the same column-range start fresh.
-      if (!firstBlockOnThisColRange || c0 > 0) {
-        doc.addPage();
-        y = M;
-      }
-      const cap = firstBlockOnThisColRange && c0 === 0
-        ? rowsFirstPage
-        : rowsFullPage;
-      const rN = Math.min(P, r0 + cap);
-      // Sub-block caption when matrix paginates.
-      if (P > colsPerPage || rN - r0 < P) {
-        doc.setFont("helvetica", "italic"); doc.setFontSize(8); doc.setTextColor(110);
-        doc.text(`cols ${numCol(c0)}–${numCol(cN - 1)} · rows ${numCol(r0)}–${numCol(rN - 1)} of P=${P}`, M, y);
-        y += 10;
-        doc.setTextColor(20);
-      }
-      // Column header.
-      doc.setFont("helvetica", "normal"); doc.setFontSize(Math.min(8, Math.max(5, cellW * 0.45)));
-      for (let c = c0; c < cN; c++) {
-        const cx = M + labelW + (c - c0) * cellW + cellW / 2;
-        doc.text(numCol(c), cx, y, { align: "center" } as { align: "center" });
-      }
-      y += headerH - 2;
-      // Body rows.
-      for (let r2 = r0; r2 < rN; r2++) {
-        doc.setFontSize(Math.min(8, Math.max(5, cellH * 0.45)));
-        doc.text(numCol(r2), M, y + cellH - 4);
-        for (let c = c0; c < cN; c++) {
-          const v = rep.partition.commMatrix[r2 * P + c];
-          const t = v / maxFlow;
-          doc.setFillColor(255 - Math.round(t * 195), 255 - Math.round(t * 145), 255 - Math.round(t * 55));
-          doc.rect(M + labelW + (c - c0) * cellW, y, cellW - 1, cellH - 1, "F");
-          if (showText && v > 0) {
-            doc.setTextColor(t > 0.55 ? 255 : 30);
-            doc.text(`${v}`, M + labelW + (c - c0) * cellW + cellW / 2, y + cellH - 5, { align: "center" } as { align: "center" });
-          }
-        }
-        y += cellH;
-      }
-      doc.setTextColor(20);
-      y += 6;
-      r0 = rN;
-      firstBlockOnThisColRange = false;
+  if (rep.graph || rep.features) {
+    h1("Topology graph");
+    const rows: [string, string][] = [];
+    if (rep.graph) {
+      rows.push(
+        ["nodes", `${rep.graph.nodes}`],
+        ["edges", `${rep.graph.edges}`],
+        ["mean valence", rep.graph.meanValence.toFixed(2)],
+        ["graph build", `${rep.graph.buildMs} ms`],
+      );
     }
+    rows.push(["pipeline total", `${rep.pipelineMs} ms`]);
+    if (rep.features) {
+      rows.push(
+        ["symmetry", `${(rep.features.symmetryScore * 100).toFixed(1)}%`],
+        ["min wall thickness", rep.features.minWallThickness.toFixed(3)],
+        ["avg thin-wall thickness", rep.features.avgThinWallThickness.toFixed(3)],
+      );
+    }
+    kv(rows);
   }
-  y += 2;
 
-  h1(`Structural embedding (${rep.embedding.dim}-d)`);
-  doc.setFontSize(8); doc.setTextColor(110);
-  const sl = rep.embedding.slices;
-  doc.text(`slices: curvature [${sl.curvature[0]}–${sl.curvature[1]}] · features [${sl.features[0]}–${sl.features[1]}] · structural [${sl.structural[0]}–${sl.structural[1]}] · manuf [${sl.manuf[0]}–${sl.manuf[1]}]`, M, y);
-  y += 12; doc.setTextColor(20);
-
-  ensure(40);
-  const stripW = W - M * 2;
-  const cw = stripW / rep.embedding.dim;
-  const maxAbs = Math.max(1e-6, ...rep.embedding.vector.map((v) => Math.abs(v)));
-  for (let i = 0; i < rep.embedding.dim; i++) {
-    const v = rep.embedding.vector[i];
-    const t = Math.abs(v) / maxAbs;
-    if (v >= 0) doc.setFillColor(40, 90, 200, );
-    else doc.setFillColor(200, 70, 40);
-    const shade = 40 + Math.round(t * 200);
-    if (v >= 0) doc.setFillColor(255 - shade, 255 - shade, 255);
-    else doc.setFillColor(255, 255 - shade, 255 - shade);
-    doc.rect(M + i * cw, y, cw, 22, "F");
+  if (rep.features) {
+    h1("Feature classification");
+    const total = Math.max(1, rep.graph?.nodes ?? 1);
+    for (const c of FEATURE_ORDER) bar(FEATURE_LABELS[c] as string, rep.features.counts[c], total);
   }
-  y += 28;
 
-  // Raw vector
-  doc.setFont("courier", "normal"); doc.setFontSize(7); doc.setTextColor(70);
-  const raw = rep.embedding.vector.map((v) => v.toFixed(3)).join(", ");
-  const lines = doc.splitTextToSize(raw, W - M * 2) as string[];
-  for (const ln of lines) { ensure(9); doc.text(ln, M, y); y += 9; }
+  if (rep.manufacturability) {
+    h1("Manufacturability");
+    const m = rep.manufacturability;
+    bar("feasibility", m.feasibility);
+    bar("machining access", m.machiningAccess);
+    bar("support fraction", m.supportFraction);
+    bar("thermal distortion risk", m.thermalDistortionRisk);
+    bar("assembly complexity", m.assemblyComplexity);
 
+    h2("Drivers");
+    bar("overhang penalty", m.drivers.overhangPenalty);
+    bar("cavity penalty", m.drivers.cavityPenalty);
+    bar("thin-wall penalty", m.drivers.thinWallPenalty);
+    bar("stress penalty", m.drivers.stressPenalty);
+    bar("thermal penalty", m.drivers.thermalPenalty);
+  }
+
+  if (rep.priors) {
+    h1("Physics priors");
+    kv([
+      ["timestep scale", rep.priors.timestepScale.toFixed(3)],
+      ["damping", rep.priors.damping.toFixed(3)],
+      ["contact stiffness", rep.priors.contactStiffness.toFixed(3)],
+    ]);
+    h2("Refinement hints");
+    for (const c of FEATURE_ORDER) bar(FEATURE_LABELS[c], rep.priors.refinementHints[c], 2);
+  }
+
+  if (rep.partition) {
+    h1(`Partitions · P=${rep.partition.partitionCount}`);
+    kv([
+      ["edge cut", `${rep.partition.edgeCut}`],
+      ["imbalance", `${(rep.partition.imbalance * 100).toFixed(1)}%`],
+    ]);
+    h2("Resident / halo per partition");
+    doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+    for (let i = 0; i < rep.partition.partitionCount; i++) {
+      ensure(12);
+      doc.text(`P${i}: resident ${rep.partition.resident[i]} · halo ${rep.partition.halos[i]}`, M, y);
+      y += 12;
+    }
+
+    h2("Communication matrix (rows = receiver)");
+    const P = rep.partition.partitionCount;
+    const maxFlow = Math.max(1, ...rep.partition.commMatrix);
+    const labelW = 30;        // left "P##" gutter
+    const headerH = 12;       // top "P##" header strip
+    const availW = W - M * 2 - labelW;
+    const availH = H - M - y - 4; // remaining height on current page
+    // Pick a target cell size that keeps the whole matrix legible. Cells
+    // shrink with P, but never below 4pt (pure heatmap, no inline text).
+    const idealCell = Math.min(36, Math.max(4, Math.floor(720 / Math.max(8, P))));
+    const cellW = Math.max(4, Math.min(idealCell, Math.floor(availW)));
+    const cellH = cellW; // square cells regardless of page
+    // How many cols fit across one page; how many rows fit per page block.
+    const colsPerPage = Math.max(1, Math.min(P, Math.floor(availW / cellW)));
+    const rowsFirstPage = Math.max(1, Math.floor((availH - headerH) / cellH));
+    const rowsFullPage = Math.max(1, Math.floor((H - M * 2 - headerH) / cellH));
+    const showText = cellW >= 18 && cellH >= 14;
+    const numCol = (n: number) => `P${n}`;
+
+    for (let c0 = 0; c0 < P; c0 += colsPerPage) {
+      const cN = Math.min(P, c0 + colsPerPage);
+      let r0 = 0;
+      let firstBlockOnThisColRange = true;
+      while (r0 < P) {
+        // Decide capacity: first block reuses leftover space on the current
+        // page; subsequent blocks for the same column-range start fresh.
+        if (!firstBlockOnThisColRange || c0 > 0) {
+          doc.addPage();
+          y = M;
+        }
+        const cap = firstBlockOnThisColRange && c0 === 0
+          ? rowsFirstPage
+          : rowsFullPage;
+        const rN = Math.min(P, r0 + cap);
+        // Sub-block caption when matrix paginates.
+        if (P > colsPerPage || rN - r0 < P) {
+          doc.setFont("helvetica", "italic"); doc.setFontSize(8); doc.setTextColor(110);
+          doc.text(`cols ${numCol(c0)}–${numCol(cN - 1)} · rows ${numCol(r0)}–${numCol(rN - 1)} of P=${P}`, M, y);
+          y += 10;
+          doc.setTextColor(20);
+        }
+        // Column header.
+        doc.setFont("helvetica", "normal"); doc.setFontSize(Math.min(8, Math.max(5, cellW * 0.45)));
+        for (let c = c0; c < cN; c++) {
+          const cx = M + labelW + (c - c0) * cellW + cellW / 2;
+          doc.text(numCol(c), cx, y, { align: "center" } as { align: "center" });
+        }
+        y += headerH - 2;
+        // Body rows.
+        for (let r2 = r0; r2 < rN; r2++) {
+          doc.setFontSize(Math.min(8, Math.max(5, cellH * 0.45)));
+          doc.text(numCol(r2), M, y + cellH - 4);
+          for (let c = c0; c < cN; c++) {
+            const v = rep.partition.commMatrix[r2 * P + c];
+            const t = v / maxFlow;
+            doc.setFillColor(255 - Math.round(t * 195), 255 - Math.round(t * 145), 255 - Math.round(t * 55));
+            doc.rect(M + labelW + (c - c0) * cellW, y, cellW - 1, cellH - 1, "F");
+            if (showText && v > 0) {
+              doc.setTextColor(t > 0.55 ? 255 : 30);
+              doc.text(`${v}`, M + labelW + (c - c0) * cellW + cellW / 2, y + cellH - 5, { align: "center" } as { align: "center" });
+            }
+          }
+          y += cellH;
+        }
+        doc.setTextColor(20);
+        y += 6;
+        r0 = rN;
+        firstBlockOnThisColRange = false;
+      }
+    }
+    y += 2;
+  }
+
+  if (rep.embedding) {
+    h1(`Structural embedding (${rep.embedding.dim}-d)`);
+    doc.setFontSize(8); doc.setTextColor(110);
+    const sl = rep.embedding.slices;
+    doc.text(`slices: curvature [${sl.curvature[0]}–${sl.curvature[1]}] · features [${sl.features[0]}–${sl.features[1]}] · structural [${sl.structural[0]}–${sl.structural[1]}] · manuf [${sl.manuf[0]}–${sl.manuf[1]}]`, M, y);
+    y += 12; doc.setTextColor(20);
+
+    ensure(40);
+    const stripW = W - M * 2;
+    const cw = stripW / rep.embedding.dim;
+    const maxAbs = Math.max(1e-6, ...rep.embedding.vector.map((v) => Math.abs(v)));
+    for (let i = 0; i < rep.embedding.dim; i++) {
+      const v = rep.embedding.vector[i];
+      const t = Math.abs(v) / maxAbs;
+      const shade = 40 + Math.round(t * 200);
+      if (v >= 0) doc.setFillColor(255 - shade, 255 - shade, 255);
+      else doc.setFillColor(255, 255 - shade, 255 - shade);
+      doc.rect(M + i * cw, y, cw, 22, "F");
+    }
+    y += 28;
+
+    // Raw vector
+    doc.setFont("courier", "normal"); doc.setFontSize(7); doc.setTextColor(70);
+    const raw = rep.embedding.vector.map((v) => v.toFixed(3)).join(", ");
+    const lines = doc.splitTextToSize(raw, W - M * 2) as string[];
+    for (const ln of lines) { ensure(9); doc.text(ln, M, y); y += 9; }
+  }
   return doc.output("blob");
 }
 
@@ -385,14 +442,14 @@ export function downloadBlob(blob: Blob, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function downloadReport(r: TopologyResult, fmt: "pdf" | "json", label?: string) {
+export function downloadReport(r: TopologyResult, fmt: "pdf" | "json", label?: string, sections?: ReportSections) {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const slug = (label ?? "topology").replace(/[^a-z0-9]+/gi, "-").toLowerCase();
   if (fmt === "json") {
-    const blob = new Blob([JSON.stringify(buildReportJSON(r), null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(buildReportJSON(r, sections), null, 2)], { type: "application/json" });
     downloadBlob(blob, `${slug}-report-${stamp}.json`);
   } else {
-    downloadBlob(buildReportPDF(r, label), `${slug}-report-${stamp}.pdf`);
+    downloadBlob(buildReportPDF(r, label, sections), `${slug}-report-${stamp}.pdf`);
   }
 }
 
@@ -433,12 +490,10 @@ export function parseTopologyReport(input: unknown): TopologyReport {
  * bench, retrieval) should be gated by an `imported` flag in the UI.
  */
 export function rehydrateFromReport(rep: TopologyReport): TopologyResult {
-  const N = rep.graph.nodes;
-  const E = rep.graph.edges;
-  const P = rep.partition.partitionCount;
+  const N = rep.graph?.nodes ?? 0;
+  const E = rep.graph?.edges ?? 0;
+  const P = rep.partition?.partitionCount ?? 0;
 
-  // Placeholder node objects — shape-correct, content irrelevant for the
-  // panels (which only read .length).
   const nodes = new Array(N).fill(null).map((_, i) => ({
     leaf: i,
     center: [0, 0, 0] as [number, number, number],
@@ -453,17 +508,25 @@ export function rehydrateFromReport(rep: TopologyReport): TopologyResult {
   }));
   const edges = new Array(E).fill(null).map(() => ({ a: 0, b: 0, shared: 0, axis: 0 as const }));
 
-  // Placeholder resident lists with the right cardinality per partition.
   const resident: number[][] = new Array(P).fill(null).map((_, p) => {
-    const len = rep.partition.resident[p] ?? 0;
+    const len = rep.partition?.resident[p] ?? 0;
     const arr = new Array(len);
     for (let i = 0; i < len; i++) arr[i] = i;
     return arr;
   });
   const halos: number[][] = new Array(P).fill(null).map((_, p) => {
-    const len = rep.partition.halos[p] ?? 0;
+    const len = rep.partition?.halos[p] ?? 0;
     return new Array(len).fill(0);
   });
+
+  // Defaults for omitted sections.
+  const zeroFeatureCounts = {
+    bulk: 0, boundary: 0, thin_wall: 0, overhang: 0,
+    cavity: 0, stress_concentrator: 0, thermal_bottleneck: 0, symmetry_seed: 0,
+  } as Record<FeatureClass, number>;
+  const zeroRefHints = { ...zeroFeatureCounts };
+  const zeroDrivers = { overhangPenalty: 0, cavityPenalty: 0, thinWallPenalty: 0, stressPenalty: 0, thermalPenalty: 0 };
+  const zeroSlices = { curvature: [0, 0] as [number, number], features: [0, 0] as [number, number], structural: [0, 0] as [number, number], manuf: [0, 0] as [number, number] };
 
   return {
     totalMs: rep.pipelineMs,
@@ -473,40 +536,40 @@ export function rehydrateFromReport(rep: TopologyReport): TopologyResult {
       neighborOffsets: new Uint32Array(N + 1),
       neighborIdx: new Uint32Array(0),
       neighborEdge: new Uint32Array(0),
-      buildMs: rep.graph.buildMs,
+      buildMs: rep.graph?.buildMs ?? 0,
     },
     features: {
-      counts: rep.features.counts,
-      symmetryScore: rep.features.symmetryScore,
-      minWallThickness: rep.features.minWallThickness,
-      avgThinWallThickness: rep.features.avgThinWallThickness,
+      counts: rep.features?.counts ?? zeroFeatureCounts,
+      symmetryScore: rep.features?.symmetryScore ?? 0,
+      minWallThickness: rep.features?.minWallThickness ?? 0,
+      avgThinWallThickness: rep.features?.avgThinWallThickness ?? 0,
     },
     manufacturability: {
-      feasibility: rep.manufacturability.feasibility,
-      machiningAccess: rep.manufacturability.machiningAccess,
-      supportFraction: rep.manufacturability.supportFraction,
-      thermalDistortionRisk: rep.manufacturability.thermalDistortionRisk,
-      assemblyComplexity: rep.manufacturability.assemblyComplexity,
-      drivers: rep.manufacturability.drivers,
+      feasibility: rep.manufacturability?.feasibility ?? 0,
+      machiningAccess: rep.manufacturability?.machiningAccess ?? 0,
+      supportFraction: rep.manufacturability?.supportFraction ?? 0,
+      thermalDistortionRisk: rep.manufacturability?.thermalDistortionRisk ?? 0,
+      assemblyComplexity: rep.manufacturability?.assemblyComplexity ?? 0,
+      drivers: rep.manufacturability?.drivers ?? zeroDrivers,
     },
     priors: {
-      timestepScale: rep.priors.timestepScale,
-      damping: rep.priors.damping,
-      contactStiffness: rep.priors.contactStiffness,
-      refinementHints: rep.priors.refinementHints,
+      timestepScale: rep.priors?.timestepScale ?? 1,
+      damping: rep.priors?.damping ?? 0,
+      contactStiffness: rep.priors?.contactStiffness ?? 0,
+      refinementHints: rep.priors?.refinementHints ?? zeroRefHints,
     },
     partition: {
       partitionCount: P,
-      edgeCut: rep.partition.edgeCut,
-      imbalance: rep.partition.imbalance,
+      edgeCut: rep.partition?.edgeCut ?? 0,
+      imbalance: rep.partition?.imbalance ?? 0,
       owners: new Int32Array(N),
       resident,
       halos,
-      commMatrix: rep.partition.commMatrix.slice(),
+      commMatrix: (rep.partition?.commMatrix ?? []).slice(),
     },
     embedding: {
-      vector: new Float32Array(rep.embedding.vector),
-      slices: rep.embedding.slices,
+      vector: new Float32Array(rep.embedding?.vector ?? []),
+      slices: rep.embedding?.slices ?? zeroSlices,
     },
   } as unknown as TopologyResult;
 }
