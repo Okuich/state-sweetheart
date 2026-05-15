@@ -67,6 +67,7 @@ export function DistPartPanel() {
         schedule: { batchSize: 4, coalesceCap: 4, deltaCompressionRatio: 0.4 },
       });
       setLast(r);
+      setDrill(null);
       setHistory((h) =>
         [
           ...h,
