@@ -7,7 +7,12 @@ import { getStepJob } from "@/lib/step-jobs.functions";
 
 export const Route = createFileRoute("/_authenticated/jobs/$id")({
   component: JobDetailPage,
-  head: () => ({ meta: [{ title: "STEP Job — Particle Dynamics Engine" }] }),
+  head: () => ({
+    meta: [
+      { title: "STEP Job — Midwater" },
+      { name: "description", content: "Midwater — STEP job detail." },
+    ],
+  }),
 });
 
 function JobDetailPage() {

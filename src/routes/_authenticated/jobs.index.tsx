@@ -19,7 +19,12 @@ const searchSchema = z.object({
 export const Route = createFileRoute("/_authenticated/jobs/")({
   validateSearch: zodValidator(searchSchema),
   component: JobsPage,
-  head: () => ({ meta: [{ title: "STEP Jobs — Particle Dynamics Engine" }] }),
+  head: () => ({
+    meta: [
+      { title: "STEP Jobs — Midwater" },
+      { name: "description", content: "Midwater — STEP ingest jobs, callers, and status." },
+    ],
+  }),
 });
 
 function statusVariant(s: string): "default" | "destructive" | "secondary" {
@@ -65,7 +70,7 @@ function JobsPage() {
               API Keys
             </Link>
             <Link to="/" className="text-muted-foreground underline">
-              ← Engine
+              ← Midwater
             </Link>
           </div>
         </header>
