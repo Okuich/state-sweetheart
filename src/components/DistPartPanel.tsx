@@ -113,6 +113,24 @@ export function DistPartPanel() {
     );
   }, [commMatrix, commSort, Plast]);
 
+  // Top-K threshold: the K-th largest off-diagonal nonzero edge weight.
+  // Cells with v >= threshold are highlighted; others get dimmed.
+  const topKThreshold = useMemo(() => {
+    if (!Plast || topK <= 0) return 0;
+    const vals: number[] = [];
+    for (let r = 0; r < Plast; r++) {
+      for (let c = 0; c < Plast; c++) {
+        if (r === c) continue;
+        const v = commMatrix[r * Plast + c];
+        if (v > 0) vals.push(v);
+      }
+    }
+    if (!vals.length) return 0;
+    vals.sort((a, b) => b - a);
+    return vals[Math.min(topK, vals.length) - 1];
+  }, [commMatrix, topK, Plast]);
+  const topKOptions = [0, 4, 8, 16, 32];
+
 
   return (
     <div className="space-y-5">
