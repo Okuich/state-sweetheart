@@ -55,7 +55,7 @@ export function RefinementPanel() {
   const [splitThr, setSplitThr] = useState(0.45);
   const [extraDepth, setExtraDepth] = useState(2);
   const [partitions, setPartitions] = useState(8);
-  const [feedbackMode, setFeedbackMode] = useState<"auto" | "synthetic">("auto");
+  const [feedbackMode, setFeedbackMode] = useState<"physics" | "auto" | "synthetic">("physics");
   const [distributed, setDistributed] = useState(false);
   const [imbThr, setImbThr] = useState(1.15);
   const [last, setLast] = useState<AdaptivePassResult | null>(null);
@@ -210,9 +210,9 @@ export function RefinementPanel() {
         <div className="flex items-center gap-3 text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
           <FeedbackBadge mode={feedbackMode} last={last} />
           <button
-            onClick={() => setFeedbackMode((m) => (m === "auto" ? "synthetic" : "auto"))}
+            onClick={() => setFeedbackMode((m) => m === "physics" ? "auto" : m === "auto" ? "synthetic" : "physics")}
             className="rounded border border-border px-2 py-0.5 hover:text-foreground"
-            title="Toggle Physics OS feedback (auto = use real solver fields when fresh)"
+            title="Cycle Physics OS feedback mode: physics (require real solver fields) → auto (use real if fresh, else synthetic) → synthetic (mock fields only)"
           >
             feedback · <span className="text-primary">{feedbackMode}</span>
           </button>
@@ -391,6 +391,10 @@ export function RefinementPanel() {
         </div>
       </div>
 
+      {last && (
+        <PhysicsChannelStrip last={last} />
+      )}
+
       {last && lastBaseMesh && (
         <RefinementOverlay3D baseMesh={lastBaseMesh} result={last} height={340} />
       )}
@@ -494,20 +498,84 @@ export function RefinementPanel() {
   );
 }
 
-function FeedbackBadge({ mode, last }: { mode: "auto" | "synthetic"; last: AdaptivePassResult | null }) {
+function FeedbackBadge({ mode, last }: { mode: "physics" | "auto" | "synthetic"; last: AdaptivePassResult | null }) {
   const snap = physicsFeedbackBus.latest();
   const ageMs = snap ? Date.now() - snap.t : Infinity;
   const fresh = ageMs <= 1500;
-  const willUsePhysics = mode === "auto" && fresh;
+  const willUsePhysics = (mode === "physics" || mode === "auto") && fresh;
   const lastSrc = last?.fieldSource ?? "—";
-  const color = willUsePhysics ? "text-emerald-500" : "text-amber-500";
+  const dotCol = willUsePhysics ? "bg-emerald-500" : mode === "synthetic" ? "bg-amber-500" : "bg-destructive";
+  const txtCol = willUsePhysics ? "text-emerald-500" : mode === "synthetic" ? "text-amber-500" : "text-destructive";
   return (
     <span className="flex items-center gap-1.5">
-      <span className={`inline-block h-1.5 w-1.5 rounded-full ${willUsePhysics ? "bg-emerald-500" : "bg-amber-500"}`} />
-      <span className={color}>
+      <span className={`inline-block h-1.5 w-1.5 rounded-full ${dotCol}`} />
+      <span className={txtCol}>
         {snap ? `physics · ${snap.N}p · ${(ageMs / 1000).toFixed(1)}s` : "no physics snapshot"}
       </span>
       <span className="text-muted-foreground">last · {lastSrc}</span>
     </span>
+  );
+}
+
+const CHANNEL_DEFS: Array<{ key: "stress" | "thermal" | "deformation" | "contact"; label: string; color: string; weightKey: keyof import("@/lib/refinement").ErrorWeights }> = [
+  { key: "stress",      label: "stress",      color: "#ff5e7e", weightKey: "stress" },
+  { key: "thermal",     label: "thermal",     color: "#ffb347", weightKey: "thermal" },
+  { key: "deformation", label: "deformation", color: "#9b6bff", weightKey: "deformation" },
+  { key: "contact",     label: "contact",     color: "#7ad7ff", weightKey: "contact" },
+];
+
+function fieldStats(arr: Float32Array): { mean: number; peak: number; coverage: number } {
+  let s = 0, peak = 0, hits = 0;
+  for (let i = 0; i < arr.length; i++) {
+    const v = arr[i];
+    s += v;
+    if (v > peak) peak = v;
+    if (v > 1e-6) hits++;
+  }
+  return { mean: arr.length ? s / arr.length : 0, peak, coverage: arr.length ? hits / arr.length : 0 };
+}
+
+function PhysicsChannelStrip({ last }: { last: AdaptivePassResult }) {
+  const realPhysics = last.fieldSource === "physics";
+  const ageStr = last.snapshotAgeMs !== undefined ? `${(last.snapshotAgeMs / 1000).toFixed(2)}s` : "—";
+  const N = last.snapshot?.N ?? 0;
+  const contactCount = last.snapshot?.contacts.length ?? 0;
+  return (
+    <div className="rounded-md border border-border bg-background/40 p-4 space-y-3">
+      <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+        <span>physics OS feedback channels</span>
+        <span className={realPhysics ? "text-emerald-500" : last.fieldSource === "synthetic" ? "text-amber-500" : "text-primary"}>
+          source · {last.fieldSource}
+          {realPhysics && <> · {N}p · age {ageStr} · contacts {contactCount}</>}
+        </span>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        {CHANNEL_DEFS.map((c) => {
+          const stats = fieldStats(last.fields[c.key]);
+          const cover = Math.round(stats.coverage * 100);
+          const live = stats.peak > 1e-6;
+          return (
+            <div key={c.key} className="rounded-sm border border-border bg-background/30 p-2 space-y-1">
+              <div className="flex items-center justify-between text-[10px] font-mono">
+                <span className="uppercase tracking-[0.14em]" style={{ color: c.color }}>{c.label}</span>
+                <span className={live ? "text-foreground" : "text-muted-foreground"}>{live ? "live" : "—"}</span>
+              </div>
+              <div className="h-1.5 rounded-sm bg-muted/40 overflow-hidden">
+                <div className="h-full rounded-sm" style={{ width: `${cover}%`, background: c.color }} />
+              </div>
+              <div className="flex justify-between text-[9px] font-mono text-muted-foreground tabular-nums">
+                <span>cover {cover}%</span>
+                <span>peak {stats.peak.toFixed(2)}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {!realPhysics && (
+        <div className="text-[10px] text-amber-500/80 font-mono">
+          ⚠ refinement metric is using {last.fieldSource} fields — start the physics canvas (or set feedback · physics) to drive the metric from real solver state.
+        </div>
+      )}
+    </div>
   );
 }
