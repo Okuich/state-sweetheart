@@ -344,13 +344,26 @@ function resolveSDFContacts(
   const N = s.N | 0;
   const z = collider.worldZ ?? 0;
   const r = Math.max(0, radius);
-  for (let i = 0; i < N; i++) {
+  // Performance guardrail: cap how many particles we test, walking a
+  // strided subset whose offset rotates each call so coverage is
+  // amortized across frames. `cap = 0 / undefined / cap >= N` → test all.
+  const cap = collider.maxChecksPerStep && collider.maxChecksPerStep > 0
+    ? Math.min(N, collider.maxChecksPerStep | 0) : N;
+  const stride = cap >= N ? 1 : Math.max(1, Math.floor(N / cap));
+  const offset = cap >= N ? 0 : (((collider.stepIndex ?? 0) % stride) + stride) % stride;
+  // Cheap reject threshold: skip particles whose `pen + radius` is
+  // ≤ rejectThreshold without invoking the gradient. Default 0
+  // preserves the original behaviour exactly.
+  const rejectAt = collider.rejectThreshold ?? 0;
+  let checks = 0;
+  for (let i = offset; i < N; i += stride) {
     const wi = invMass(s.m[i], pinned);
     if (wi <= 0) continue;
     const px = s.x[i * 2], py = s.x[i * 2 + 1];
+    checks++;
     // Cheap reject via penetration() before invoking the gradient.
     const pen = penetration(collider.sdf, [px, py, z]) + r;
-    if (pen <= 0) continue;
+    if (pen <= rejectAt) continue;
     const hit = sphereCollide(collider.sdf, [px, py, z], r);
     if (!hit.hit) continue;
 
@@ -378,4 +391,5 @@ function resolveSDFContacts(
       s.x[i * 2 + 1] += corr * ny;
     }
   }
+  stats.sdfChecks += checks;
 }
