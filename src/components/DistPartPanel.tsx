@@ -35,6 +35,7 @@ export function DistPartPanel() {
   const [commSort, setCommSort] = useState<CommSort>("none");
   const [topK, setTopK] = useState(0); // 0 = off, otherwise highlight K hottest edges
   const [drill, setDrill] = useState<{ src: number; dst: number } | null>(null);
+  const [selectedPart, setSelectedPart] = useState<number | null>(null);
   const [history, setHistory] = useState<{ algo: PartitionAlgorithm; P: number; cut: number; imb: number; us: number; bytes: number; rounds: number }[]>([]);
 
   const setup = useMemo(() => {
@@ -302,15 +303,29 @@ export function DistPartPanel() {
                   </span>
                 </div>
                 <div className="flex gap-1 items-end h-16">
-                  {out.map((o, i) => (
-                    <div key={i} className="flex-1 flex flex-col items-center gap-0.5" title={`rank ${i} · out ${o} · in ${inn[i]} · ghost-recv ${recv[i]}`}>
-                      <div className="w-full h-12 bg-muted/20 rounded-sm overflow-hidden flex items-end gap-[1px] px-[1px]">
-                        <div className="flex-1 bg-primary/70 rounded-[1px]" style={{ height: `${(o / maxHalo) * 100}%` }} />
-                        <div className="flex-1 bg-accent/70 rounded-[1px]" style={{ height: `${(inn[i] / maxHalo) * 100}%` }} />
-                      </div>
-                      <div className="text-[8px] font-mono text-muted-foreground tabular-nums">{i}</div>
-                    </div>
-                  ))}
+                  {out.map((o, i) => {
+                    const isSel = selectedPart === i;
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => {
+                          setSelectedPart((s) => (s === i ? null : i));
+                          setDrill(null);
+                        }}
+                        className={`flex-1 flex flex-col items-center gap-0.5 cursor-pointer rounded-sm transition-shadow hover:ring-1 hover:ring-foreground/40 ${
+                          isSel ? "ring-2 ring-foreground" : selectedPart !== null ? "opacity-50" : ""
+                        }`}
+                        title={`rank ${i} · out ${o} · in ${inn[i]} · ghost-recv ${recv[i]} · click to filter comm matrix`}
+                      >
+                        <div className="w-full h-12 bg-muted/20 rounded-sm overflow-hidden flex items-end gap-[1px] px-[1px]">
+                          <div className="flex-1 bg-primary/70 rounded-[1px]" style={{ height: `${(o / maxHalo) * 100}%` }} />
+                          <div className="flex-1 bg-accent/70 rounded-[1px]" style={{ height: `${(inn[i] / maxHalo) * 100}%` }} />
+                        </div>
+                        <div className={`text-[8px] font-mono tabular-nums ${isSel ? "text-foreground font-semibold" : "text-muted-foreground"}`}>{i}</div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             );
@@ -326,8 +341,18 @@ export function DistPartPanel() {
 
         <div className="rounded-md border border-border bg-background/40 p-4 space-y-3">
           <div className="flex items-center justify-between gap-2">
-            <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-              comm matrix · cross-rank halo (NCCL)
+            <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground flex items-center gap-2">
+              <span>comm matrix · cross-rank halo (NCCL)</span>
+              {selectedPart !== null && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedPart(null)}
+                  className="rounded border border-foreground/40 px-1.5 py-0 text-foreground hover:bg-muted/30 normal-case tracking-normal"
+                  title="Clear partition filter"
+                >
+                  filter · rank {selectedPart} ✕
+                </button>
+              )}
             </div>
             <div className="flex gap-1" role="group" aria-label="Sort partitions">
               {([
@@ -398,7 +423,15 @@ export function DistPartPanel() {
                   bg = `hsl(var(--primary) / ${0.15 + intensity * 0.85})`;
                 }
                 const isSelected = drill !== null && drill.src === rOrig && drill.dst === cOrig;
+                const inSelectedAxis = selectedPart !== null && (rOrig === selectedPart || cOrig === selectedPart);
+                const dimmedByPart = selectedPart !== null && !inSelectedAxis;
                 const clickable = v > 0 && rOrig !== cOrig;
+                const finalOpacity = dimmedByPart ? 0.18 : (filtered ? 0.55 : 1);
+                const ringClass = isSelected
+                  ? "ring-2 ring-foreground outline-none"
+                  : inSelectedAxis
+                    ? "ring-1 ring-foreground/60"
+                    : "";
                 return (
                   <button
                     key={idx}
@@ -412,9 +445,9 @@ export function DistPartPanel() {
                     }}
                     className={`aspect-square rounded-[1px] transition-shadow ${
                       clickable ? "cursor-pointer hover:ring-1 hover:ring-foreground/40" : "cursor-default"
-                    } ${isSelected ? "ring-2 ring-foreground outline-none" : ""}`}
-                    style={{ background: bg, opacity: filtered ? 0.55 : 1 }}
-                    title={`rank ${rOrig} → ${cOrig}: ${v}${clickable ? " · click to drill" : ""}${filtered && topK > 0 ? " (below top-K)" : ""}`}
+                    } ${ringClass}`}
+                    style={{ background: bg, opacity: finalOpacity }}
+                    title={`rank ${rOrig} → ${cOrig}: ${v}${clickable ? " · click to drill" : ""}${filtered && topK > 0 ? " (below top-K)" : ""}${dimmedByPart ? " (filtered by partition " + selectedPart + ")" : ""}`}
                   />
                 );
               })}
