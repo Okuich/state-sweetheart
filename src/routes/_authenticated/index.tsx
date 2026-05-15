@@ -46,7 +46,7 @@ function FabricationDashboard() {
           <div className="flex items-center gap-3">
             <div className="h-2.5 w-2.5 rounded-full bg-primary animate-pulse" />
             <span className="text-[10px] uppercase tracking-[0.32em] text-muted-foreground">
-              Fabrication OS
+              Midwater
             </span>
           </div>
           <h1 className="mt-3 font-display text-4xl font-bold leading-[0.95] md:text-5xl">
