@@ -298,6 +298,7 @@ export interface SolveOptions {
 }
 
 import { dedupPairs, type DedupResult } from "./pairDedup";
+import { writeTypedBuffer } from "./gpu/writeBuffer";
 
 const DEFAULT_MAX_PAIRS = 1 << 22;
 
