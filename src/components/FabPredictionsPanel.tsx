@@ -21,7 +21,7 @@ export function FabPredictionsPanel() {
       <header className="mb-4 flex items-center justify-between">
         <div>
           <div className="text-[10px] uppercase tracking-[0.32em] text-muted-foreground">
-            Fabrication OS · prediction feed
+            Midwater · prediction feed
           </div>
           <h2 className="mt-1 text-lg font-semibold text-foreground">
             Per-part predictions
