@@ -624,6 +624,19 @@ function PhysicsChannelStrip({ last, weights, onWeightChange }: { last: Adaptive
                 <span>last {series.length}/{HISTORY_LEN}</span>
                 <span>max {(Math.max(0, ...series)).toFixed(2)}</span>
               </div>
+              <div className="pt-1 space-y-0.5">
+                <div className="flex justify-between text-[9px] font-mono">
+                  <span className="uppercase tracking-[0.12em] text-muted-foreground">weight</span>
+                  <span className="tabular-nums" style={{ color: c.color }}>{weights[c.key].toFixed(2)}×</span>
+                </div>
+                <Slider
+                  value={[weights[c.key]]}
+                  min={0}
+                  max={2}
+                  step={0.05}
+                  onValueChange={([v]) => onWeightChange(c.key, v)}
+                />
+              </div>
             </div>
           );
         })}
