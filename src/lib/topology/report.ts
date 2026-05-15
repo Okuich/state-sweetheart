@@ -91,51 +91,64 @@ function resolveSections(s?: ReportSections): Required<ReportSections> {
   return { ...ALL_SECTIONS, ...(s ?? {}) };
 }
 
-export function buildReportJSON(r: TopologyResult): TopologyReport {
+export function buildReportJSON(r: TopologyResult, sections?: ReportSections): TopologyReport {
+  const sec = resolveSections(sections);
   const meanValence = (r.graph.edges.length * 2) / Math.max(1, r.graph.nodes.length);
-  return {
+  const out: TopologyReport = {
     generatedAt: new Date().toISOString(),
     pipelineMs: r.totalMs,
-    graph: {
+    sections: sec,
+  };
+  if (sec.graph) {
+    out.graph = {
       nodes: r.graph.nodes.length,
       edges: r.graph.edges.length,
       meanValence,
       buildMs: r.graph.buildMs,
-    },
-    features: {
+    };
+  }
+  if (sec.features) {
+    out.features = {
       counts: r.features.counts,
       symmetryScore: r.features.symmetryScore,
       minWallThickness: r.features.minWallThickness,
       avgThinWallThickness: r.features.avgThinWallThickness,
-    },
-    manufacturability: {
+    };
+  }
+  if (sec.manufacturability) {
+    out.manufacturability = {
       feasibility: r.manufacturability.feasibility,
       machiningAccess: r.manufacturability.machiningAccess,
       supportFraction: r.manufacturability.supportFraction,
       thermalDistortionRisk: r.manufacturability.thermalDistortionRisk,
       assemblyComplexity: r.manufacturability.assemblyComplexity,
       drivers: r.manufacturability.drivers,
-    },
-    priors: {
+    };
+    out.priors = {
       timestepScale: r.priors.timestepScale,
       damping: r.priors.damping,
       contactStiffness: r.priors.contactStiffness,
       refinementHints: r.priors.refinementHints,
-    },
-    partition: {
+    };
+  }
+  if (sec.partition) {
+    out.partition = {
       partitionCount: r.partition.partitionCount,
       edgeCut: r.partition.edgeCut,
       imbalance: r.partition.imbalance,
       resident: r.partition.resident.map((p) => p.length),
       halos: r.partition.halos.map((p) => p.length),
       commMatrix: Array.from(r.partition.commMatrix),
-    },
-    embedding: {
+    };
+  }
+  if (sec.embedding) {
+    out.embedding = {
       dim: r.embedding.vector.length,
       slices: r.embedding.slices,
       vector: Array.from(r.embedding.vector),
-    },
-  };
+    };
+  }
+  return out;
 }
 
 function hexToRgb(hex: string): [number, number, number] {
