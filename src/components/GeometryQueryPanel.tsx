@@ -428,15 +428,17 @@ const VIEW_MODES: { id: ViewMode; label: string }[] = [
 
 function CandidatePreview3D({ nodes, matched }: { nodes: TopoNode[]; matched: Set<FeatureClass> }) {
   const [mode, setMode] = useState<ViewMode>("all");
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const matchedCount = useMemo(
     () => nodes.reduce((s, n) => s + (matched.has(n.feature) ? 1 : 0), 0),
     [nodes, matched],
   );
   const big = mode !== "all";
+  const sel = selectedIdx !== null ? nodes[selectedIdx] : null;
   return (
     <div className="rounded-md border border-border bg-background/30 p-2 space-y-2">
       <div className="flex items-center justify-between text-[10px] text-muted-foreground gap-2">
-        <span className="uppercase tracking-wide">3D preview · matched features highlighted</span>
+        <span className="uppercase tracking-wide">3D preview · click a leaf for details</span>
         <div className="flex items-center gap-1">
           {VIEW_MODES.map((m) => (
             <button
@@ -459,15 +461,31 @@ function CandidatePreview3D({ nodes, matched }: { nodes: TopoNode[]; matched: Se
       </div>
       <div className="flex flex-wrap gap-3 justify-center">
         {(mode === "all" || mode === "xy") && (
-          <ProjectionView nodes={nodes} matched={matched} hAxis={0} vAxis={1} dAxis={2} label="XY · front" size={big ? 220 : 140} />
+          <ProjectionView nodes={nodes} matched={matched} hAxis={0} vAxis={1} dAxis={2} label="XY · front" size={big ? 220 : 140} selectedIdx={selectedIdx} onSelect={setSelectedIdx} />
         )}
         {(mode === "all" || mode === "xz") && (
-          <ProjectionView nodes={nodes} matched={matched} hAxis={0} vAxis={2} dAxis={1} label="XZ · top" size={big ? 220 : 140} />
+          <ProjectionView nodes={nodes} matched={matched} hAxis={0} vAxis={2} dAxis={1} label="XZ · top" size={big ? 220 : 140} selectedIdx={selectedIdx} onSelect={setSelectedIdx} />
         )}
         {(mode === "all" || mode === "zy") && (
-          <ProjectionView nodes={nodes} matched={matched} hAxis={2} vAxis={1} dAxis={0} label="ZY · side" size={big ? 220 : 140} />
+          <ProjectionView nodes={nodes} matched={matched} hAxis={2} vAxis={1} dAxis={0} label="ZY · side" size={big ? 220 : 140} selectedIdx={selectedIdx} onSelect={setSelectedIdx} />
         )}
       </div>
+      {sel && (
+        <div className="rounded border border-border bg-background/60 px-2 py-1.5 text-[10px] font-mono flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: FEATURE_HEX[sel.feature] }} />
+            <span className="uppercase tracking-wide">{FEATURE_LABELS[sel.feature]}</span>
+            <span className="text-muted-foreground">leaf #{selectedIdx}</span>
+          </div>
+          <div className="flex items-center gap-3 text-muted-foreground">
+            <span>r={sel.radius.toFixed(3)}</span>
+            <span>XY=({sel.center[0].toFixed(2)}, {sel.center[1].toFixed(2)})</span>
+            <span>XZ=({sel.center[0].toFixed(2)}, {sel.center[2].toFixed(2)})</span>
+            <span>ZY=({sel.center[2].toFixed(2)}, {sel.center[1].toFixed(2)})</span>
+            <button type="button" className="text-foreground/80 hover:text-foreground" onClick={() => setSelectedIdx(null)}>✕</button>
+          </div>
+        </div>
+      )}
       {matched.size > 0 && (
         <div className="flex flex-wrap gap-2 text-[10px] justify-center pt-1">
           {Array.from(matched).map((f) => (
