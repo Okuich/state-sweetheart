@@ -1,5 +1,6 @@
 /**
  * Server functions for the internal STEP jobs dashboard.
+ * Admin-only — Geometry OS is a hidden internal layer.
  */
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
@@ -7,6 +8,17 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 const STATUSES = ["queued", "parsing", "reasoning", "done", "failed"] as const;
+
+async function assertAdmin(userId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", userId)
+    .eq("role", "admin")
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("Admin role required");
+}
 
 export const listStepJobs = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -20,7 +32,8 @@ export const listStepJobs = createServerFn({ method: "GET" })
       .optional()
       .parse(d ?? {}),
   )
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
     let query = supabaseAdmin
       .from("step_jobs")
       .select("id,client_id,filename,status,error,created_at,completed_at")
@@ -53,7 +66,8 @@ export const listStepJobs = createServerFn({ method: "GET" })
 export const getStepJob = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
     const { data: job, error } = await supabaseAdmin
       .from("step_jobs")
       .select("*")
