@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { buildOctreeMesh, type RefinementSeed } from "@/lib/meshing/octree";
@@ -7,7 +7,7 @@ import {
   kHopCpu, computeHalosCpu, createCsrGpuBackend,
   type TopologyResult, type FeatureClass,
 } from "@/lib/topology";
-import { downloadReport } from "@/lib/topology/report";
+import { downloadReport, parseTopologyReport, rehydrateFromReport } from "@/lib/topology/report";
 
 interface TraversalBench {
   N: number; E: number;
