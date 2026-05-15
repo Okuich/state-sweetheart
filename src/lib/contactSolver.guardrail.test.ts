@@ -20,8 +20,8 @@ function makeState(N: number): ContactState {
 
 describe("resolveSDFContacts — guardrails", () => {
   const sdf = buildSparseSDF(
+    { min: [-1, -1, -0.1], max: [1, 1, 0.1] },
     [{ kind: "sphere", center: [0, 0, 0], radius: 0.5 }],
-    { bbox: { min: [-1, -1, -0.1], max: [1, 1, 0.1] } },
   );
 
   it("maxChecksPerStep bounds sdfChecks and rotates coverage across steps", () => {
