@@ -3,7 +3,7 @@
  * Renders per-part processing progress and the resulting predictions.
  * The underlying engine is intentionally not named in the UI.
  */
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Loader2, RotateCw, X, AlertTriangle, ChevronRight } from "lucide-react";
 import {
   physicsFabFeed,
