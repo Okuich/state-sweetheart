@@ -210,9 +210,9 @@ export function RefinementPanel() {
         <div className="flex items-center gap-3 text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
           <FeedbackBadge mode={feedbackMode} last={last} />
           <button
-            onClick={() => setFeedbackMode((m) => (m === "auto" ? "synthetic" : "auto"))}
+            onClick={() => setFeedbackMode((m) => m === "physics" ? "auto" : m === "auto" ? "synthetic" : "physics")}
             className="rounded border border-border px-2 py-0.5 hover:text-foreground"
-            title="Toggle Physics OS feedback (auto = use real solver fields when fresh)"
+            title="Cycle Physics OS feedback mode: physics (require real solver fields) → auto (use real if fresh, else synthetic) → synthetic (mock fields only)"
           >
             feedback · <span className="text-primary">{feedbackMode}</span>
           </button>
