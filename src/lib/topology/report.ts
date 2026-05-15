@@ -157,8 +157,9 @@ function hexToRgb(hex: string): [number, number, number] {
   return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
 }
 
-export function buildReportPDF(r: TopologyResult, label?: string): Blob {
-  const rep = buildReportJSON(r);
+export function buildReportPDF(r: TopologyResult, label?: string, sections?: ReportSections): Blob {
+  const sec = resolveSections(sections);
+  const rep = buildReportJSON(r, sec);
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const W = doc.internal.pageSize.getWidth();
   const H = doc.internal.pageSize.getHeight();
