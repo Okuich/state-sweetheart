@@ -113,6 +113,12 @@ export function buildReportJSON(r: TopologyResult): TopologyReport {
   };
 }
 
+function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace("#", "");
+  const v = parseInt(h.length === 3 ? h.split("").map((c) => c + c).join("") : h, 16);
+  return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+}
+
 export function buildReportPDF(r: TopologyResult, label?: string): Blob {
   const rep = buildReportJSON(r);
   const doc = new jsPDF({ unit: "pt", format: "a4" });
