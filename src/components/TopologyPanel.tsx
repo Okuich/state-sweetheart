@@ -66,6 +66,8 @@ export function TopologyPanel() {
   const [result, setResult] = useState<TopologyResult | null>(null);
   const [corpus, setCorpus] = useState<CorpusEntry[]>([]);
   const [bench, setBench] = useState<TraversalBench | null>(null);
+  const [exportSections, setExportSections] = useState<ReportSections>({ ...ALL_SECTIONS });
+  const toggleSection = (k: keyof ReportSections) => setExportSections((s) => ({ ...s, [k]: !s[k] }));
   const [imported, setImported] = useState<{ name: string; generatedAt: string } | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
