@@ -543,24 +543,43 @@ function fieldStats(arr: Float32Array): { mean: number; peak: number; coverage: 
 type ChannelKey = "stress" | "thermal" | "deformation" | "contact";
 const HISTORY_LEN = 32;
 
-function Sparkline({ values, color, height = 18 }: { values: number[]; color: string; height?: number }) {
+function movingAverage(values: number[], window: number): number[] {
+  if (window <= 1 || values.length === 0) return values;
+  const out: number[] = new Array(values.length);
+  let sum = 0;
+  const q: number[] = [];
+  for (let i = 0; i < values.length; i++) {
+    sum += values[i]; q.push(values[i]);
+    if (q.length > window) sum -= q.shift()!;
+    out[i] = sum / q.length;
+  }
+  return out;
+}
+
+function Sparkline({ values, color, height = 18, smoothWindow = 1 }: { values: number[]; color: string; height?: number; smoothWindow?: number }) {
   if (values.length < 2) {
     return <div className="h-[18px] text-[8px] font-mono text-muted-foreground/60 flex items-center">collecting…</div>;
   }
-  const max = Math.max(1e-6, ...values);
+  const smoothed = movingAverage(values, smoothWindow);
+  const max = Math.max(1e-6, ...values, ...smoothed);
   const w = 100;
   const step = w / (HISTORY_LEN - 1);
-  const pts = values.map((v, i) => {
-    const x = (i + (HISTORY_LEN - values.length)) * step;
+  const toPts = (arr: number[]) => arr.map((v, i) => {
+    const x = (i + (HISTORY_LEN - arr.length)) * step;
     const y = height - (v / max) * (height - 2) - 1;
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(" ");
-  const last = values[values.length - 1];
-  const lastX = (values.length - 1 + (HISTORY_LEN - values.length)) * step;
+  const rawPts = toPts(values);
+  const smoothPts = toPts(smoothed);
+  const last = smoothed[smoothed.length - 1];
+  const lastX = (smoothed.length - 1 + (HISTORY_LEN - smoothed.length)) * step;
   const lastY = height - (last / max) * (height - 2) - 1;
   return (
     <svg viewBox={`0 0 ${w} ${height}`} preserveAspectRatio="none" className="w-full h-[18px]">
-      <polyline fill="none" stroke={color} strokeWidth={1} strokeLinejoin="round" points={pts} opacity={0.9} />
+      {smoothWindow > 1 && (
+        <polyline fill="none" stroke={color} strokeWidth={0.6} strokeLinejoin="round" points={rawPts} opacity={0.25} />
+      )}
+      <polyline fill="none" stroke={color} strokeWidth={1} strokeLinejoin="round" points={smoothPts} opacity={0.9} />
       <circle cx={lastX} cy={lastY} r={1.4} fill={color} />
     </svg>
   );
@@ -591,14 +610,37 @@ function PhysicsChannelStrip({ last, weights, onWeightChange }: { last: Adaptive
     });
   }, [last]);
 
+  const [smoothWindow, setSmoothWindow] = useState(1);
+  const SMOOTH_OPTIONS = [1, 3, 5, 9];
+
   return (
     <div className="rounded-md border border-border bg-background/40 p-4 space-y-3">
-      <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+      <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-muted-foreground gap-3">
         <span>physics OS feedback channels</span>
-        <span className={realPhysics ? "text-emerald-500" : last.fieldSource === "synthetic" ? "text-amber-500" : "text-primary"}>
-          source · {last.fieldSource}
-          {realPhysics && <> · {N}p · age {ageStr} · contacts {contactCount}</>}
-        </span>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 normal-case tracking-normal">
+            <span className="text-[9px]">smooth</span>
+            {SMOOTH_OPTIONS.map((w) => (
+              <button
+                key={w}
+                type="button"
+                onClick={() => setSmoothWindow(w)}
+                className={`px-1.5 py-0.5 rounded border text-[9px] font-mono transition ${
+                  smoothWindow === w
+                    ? "border-primary bg-primary/15 text-foreground"
+                    : "border-border hover:bg-muted/40"
+                }`}
+                title={w === 1 ? "raw values, no smoothing" : `moving average over ${w} frames`}
+              >
+                {w === 1 ? "off" : `${w}`}
+              </button>
+            ))}
+          </div>
+          <span className={realPhysics ? "text-emerald-500" : last.fieldSource === "synthetic" ? "text-amber-500" : "text-primary"}>
+            source · {last.fieldSource}
+            {realPhysics && <> · {N}p · age {ageStr} · contacts {contactCount}</>}
+          </span>
+        </div>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         {CHANNEL_DEFS.map((c) => {
@@ -615,7 +657,7 @@ function PhysicsChannelStrip({ last, weights, onWeightChange }: { last: Adaptive
               <div className="h-1.5 rounded-sm bg-muted/40 overflow-hidden">
                 <div className="h-full rounded-sm" style={{ width: `${cover}%`, background: c.color }} />
               </div>
-              <Sparkline values={series} color={c.color} />
+              <Sparkline values={series} color={c.color} smoothWindow={smoothWindow} />
               <div className="flex justify-between text-[9px] font-mono text-muted-foreground tabular-nums">
                 <span>cover {cover}%</span>
                 <span>peak {stats.peak.toFixed(2)}</span>
