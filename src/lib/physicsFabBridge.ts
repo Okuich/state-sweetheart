@@ -19,7 +19,12 @@ export interface PartProgress {
   updatedAt: string;
   ms?: number;
   error?: string;
+  attempt: number;
+  nextRetryAt?: string;
 }
+
+const MAX_AUTO_RETRIES = 2;
+const RETRY_BASE_MS = 1500;
 
 export interface PhysicsPrediction {
   partId: string;
@@ -76,7 +81,9 @@ function setStatus(partId: string, status: PartStatus, extra: Partial<PartProgre
     startedAt: prev?.startedAt ?? now,
     updatedAt: now,
     ms: extra.ms ?? prev?.ms,
-    error: extra.error ?? prev?.error,
+    error: status === "failed" ? extra.error ?? prev?.error : undefined,
+    attempt: extra.attempt ?? prev?.attempt ?? 0,
+    nextRetryAt: extra.nextRetryAt,
   });
 }
 
@@ -90,15 +97,15 @@ const DEFAULT_REF = {
   geometryType: "beam",
 };
 
-async function runForPart(partId: string) {
+async function runForPart(partId: string, attempt = 0) {
   const cur = progress.get(partId);
   if (cur && (cur.status === "queued" || cur.status === "processing")) return;
 
-  setStatus(partId, "queued");
+  setStatus(partId, "queued", { attempt });
   emit();
   // Yield so UI shows "queued" before flipping to "processing".
   await Promise.resolve();
-  setStatus(partId, "processing");
+  setStatus(partId, "processing", { attempt });
   emit();
 
   const t0 = Date.now();
@@ -121,10 +128,32 @@ async function runForPart(partId: string) {
       ms,
       ok: true,
     });
-    setStatus(partId, "ready", { ms });
+    setStatus(partId, "ready", { ms, attempt });
+    emit();
   } catch (e) {
     const ms = Date.now() - t0;
     const error = e instanceof Error ? e.message : String(e);
+
+    if (attempt < MAX_AUTO_RETRIES) {
+      // Exponential backoff retry. Surface the in-flight retry to the UI
+      // by keeping status "queued" with nextRetryAt set.
+      const delay = RETRY_BASE_MS * Math.pow(2, attempt);
+      const nextRetryAt = new Date(Date.now() + delay).toISOString();
+      setStatus(partId, "queued", {
+        ms,
+        error: `${error} — retrying (${attempt + 1}/${MAX_AUTO_RETRIES})`,
+        attempt: attempt + 1,
+        nextRetryAt,
+      });
+      emit();
+      const timer = setTimeout(() => {
+        retryTimers.delete(partId);
+        void runForPart(partId, attempt + 1);
+      }, delay);
+      retryTimers.set(partId, timer);
+      return;
+    }
+
     cache.set(partId, {
       partId,
       source: "error",
@@ -133,8 +162,7 @@ async function runForPart(partId: string) {
       ok: false,
       error,
     });
-    setStatus(partId, "failed", { ms, error });
-  } finally {
+    setStatus(partId, "failed", { ms, error, attempt });
     emit();
   }
 }
@@ -143,6 +171,16 @@ function handleBatch(batch: Observation[]) {
   const unique = new Set<string>();
   for (const o of batch) if (o.partId) unique.add(o.partId);
   for (const partId of unique) void runForPart(partId);
+}
+
+const retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function cancelRetry(partId: string) {
+  const t = retryTimers.get(partId);
+  if (t) {
+    clearTimeout(t);
+    retryTimers.delete(partId);
+  }
 }
 
 /** Idempotent — call once on dashboard mount. */
@@ -167,9 +205,30 @@ export const physicsFabFeed = {
   },
   /** Manual fire-and-forget for parts without a scan import. */
   predict(partId: string) {
+    cancelRetry(partId);
     void runForPart(partId);
   },
+  /** Dismiss a failed part — clears its row and cached error. */
+  dismiss(partId: string) {
+    cancelRetry(partId);
+    cache.delete(partId);
+    progress.delete(partId);
+    emit();
+  },
+  /** Dismiss every currently-failed part. */
+  dismissAllFailed() {
+    for (const [id, p] of progress) {
+      if (p.status === "failed") {
+        cancelRetry(id);
+        cache.delete(id);
+        progress.delete(id);
+      }
+    }
+    emit();
+  },
   clear() {
+    for (const t of retryTimers.values()) clearTimeout(t);
+    retryTimers.clear();
     cache.clear();
     progress.clear();
     emit();
