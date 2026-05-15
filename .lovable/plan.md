@@ -1,98 +1,62 @@
-# Particle Dynamics Engine — Hidden Reasoning Layer
+## Goal
+Merge **Physics Playground** into **Physics OS** as one unified platform with a tabbed dashboard, role-gated features, and a TanStack server-fn backend (no external Express service).
 
-Goal: PDE becomes a headless service that Fabrication OS and Midwater call with their own API keys to upload STEP files and receive AI-reasoned analysis. You remain the only human-facing user (existing email/password login is preserved for the internal dashboard).
+## Scope (from your answers)
+- Core engineering + materials
+- ML / training suite
+- Patent / IP suite
+- Business pages (pricing, ROI, enterprise demo, pilot tracking, admin)
+- Backend: reimplement Playground's `physicsClient` (`analyze`, `batchAnalyze`, `runPipeline`, `compareEngines`) as `createServerFn` handlers backed by the platform's existing `lib/` (meshing, refinement, GPU, topology, materials).
+- Auth: port `user_roles` + feature-flag system; gate paid panels behind `physics_access`.
+- IA: unified tabbed dashboard. Existing platform panels (Topology, Refinement, Geometry, Distributed, etc.) become tabs alongside Playground's Analyze, Materials, Patents, ML, etc.
 
----
+## Phased delivery
+Each phase = one chat turn so you can verify before the next.
 
-## 1. Service authentication (per-caller API keys)
+### Phase 1 — Foundations (this turn)
+- Inventory both codebases (file-by-file map of what to copy / merge / drop).
+- Create the DB schema migration: `app_role` enum, `user_roles`, `feature_flags`, `physics_jobs`, `analysis_results`, `materials`, `patent_records`, `pilot_engagements`, `role_requests`. RLS + `has_role()` security-definer fn.
+- Add `useUserRole` + `useFeatureFlags` hooks (server-fn backed).
+- Add `_authenticated` layout + role guard (`_admin`, `_physics`).
+- Wire Google + email/password auth (currently profiles exist but no login UI).
 
-**New table `api_clients`** (admin-managed, no public RLS):
-- `name` (e.g. "fabrication-os", "midwater")
-- `key_prefix` (first 8 chars, shown in UI for identification)
-- `key_hash` (SHA-256 of full key — raw key only shown once at creation)
-- `scopes` (text[] — e.g. `['step:ingest', 'step:read']`)
-- `last_used_at`, `revoked_at`, `created_by`
+### Phase 2 — Backend port
+- Move `physicsClient.analyze/batchAnalyze/runPipeline/compareEngines` into `src/lib/physics/*.functions.ts`, calling existing platform kernels.
+- Port `materialEngine`, `recommendationEngine`, `supplierEngine`, `costEngine` as server-side modules.
+- Port `unifiedPipeline`, `iterativeRefinement`, `paretoEngine`, `tradeoffMatrix`, `sensitivityJacobian`, `regulatoryCompliance`, `historicalPatternMatching`.
 
-**New table `api_request_log`** for audit (client_id, route, status, latency, timestamp).
+### Phase 3 — Engineering result UI
+- Copy `SafetyGauge`, `DeflectionGauge`, `InteractiveMohrCircle`, `BeamDeflection3D`, `ForceVectorViz`, `LoadPathPanel`, `exportReport`.
+- New `/analyze` tab wired to the new `analyze` server fn.
 
-**Middleware** `src/lib/service-auth.ts`:
-- Reads `Authorization: Bearer pde_<key>` from request
-- Hashes incoming key, looks up `api_clients` with `supabaseAdmin`
-- Rejects if revoked, missing scope, or no match (timing-safe)
-- Writes to `api_request_log`
-- Applied to all `/api/public/step/*` routes
+### Phase 4 — Materials tab
+- Catalog UI, recommendation engine UI, supplier/cost panels, MaterialEditor.
 
-**Internal admin UI** at `/_authenticated/api-keys`:
-- List clients, create new key (shows raw key once), revoke
-- View recent request log per client
+### Phase 5 — ML / training tab
+- `TrainingVizPanel`, `HPSearchVizPanel`, `ModelArchitecturePanel`, `ModelEvaluationDashboard`, `FeatureAttributionPanel`, `DatasetExplorationPanel`.
 
----
+### Phase 6 — Patent / IP tab
+- `PatentLandscapeViz`, `PatentCandidateMap`, `CompetitorClaimAnalysis`, `ClaimCoverageHeatmap`, `FTOCoveragePanel`, `ProsecutionActionItems`.
 
-## 2. STEP file ingestion
+### Phase 7 — Business surface
+- `/pricing`, `/enterprise-demo`, `/roi`, `/pilots`, `AdminRequestsPanel`, `PhysicsUpgradePrompt`, role-request flow.
 
-**Storage bucket** `step-uploads` (private, service-role writes).
+### Phase 8 — IA unification
+- Convert root `/` into the unified tabbed dashboard. Group: **Engine** (Topology, Refinement, Geometry, Distributed, GPU), **Analyze** (gauges, Mohr, beam), **Materials**, **ML**, **Patents**, **Ops** (telemetry, anomaly, agents), **Admin**.
+- Single sidebar + breadcrumb. Old standalone routes become tab deep-links.
 
-**Route** `POST /api/public/step/analyze`:
-- Service-auth middleware
-- Accepts multipart `.step` / `.stp` (up to 25 MB)
-- Saves to storage, creates `step_jobs` row (status=`queued`)
-- Returns `{ job_id }` immediately
-
-**Route** `GET /api/public/step/jobs/:id`:
-- Returns job status + extracted data + reasoning when ready
-
----
-
-## 3. STEP parsing + reasoning pipeline
-
-Server function `processStepJob(jobId)` triggered after upload:
-
-**Stage A — Parse** (`occt-import-js` WASM, runs in Worker):
-- Bounding box, volume, surface area, units
-- Face/edge/vertex counts, solid count
-- Detected features (holes, pockets, fillets via topology heuristics)
-- Material hints if present in STEP header
-
-**Stage B — Reason** (Lovable AI Gateway, `google/gemini-2.5-pro`):
-- Feeds extracted geometry JSON to model
-- Returns structured analysis: manufacturability notes, suggested tolerances, fixturing concerns, simulation parameter recommendations (ties into existing `recommendSimulationParameters`)
-- Stored as JSONB on `step_jobs.reasoning`
-
-**`step_jobs` table:**
-- `client_id` (fk api_clients), `filename`, `storage_path`
-- `status` (queued/parsing/reasoning/done/failed), `error`
-- `geometry` jsonb, `reasoning` jsonb
-- `created_at`, `completed_at`
-
----
-
-## 4. Internal dashboard updates
-
-Under existing `/_authenticated`:
-- `/api-keys` — manage Fabrication OS / Midwater keys
-- `/jobs` — view all STEP jobs across clients (filter by client, status)
-- `/jobs/$id` — single job: download STEP, view geometry JSON, view AI reasoning
-
----
+### Phase 9 — Cleanup & verification
+- Delete dead Playground concepts not migrated (e.g. its Express client).
+- Run `tsc --noEmit`, smoke-test each tab.
+- Document so you can safely delete Physics Playground.
 
 ## Technical notes
+- Backend: only TanStack server fns; admin client only inside `*.functions.ts` server-only paths.
+- Roles: separate `user_roles` table (never on profiles). `has_role(uid, role)` security-definer.
+- Feature flags: `feature_flags(key text pk, enabled bool, required_role app_role)` checked server-side.
+- All Playground components that import Express / `physicsClient` get rewritten to `useServerFn`.
+- Imports of `@/integrations/api/*` from Playground get replaced with the new server fns.
+- No new edge functions.
 
-- `occt-import-js` is WASM-based and Worker-compatible; bundles cleanly with Vite. Fallback if it fails: minimal STEP header parser for units + bounding-box-from-vertices.
-- All `/api/public/step/*` routes bypass the existing `requireSupabaseAuth` (your login flow) — they use only the API-key middleware.
-- API keys are stored only as SHA-256 hashes; raw key shown once at creation, never recoverable.
-- Request log keeps 90 days; older rows pruned via daily cron (pg_cron).
-
----
-
-## Build order
-
-1. DB migration: `api_clients`, `api_request_log`, `step_jobs`, storage bucket
-2. Service-auth middleware + key generation helper
-3. Admin UI: `/api-keys` (create/list/revoke)
-4. STEP upload route + job row creation
-5. WASM parser integration + processing pipeline
-6. AI reasoning stage
-7. Job status route + internal `/jobs` viewer
-8. Smoke test with curl using a generated key
-
-I'll execute step by step and check in after the DB migration + service auth land, since those are the load-bearing pieces.
+## Confirm
+Approve this and I'll start **Phase 1** in the next turn (DB migration + auth + role hooks + inventory).
