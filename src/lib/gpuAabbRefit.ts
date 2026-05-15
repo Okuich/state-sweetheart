@@ -1,3 +1,5 @@
+import { writeTypedBuffer } from "./gpu/writeBuffer";
+
 /**
  * gpuAabbRefit.ts
  * ──────────────────────────────────────────────────────────────────────────
