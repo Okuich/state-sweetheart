@@ -303,15 +303,29 @@ export function DistPartPanel() {
                   </span>
                 </div>
                 <div className="flex gap-1 items-end h-16">
-                  {out.map((o, i) => (
-                    <div key={i} className="flex-1 flex flex-col items-center gap-0.5" title={`rank ${i} · out ${o} · in ${inn[i]} · ghost-recv ${recv[i]}`}>
-                      <div className="w-full h-12 bg-muted/20 rounded-sm overflow-hidden flex items-end gap-[1px] px-[1px]">
-                        <div className="flex-1 bg-primary/70 rounded-[1px]" style={{ height: `${(o / maxHalo) * 100}%` }} />
-                        <div className="flex-1 bg-accent/70 rounded-[1px]" style={{ height: `${(inn[i] / maxHalo) * 100}%` }} />
-                      </div>
-                      <div className="text-[8px] font-mono text-muted-foreground tabular-nums">{i}</div>
-                    </div>
-                  ))}
+                  {out.map((o, i) => {
+                    const isSel = selectedPart === i;
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => {
+                          setSelectedPart((s) => (s === i ? null : i));
+                          setDrill(null);
+                        }}
+                        className={`flex-1 flex flex-col items-center gap-0.5 cursor-pointer rounded-sm transition-shadow hover:ring-1 hover:ring-foreground/40 ${
+                          isSel ? "ring-2 ring-foreground" : selectedPart !== null ? "opacity-50" : ""
+                        }`}
+                        title={`rank ${i} · out ${o} · in ${inn[i]} · ghost-recv ${recv[i]} · click to filter comm matrix`}
+                      >
+                        <div className="w-full h-12 bg-muted/20 rounded-sm overflow-hidden flex items-end gap-[1px] px-[1px]">
+                          <div className="flex-1 bg-primary/70 rounded-[1px]" style={{ height: `${(o / maxHalo) * 100}%` }} />
+                          <div className="flex-1 bg-accent/70 rounded-[1px]" style={{ height: `${(inn[i] / maxHalo) * 100}%` }} />
+                        </div>
+                        <div className={`text-[8px] font-mono tabular-nums ${isSel ? "text-foreground font-semibold" : "text-muted-foreground"}`}>{i}</div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             );
