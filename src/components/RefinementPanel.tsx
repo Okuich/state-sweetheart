@@ -566,7 +566,8 @@ function Sparkline({ values, color, height = 18 }: { values: number[]; color: st
   );
 }
 
-function PhysicsChannelStrip({ last }: { last: AdaptivePassResult }) {
+type ChannelWeights = { stress: number; thermal: number; deformation: number; contact: number };
+function PhysicsChannelStrip({ last, weights, onWeightChange }: { last: AdaptivePassResult; weights: ChannelWeights; onWeightChange: (k: keyof ChannelWeights, v: number) => void }) {
   const realPhysics = last.fieldSource === "physics";
   const ageStr = last.snapshotAgeMs !== undefined ? `${(last.snapshotAgeMs / 1000).toFixed(2)}s` : "—";
   const N = last.snapshot?.N ?? 0;
