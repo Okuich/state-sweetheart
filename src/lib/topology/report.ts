@@ -91,6 +91,16 @@ function resolveSections(s?: ReportSections): Required<ReportSections> {
   return { ...ALL_SECTIONS, ...(s ?? {}) };
 }
 
+/** Render-time options that don't affect the JSON snapshot. */
+export interface ReportOptions {
+  /**
+   * Compact mode: disables inline cell numbers in the comm matrix and uses
+   * ultra-small cells so very large P fits on far fewer pages. Use when the
+   * matrix is dominated by structure rather than per-cell magnitudes.
+   */
+  compactMatrix?: boolean;
+}
+
 export function buildReportJSON(r: TopologyResult, sections?: ReportSections): TopologyReport {
   const sec = resolveSections(sections);
   const meanValence = (r.graph.edges.length * 2) / Math.max(1, r.graph.nodes.length);
