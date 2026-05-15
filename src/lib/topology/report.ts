@@ -442,14 +442,14 @@ export function downloadBlob(blob: Blob, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function downloadReport(r: TopologyResult, fmt: "pdf" | "json", label?: string) {
+export function downloadReport(r: TopologyResult, fmt: "pdf" | "json", label?: string, sections?: ReportSections) {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const slug = (label ?? "topology").replace(/[^a-z0-9]+/gi, "-").toLowerCase();
   if (fmt === "json") {
-    const blob = new Blob([JSON.stringify(buildReportJSON(r), null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(buildReportJSON(r, sections), null, 2)], { type: "application/json" });
     downloadBlob(blob, `${slug}-report-${stamp}.json`);
   } else {
-    downloadBlob(buildReportPDF(r, label), `${slug}-report-${stamp}.pdf`);
+    downloadBlob(buildReportPDF(r, label, sections), `${slug}-report-${stamp}.pdf`);
   }
 }
 
