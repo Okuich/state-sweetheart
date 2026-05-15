@@ -47,8 +47,8 @@ export const Route = createFileRoute("/_authenticated/internal")({
   component: GatedIndex,
   head: () => ({
     meta: [
-      { title: "Internal · Physics OS / Geometry OS" },
-      { name: "description", content: "Internal hidden layer — Physics OS and Geometry OS controls." },
+      { title: "Internal · Admin" },
+      { name: "description", content: "Internal admin console." },
       { name: "robots", content: "noindex, nofollow" },
     ],
   }),

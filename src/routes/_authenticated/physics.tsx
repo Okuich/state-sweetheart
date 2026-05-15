@@ -24,8 +24,9 @@ export const Route = createFileRoute("/_authenticated/physics")({
   component: PhysicsDashboard,
   head: () => ({
     meta: [
-      { title: "Physics Engine — Admin" },
-      { name: "description", content: "Analytical physics engine: stress, deflection, safety, optimization, and validation." },
+      { title: "Internal · Admin" },
+      { name: "description", content: "Internal admin console." },
+      { name: "robots", content: "noindex, nofollow" },
     ],
   }),
 });
