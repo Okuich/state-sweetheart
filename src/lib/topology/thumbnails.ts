@@ -49,7 +49,7 @@ export interface ThumbnailOptions {
 
 type Axis = 0 | 1 | 2;
 
-function project(center: [number, number, number], hAxis: Axis, vAxis: Axis): [number, number] {
+function project(center: readonly [number, number, number], hAxis: Axis, vAxis: Axis): [number, number] {
   return [center[hAxis], center[vAxis]];
 }
 
