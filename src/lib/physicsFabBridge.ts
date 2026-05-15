@@ -10,7 +10,7 @@
  */
 import type { Observation } from "./fabFeedback";
 import { scanImportBridge } from "./scanImportStore";
-import { runPipeline } from "./physics.functions";
+import { predictForMidwater } from "./physics.functions";
 
 export interface PhysicsPrediction {
   partId: string;
