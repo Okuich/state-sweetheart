@@ -74,9 +74,11 @@ function buildSnapshot(): FeedSnapshot {
   const prog = Array.from(progress.values()).sort((a, b) =>
     b.updatedAt.localeCompare(a.updatedAt),
   );
+  const hist: Record<string, PartHistoryEntry[]> = {};
+  for (const [k, v] of history) hist[k] = v;
   const counts = { queued: 0, processing: 0, ready: 0, failed: 0 };
   for (const p of prog) counts[p.status] += 1;
-  return { predictions, progress: prog, counts };
+  return { predictions, progress: prog, history: hist, counts };
 }
 
 function emit() {
