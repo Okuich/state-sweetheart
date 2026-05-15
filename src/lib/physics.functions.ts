@@ -143,6 +143,36 @@ export const runPipeline = createServerFn({ method: "POST" })
     return out;
   });
 
+/**
+ * Customer-facing Midwater prediction.
+ *
+ * Runs the same Physics OS pipeline as `runPipeline`, but is gated only
+ * by authentication — NOT by the `physics_engine` feature flag. This is
+ * what the Midwater dashboard's background bridge calls so customers
+ * see predictions without ever being exposed to (or needing access to)
+ * the hidden Physics OS layer.
+ */
+export const predictForMidwater = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => AnalyzeSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    const t0 = Date.now();
+    const r = handleSingle(data as AnalyzeBody);
+    if ("error" in r) throw new Error(r.error);
+    const d = r.data!;
+    const out = {
+      source: d.engineSource,
+      confidence: d.confidence?.overall,
+      confidenceBreakdown: d.confidence,
+      load: d.load, stress: d.stress, safety: d.safety, deflection: d.deflection,
+      cost: d.cost, recommendations: d.recommendations,
+      materialName: d.material.name,
+      timestamp: d.meta.computedAt,
+    };
+    await logJob(context.userId, "midwater", data, out, Date.now() - t0);
+    return out;
+  });
+
 export const optimizeDesign = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) => OptimizeSchema.parse(input))
