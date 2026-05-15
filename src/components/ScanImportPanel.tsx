@@ -73,14 +73,14 @@ export function ScanImportPanel() {
     <div className="space-y-6">
       <header>
         <div className="text-[10px] uppercase tracking-[0.28em] text-muted-foreground">
-          module · post-fabrication-scan-import
+          module · midwater-scan-import
         </div>
         <h2 className="font-display text-2xl md:text-3xl text-glow">
-          Post-Fabrication <span className="text-primary">Scans</span> & Quality Reports
+          Inspection <span className="text-primary">Scans</span> & Quality Reports
         </h2>
         <p className="text-xs text-muted-foreground max-w-xl mt-1">
           Drop a CSV / JSON inspection report, map its columns onto a
-          fabrication channel (dimensional · thermal · tolerance · surface),
+          measurement channel (dimensional · thermal · tolerance · surface),
           then push the parsed observations into the calibration loop.
         </p>
       </header>
