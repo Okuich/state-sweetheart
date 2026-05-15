@@ -4,7 +4,7 @@
  * The underlying engine is intentionally not named in the UI.
  */
 import { useEffect, useState } from "react";
-import { Loader2, RotateCw } from "lucide-react";
+import { Loader2, RotateCw, X, AlertTriangle } from "lucide-react";
 import {
   physicsFabFeed,
   type FeedSnapshot,
@@ -114,6 +114,53 @@ export function FabPredictionsPanel() {
         ))}
       </div>
 
+      {/* Failed-jobs banner */}
+      {(() => {
+        const failed = progress.filter((p) => p.status === "failed");
+        if (failed.length === 0) return null;
+        const last = failed[0];
+        return (
+          <div className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2.5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-2 min-w-0">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-destructive mt-0.5" />
+                <div className="min-w-0">
+                  <div className="text-[11px] font-semibold text-destructive">
+                    {failed.length === 1
+                      ? `Prediction failed for ${last.partId}`
+                      : `${failed.length} predictions failed — last: ${last.partId}`}
+                  </div>
+                  <div className="mt-0.5 truncate font-mono text-[10px] text-destructive/80" title={last.error ?? ""}>
+                    {last.error ?? "unknown error"}
+                  </div>
+                  <div className="mt-0.5 text-[10px] text-muted-foreground">
+                    Auto-retried {last.attempt}× before giving up. Use re-run to try again.
+                  </div>
+                </div>
+              </div>
+              <div className="flex shrink-0 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => physicsFabFeed.predict(last.partId)}
+                  className="inline-flex items-center gap-1 rounded-md border border-destructive/40 bg-background/40 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-destructive transition hover:bg-destructive/10"
+                >
+                  <RotateCw className="h-3 w-3" />
+                  re-run last
+                </button>
+                <button
+                  type="button"
+                  onClick={() => physicsFabFeed.dismissAllFailed()}
+                  className="inline-flex items-center gap-1 rounded-md border border-border bg-background/40 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-muted-foreground transition hover:text-foreground"
+                >
+                  <X className="h-3 w-3" />
+                  dismiss {failed.length > 1 ? "all" : ""}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {rows.length === 0 ? (
         <div className="rounded-md border border-dashed border-border bg-background/40 px-4 py-10 text-center text-xs text-muted-foreground">
           Import a scan or quality report to start the pipeline.
@@ -170,18 +217,34 @@ export function FabPredictionsPanel() {
                     {pr.ms ?? "—"}
                   </td>
                   <td className="px-3 py-2 text-right">
-                    <button
-                      type="button"
-                      onClick={() => physicsFabFeed.predict(pr.partId)}
-                      disabled={pr.status === "queued" || pr.status === "processing"}
-                      title="Re-run prediction for this part"
-                      className="inline-flex items-center gap-1 rounded-md border border-border bg-background/60 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-muted-foreground transition hover:border-primary/50 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-border disabled:hover:text-muted-foreground"
-                    >
-                      <RotateCw
-                        className={`h-3 w-3 ${pr.status === "processing" || pr.status === "queued" ? "animate-spin" : ""}`}
-                      />
-                      re-run
-                    </button>
+                    <div className="inline-flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() => physicsFabFeed.predict(pr.partId)}
+                        disabled={pr.status === "queued" || pr.status === "processing"}
+                        title={
+                          pr.status === "failed" && pr.error
+                            ? `Re-run — last error: ${pr.error}`
+                            : "Re-run prediction for this part"
+                        }
+                        className="inline-flex items-center gap-1 rounded-md border border-border bg-background/60 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-muted-foreground transition hover:border-primary/50 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-border disabled:hover:text-muted-foreground"
+                      >
+                        <RotateCw
+                          className={`h-3 w-3 ${pr.status === "processing" || pr.status === "queued" ? "animate-spin" : ""}`}
+                        />
+                        re-run
+                      </button>
+                      {pr.status === "failed" && (
+                        <button
+                          type="button"
+                          onClick={() => physicsFabFeed.dismiss(pr.partId)}
+                          title="Dismiss this failed job"
+                          className="inline-flex items-center justify-center rounded-md border border-border bg-background/60 px-1.5 py-1 text-muted-foreground transition hover:text-destructive"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
