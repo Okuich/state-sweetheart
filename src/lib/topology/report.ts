@@ -91,6 +91,16 @@ function resolveSections(s?: ReportSections): Required<ReportSections> {
   return { ...ALL_SECTIONS, ...(s ?? {}) };
 }
 
+/** Render-time options that don't affect the JSON snapshot. */
+export interface ReportOptions {
+  /**
+   * Compact mode: disables inline cell numbers in the comm matrix and uses
+   * ultra-small cells so very large P fits on far fewer pages. Use when the
+   * matrix is dominated by structure rather than per-cell magnitudes.
+   */
+  compactMatrix?: boolean;
+}
+
 export function buildReportJSON(r: TopologyResult, sections?: ReportSections): TopologyReport {
   const sec = resolveSections(sections);
   const meanValence = (r.graph.edges.length * 2) / Math.max(1, r.graph.nodes.length);
@@ -157,7 +167,7 @@ function hexToRgb(hex: string): [number, number, number] {
   return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
 }
 
-export function buildReportPDF(r: TopologyResult, label?: string, sections?: ReportSections): Blob {
+export function buildReportPDF(r: TopologyResult, label?: string, sections?: ReportSections, opts: ReportOptions = {}): Blob {
   const sec = resolveSections(sections);
   const rep = buildReportJSON(r, sec);
   const doc = new jsPDF({ unit: "pt", format: "a4" });
@@ -365,15 +375,17 @@ export function buildReportPDF(r: TopologyResult, label?: string, sections?: Rep
     const availW = W - M * 2 - labelW;
     const availH = H - M - y - 4; // remaining height on current page
     // Pick a target cell size that keeps the whole matrix legible. Cells
-    // shrink with P, but never below 4pt (pure heatmap, no inline text).
-    const idealCell = Math.min(36, Math.max(4, Math.floor(720 / Math.max(8, P))));
-    const cellW = Math.max(4, Math.min(idealCell, Math.floor(availW)));
+    // shrink with P, but never below 4pt (or 2pt in compact mode).
+    const minCell = opts.compactMatrix ? 2 : 4;
+    const maxCell = opts.compactMatrix ? 14 : 36;
+    const idealCell = Math.min(maxCell, Math.max(minCell, Math.floor(720 / Math.max(8, P))));
+    const cellW = Math.max(minCell, Math.min(idealCell, Math.floor(availW)));
     const cellH = cellW; // square cells regardless of page
     // How many cols fit across one page; how many rows fit per page block.
     const colsPerPage = Math.max(1, Math.min(P, Math.floor(availW / cellW)));
     const rowsFirstPage = Math.max(1, Math.floor((availH - headerH) / cellH));
     const rowsFullPage = Math.max(1, Math.floor((H - M * 2 - headerH) / cellH));
-    const showText = cellW >= 18 && cellH >= 14;
+    const showText = !opts.compactMatrix && cellW >= 18 && cellH >= 14;
     const numCol = (n: number) => `P${n}`;
 
     for (let c0 = 0; c0 < P; c0 += colsPerPage) {
@@ -531,14 +543,14 @@ export function downloadBlob(blob: Blob, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function downloadReport(r: TopologyResult, fmt: "pdf" | "json", label?: string, sections?: ReportSections) {
+export function downloadReport(r: TopologyResult, fmt: "pdf" | "json", label?: string, sections?: ReportSections, opts?: ReportOptions) {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const slug = (label ?? "topology").replace(/[^a-z0-9]+/gi, "-").toLowerCase();
   if (fmt === "json") {
     const blob = new Blob([JSON.stringify(buildReportJSON(r, sections), null, 2)], { type: "application/json" });
     downloadBlob(blob, `${slug}-report-${stamp}.json`);
   } else {
-    downloadBlob(buildReportPDF(r, label, sections), `${slug}-report-${stamp}.pdf`);
+    downloadBlob(buildReportPDF(r, label, sections, opts), `${slug}-report-${stamp}.pdf`);
   }
 }
 

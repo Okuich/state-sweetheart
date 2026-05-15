@@ -68,6 +68,7 @@ export function TopologyPanel() {
   const [bench, setBench] = useState<TraversalBench | null>(null);
   const [exportSections, setExportSections] = useState<ReportSections>({ ...ALL_SECTIONS });
   const toggleSection = (k: keyof ReportSections) => setExportSections((s) => ({ ...s, [k]: !s[k] }));
+  const [compactMatrix, setCompactMatrix] = useState(false);
   const [imported, setImported] = useState<{ name: string; generatedAt: string } | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -202,8 +203,12 @@ export function TopologyPanel() {
         </div>
         <div className="flex gap-2 flex-wrap">
           <Button variant="outline" onClick={indexCorpus} disabled={running || !!imported}>Index corpus</Button>
-          <Button variant="outline" onClick={() => result && downloadReport(result, "json", imported?.name ?? PRESETS[presetIdx].label)} disabled={!result || running}>Export JSON</Button>
-          <Button variant="outline" onClick={() => result && downloadReport(result, "pdf", imported?.name ?? PRESETS[presetIdx].label)} disabled={!result || running}>Export PDF</Button>
+          <Button variant="outline" onClick={() => result && downloadReport(result, "json", imported?.name ?? PRESETS[presetIdx].label, exportSections)} disabled={!result || running}>Export JSON</Button>
+          <Button variant="outline" onClick={() => result && downloadReport(result, "pdf", imported?.name ?? PRESETS[presetIdx].label, exportSections, { compactMatrix })} disabled={!result || running}>Export PDF</Button>
+          <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground select-none px-2 border rounded-md cursor-pointer hover:bg-muted/40" title="Disable inline cell numbers and use ultra-small cells so very large P fits on fewer pages.">
+            <input type="checkbox" checked={compactMatrix} onChange={(e) => setCompactMatrix(e.target.checked)} className="accent-primary" />
+            Compact matrix
+          </label>
           <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={running}>Import JSON</Button>
           <input
             ref={fileRef}
