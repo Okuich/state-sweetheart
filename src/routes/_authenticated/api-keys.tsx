@@ -93,7 +93,7 @@ function ApiKeysPage() {
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">API Keys</h1>
             <p className="text-sm text-muted-foreground">
-              Per-caller credentials for Fabrication OS, Midwater, and other services.
+              Per-caller credentials for Midwater and other downstream services.
             </p>
           </div>
           <Link to="/" className="text-sm text-muted-foreground underline">
