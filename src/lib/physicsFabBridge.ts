@@ -86,6 +86,13 @@ function emit() {
   for (const l of listeners) l(snap);
 }
 
+function pushHistory(partId: string, entry: PartHistoryEntry) {
+  const arr = history.get(partId) ?? [];
+  arr.unshift(entry);
+  if (arr.length > HISTORY_LIMIT) arr.length = HISTORY_LIMIT;
+  history.set(partId, arr);
+}
+
 function setStatus(partId: string, status: PartStatus, extra: Partial<PartProgress> = {}) {
   const now = new Date().toISOString();
   const prev = progress.get(partId);
