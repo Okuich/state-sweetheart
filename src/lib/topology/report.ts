@@ -395,3 +395,118 @@ export function downloadReport(r: TopologyResult, fmt: "pdf" | "json", label?: s
     downloadBlob(buildReportPDF(r, label), `${slug}-report-${stamp}.pdf`);
   }
 }
+
+/**
+ * Validate that an unknown value matches the TopologyReport shape we
+ * emit from buildReportJSON. Throws a descriptive Error on the first
+ * problem so the caller can surface it to the user.
+ */
+export function parseTopologyReport(input: unknown): TopologyReport {
+  if (!input || typeof input !== "object") throw new Error("not a JSON object");
+  const o = input as Record<string, unknown>;
+  const need = (k: string) => {
+    if (!(k in o)) throw new Error(`missing field "${k}"`);
+  };
+  for (const k of ["graph", "features", "manufacturability", "priors", "partition", "embedding"]) need(k);
+  const part = o.partition as Record<string, unknown>;
+  if (typeof part.partitionCount !== "number") throw new Error("partition.partitionCount missing");
+  if (!Array.isArray(part.commMatrix)) throw new Error("partition.commMatrix missing");
+  const expected = (part.partitionCount as number) ** 2;
+  if ((part.commMatrix as unknown[]).length !== expected) {
+    throw new Error(`partition.commMatrix length ${(part.commMatrix as unknown[]).length} ≠ P² (${expected})`);
+  }
+  const emb = o.embedding as Record<string, unknown>;
+  if (!Array.isArray(emb.vector)) throw new Error("embedding.vector missing");
+  // At this point the structural checks pass; trust the snapshot.
+  return input as TopologyReport;
+}
+
+/**
+ * Reconstruct a TopologyResult-shaped object from a previously-exported
+ * report snapshot, sufficient to re-render the dashboard panels.
+ *
+ * The original graph nodes/edges, owner ids and resident lists are not
+ * round-trippable from JSON (the JSON stores only counts and aggregates),
+ * so the rehydrated result uses placeholder graph nodes whose .length
+ * matches the snapshot. Panels that read aggregate counts/sizes work
+ * unchanged; features that require live graph topology (GPU traversal
+ * bench, retrieval) should be gated by an `imported` flag in the UI.
+ */
+export function rehydrateFromReport(rep: TopologyReport): TopologyResult {
+  const N = rep.graph.nodes;
+  const E = rep.graph.edges;
+  const P = rep.partition.partitionCount;
+
+  // Placeholder node objects — shape-correct, content irrelevant for the
+  // panels (which only read .length).
+  const nodes = new Array(N).fill(null).map((_, i) => ({
+    leaf: i,
+    center: [0, 0, 0] as [number, number, number],
+    radius: 0,
+    density: 0,
+    tag: "bulk",
+    feature: "bulk" as const,
+    wallThickness: 0,
+    curvature: 0,
+    boundary: false,
+    downward: false,
+  }));
+  const edges = new Array(E).fill(null).map(() => ({ a: 0, b: 0, shared: 0, axis: 0 as const }));
+
+  // Placeholder resident lists with the right cardinality per partition.
+  const resident: number[][] = new Array(P).fill(null).map((_, p) => {
+    const len = rep.partition.resident[p] ?? 0;
+    const arr = new Array(len);
+    for (let i = 0; i < len; i++) arr[i] = i;
+    return arr;
+  });
+  const halos: number[][] = new Array(P).fill(null).map((_, p) => {
+    const len = rep.partition.halos[p] ?? 0;
+    return new Array(len).fill(0);
+  });
+
+  return {
+    totalMs: rep.pipelineMs,
+    graph: {
+      nodes,
+      edges,
+      neighborOffsets: new Uint32Array(N + 1),
+      neighborIdx: new Uint32Array(0),
+      neighborEdge: new Uint32Array(0),
+      buildMs: rep.graph.buildMs,
+    },
+    features: {
+      counts: rep.features.counts,
+      symmetryScore: rep.features.symmetryScore,
+      minWallThickness: rep.features.minWallThickness,
+      avgThinWallThickness: rep.features.avgThinWallThickness,
+    },
+    manufacturability: {
+      feasibility: rep.manufacturability.feasibility,
+      machiningAccess: rep.manufacturability.machiningAccess,
+      supportFraction: rep.manufacturability.supportFraction,
+      thermalDistortionRisk: rep.manufacturability.thermalDistortionRisk,
+      assemblyComplexity: rep.manufacturability.assemblyComplexity,
+      drivers: rep.manufacturability.drivers,
+    },
+    priors: {
+      timestepScale: rep.priors.timestepScale,
+      damping: rep.priors.damping,
+      contactStiffness: rep.priors.contactStiffness,
+      refinementHints: rep.priors.refinementHints,
+    },
+    partition: {
+      partitionCount: P,
+      edgeCut: rep.partition.edgeCut,
+      imbalance: rep.partition.imbalance,
+      owners: new Int32Array(N),
+      resident,
+      halos,
+      commMatrix: rep.partition.commMatrix.slice(),
+    },
+    embedding: {
+      vector: new Float32Array(rep.embedding.vector),
+      slices: rep.embedding.slices,
+    },
+  } as unknown as TopologyResult;
+}
