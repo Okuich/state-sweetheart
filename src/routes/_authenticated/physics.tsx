@@ -12,7 +12,7 @@ import {
   listMaterials,
   listMyJobs,
 } from "@/lib/physics.functions";
-import { usePhysicsAccess } from "@/hooks/useAccess";
+import { usePhysicsAccess, useAccess } from "@/hooks/useAccess";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -66,16 +66,27 @@ function buildBody(f: AnalyzeForm) {
 
 function PhysicsDashboard() {
   const { hasAccess, loading } = usePhysicsAccess();
+  const { isAdmin, loading: accessLoading } = useAccess();
 
-  if (loading) {
+  if (loading || accessLoading) {
     return <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">Loading access…</div>;
+  }
+  // Physics OS is a hidden internal layer — non-admin customers may not see it.
+  if (!isAdmin) {
+    return (
+      <div className="mx-auto max-w-xl px-6 py-20 text-center space-y-4">
+        <h1 className="text-2xl font-semibold">Not available</h1>
+        <p className="text-sm text-muted-foreground">This area is reserved for internal operators.</p>
+        <Button asChild variant="outline"><Link to="/">Back home</Link></Button>
+      </div>
+    );
   }
   if (!hasAccess) {
     return (
       <div className="mx-auto max-w-xl px-6 py-20 text-center space-y-4">
         <h1 className="text-2xl font-semibold">Physics Engine locked</h1>
         <p className="text-sm text-muted-foreground">
-          The <code>physics_engine</code> feature flag is not enabled for your account. Request access from the admin panel.
+          The <code>physics_engine</code> feature flag is not enabled for your account.
         </p>
         <Button asChild variant="outline"><Link to="/">Back home</Link></Button>
       </div>
