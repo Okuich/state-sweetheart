@@ -82,10 +82,10 @@ export function FabFeedbackPanel() {
       <header className="flex flex-wrap items-baseline justify-between gap-3">
         <div>
           <div className="text-[10px] uppercase tracking-[0.28em] text-muted-foreground">
-            module · fab-feedback
+            module · midwater-feedback
           </div>
           <h2 className="font-display text-2xl md:text-3xl text-glow">
-            Fabrication <span className="text-primary">Feedback</span> Calibration
+            Midwater <span className="text-primary">Feedback</span> Calibration
           </h2>
           <p className="text-xs text-muted-foreground max-w-xl mt-1">
             Online ridge least-squares per channel. Closes the loop on
