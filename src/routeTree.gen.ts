@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
+import { Route as AuthenticatedPhysicsRouteImport } from './routes/_authenticated/physics'
 import { Route as AuthenticatedApiKeysRouteImport } from './routes/_authenticated/api-keys'
 import { Route as AuthenticatedJobsIndexRouteImport } from './routes/_authenticated/jobs.index'
 import { Route as ApiPublicTelemetryRouteImport } from './routes/api/public/telemetry'
@@ -36,6 +37,11 @@ const AuthenticatedRoute = AuthenticatedRouteImport.update({
 const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedPhysicsRoute = AuthenticatedPhysicsRouteImport.update({
+  id: '/physics',
+  path: '/physics',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedApiKeysRoute = AuthenticatedApiKeysRouteImport.update({
@@ -102,6 +108,7 @@ export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
   '/login': typeof LoginRoute
   '/api-keys': typeof AuthenticatedApiKeysRoute
+  '/physics': typeof AuthenticatedPhysicsRoute
   '/jobs/$id': typeof AuthenticatedJobsIdRoute
   '/api/public/telemetry': typeof ApiPublicTelemetryRouteWithChildren
   '/jobs/': typeof AuthenticatedJobsIndexRoute
@@ -116,6 +123,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/api-keys': typeof AuthenticatedApiKeysRoute
+  '/physics': typeof AuthenticatedPhysicsRoute
   '/': typeof AuthenticatedIndexRoute
   '/jobs/$id': typeof AuthenticatedJobsIdRoute
   '/api/public/telemetry': typeof ApiPublicTelemetryRouteWithChildren
@@ -133,6 +141,7 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/login': typeof LoginRoute
   '/_authenticated/api-keys': typeof AuthenticatedApiKeysRoute
+  '/_authenticated/physics': typeof AuthenticatedPhysicsRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/jobs/$id': typeof AuthenticatedJobsIdRoute
   '/api/public/telemetry': typeof ApiPublicTelemetryRouteWithChildren
@@ -151,6 +160,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/api-keys'
+    | '/physics'
     | '/jobs/$id'
     | '/api/public/telemetry'
     | '/jobs/'
@@ -165,6 +175,7 @@ export interface FileRouteTypes {
   to:
     | '/login'
     | '/api-keys'
+    | '/physics'
     | '/'
     | '/jobs/$id'
     | '/api/public/telemetry'
@@ -181,6 +192,7 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/login'
     | '/_authenticated/api-keys'
+    | '/_authenticated/physics'
     | '/_authenticated/'
     | '/_authenticated/jobs/$id'
     | '/api/public/telemetry'
@@ -225,6 +237,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AuthenticatedIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/physics': {
+      id: '/_authenticated/physics'
+      path: '/physics'
+      fullPath: '/physics'
+      preLoaderRoute: typeof AuthenticatedPhysicsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/api-keys': {
@@ -309,6 +328,7 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteChildren {
   AuthenticatedApiKeysRoute: typeof AuthenticatedApiKeysRoute
+  AuthenticatedPhysicsRoute: typeof AuthenticatedPhysicsRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedJobsIdRoute: typeof AuthenticatedJobsIdRoute
   AuthenticatedJobsIndexRoute: typeof AuthenticatedJobsIndexRoute
@@ -316,6 +336,7 @@ interface AuthenticatedRouteChildren {
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedApiKeysRoute: AuthenticatedApiKeysRoute,
+  AuthenticatedPhysicsRoute: AuthenticatedPhysicsRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedJobsIdRoute: AuthenticatedJobsIdRoute,
   AuthenticatedJobsIndexRoute: AuthenticatedJobsIndexRoute,
