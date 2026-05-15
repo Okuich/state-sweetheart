@@ -47,6 +47,8 @@ export interface ContactStats {
   sdfTotalPenetration: number;
   /** Max single-particle SDF penetration depth before correction. */
   sdfMaxPenetration: number;
+  /** Particles actually tested against the SDF (≤ N, capped by guardrail). */
+  sdfChecks: number;
 }
 
 /** Minimum state shape this solver requires. */
