@@ -397,7 +397,7 @@ export function RefinementPanel() {
       </div>
 
       {last && (
-        <PhysicsChannelStrip last={last} />
+        <PhysicsChannelStrip last={last} weights={weights} onWeightChange={setWeight} />
       )}
 
       {last && lastBaseMesh && (
