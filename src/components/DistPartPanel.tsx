@@ -217,21 +217,53 @@ export function DistPartPanel() {
         </div>
 
         <div className="rounded-md border border-border bg-background/40 p-4 space-y-3">
-          <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-            comm matrix · cross-rank halo (NCCL)
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+              comm matrix · cross-rank halo (NCCL)
+            </div>
+            <div className="flex gap-1" role="group" aria-label="Sort partitions">
+              {([
+                ["none", "rank"],
+                ["haloOut", "halo↑"],
+                ["haloIn", "halo↓"],
+              ] as [CommSort, string][]).map(([k, label]) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setCommSort(k)}
+                  className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-[0.14em] border transition-colors ${
+                    commSort === k
+                      ? "border-primary text-primary bg-primary/10"
+                      : "border-border text-muted-foreground hover:text-foreground"
+                  }`}
+                  title={
+                    k === "none" ? "Default rank order" :
+                    k === "haloOut" ? "Sort by halo bytes sent (row sum) desc" :
+                    "Sort by halo bytes received (column sum) desc"
+                  }
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
           {last ? (
             <div className="grid gap-[2px]" style={{ gridTemplateColumns: `repeat(${last.partitionCount}, minmax(0, 1fr))` }}>
-              {Array.from(commMatrix).map((v, i) => {
+              {Array.from({ length: Plast * Plast }, (_, idx) => {
+                const rDisp = Math.floor(idx / Plast);
+                const cDisp = idx % Plast;
+                const rOrig = commPerm[rDisp];
+                const cOrig = commPerm[cDisp];
+                const v = commMatrix[rOrig * Plast + cOrig];
                 const intensity = v / commMax;
                 return (
                   <div
-                    key={i}
+                    key={idx}
                     className="aspect-square rounded-[1px]"
                     style={{
                       background: v === 0 ? "hsl(var(--muted) / 0.2)" : `hsl(var(--primary) / ${0.15 + intensity * 0.85})`,
                     }}
-                    title={`rank ${Math.floor(i / last.partitionCount)} → ${i % last.partitionCount}: ${v}`}
+                    title={`rank ${rOrig} → ${cOrig}: ${v}`}
                   />
                 );
               })}
