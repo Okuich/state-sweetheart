@@ -16,6 +16,38 @@ import {
   type Observation,
 } from "@/lib/fabFeedback";
 import { scanImportBridge } from "@/lib/scanImportStore";
+import { physicsFabFeed, type FeedSnapshot } from "@/lib/physicsFabBridge";
+import { Loader2 } from "lucide-react";
+
+function PipelineBadge() {
+  const [snap, setSnap] = useState<FeedSnapshot>(() => physicsFabFeed.snapshot());
+  useEffect(() => physicsFabFeed.subscribe(setSnap), []);
+  const { counts } = snap;
+  const inFlight = counts.queued + counts.processing;
+  const total = counts.queued + counts.processing + counts.ready + counts.failed;
+  if (total === 0) {
+    return (
+      <div className="flex items-center gap-1.5 rounded-full border border-border bg-background/60 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+        <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50" />
+        pipeline · idle
+      </div>
+    );
+  }
+  if (inFlight === 0) {
+    return (
+      <div className="flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-emerald-500">
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+        pipeline · {counts.ready} ready{counts.failed ? ` · ${counts.failed} failed` : ""}
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-primary">
+      <Loader2 className="h-3 w-3 animate-spin" />
+      pipeline · {inFlight} in flight
+    </div>
+  );
+}
 
 export function FabFeedbackPanel() {
   const [state, setState] = useState<CalibrationState>(() => initState());
@@ -81,8 +113,11 @@ export function FabFeedbackPanel() {
     <div className="space-y-6">
       <header className="flex flex-wrap items-baseline justify-between gap-3">
         <div>
-          <div className="text-[10px] uppercase tracking-[0.28em] text-muted-foreground">
-            module · midwater-feedback
+          <div className="flex items-center gap-2">
+            <div className="text-[10px] uppercase tracking-[0.28em] text-muted-foreground">
+              module · midwater-feedback
+            </div>
+            <PipelineBadge />
           </div>
           <h2 className="font-display text-2xl md:text-3xl text-glow">
             Midwater <span className="text-primary">Feedback</span> Calibration
