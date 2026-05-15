@@ -20,7 +20,7 @@ export interface PhysicsPrediction {
   predictedDeflectionMm?: number;
   safetyFactor?: number;
   costUsd?: number;
-  recommendations?: string[];
+  recommendations?: { type: string; title: string; detail: string }[];
   materialName?: string;
   computedAt: string;
   ms: number;
