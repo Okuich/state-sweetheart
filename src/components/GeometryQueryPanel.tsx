@@ -242,6 +242,7 @@ function HitRow({ rank, hit, query }: { rank: number; hit: RetrievalHit; query: 
   const total = Math.max(1, hit.result.graph.nodes.length);
   const qTotal = Math.max(1, query.graph.nodes.length);
   const matched = new Set(hit.matchedFeatures);
+  const [showPreview, setShowPreview] = useState(rank === 1);
   return (
     <div className="rounded-lg border border-border bg-muted/10 p-3 space-y-2">
       <div className="flex items-center gap-3">
@@ -251,6 +252,11 @@ function HitRow({ rank, hit, query }: { rank: number; hit: RetrievalHit; query: 
           <div className="h-full rounded bg-primary" style={{ width: `${Math.max(0, hit.similarity) * 100}%` }} />
         </div>
         <span className="w-14 text-right font-mono text-sm">{hit.similarity.toFixed(3)}</span>
+        <button
+          onClick={() => setShowPreview((s) => !s)}
+          className="rounded-md border border-border px-2 py-1 text-[10px] hover:bg-muted/40"
+          title="Toggle 3D preview of candidate geometry with matched features highlighted"
+        >{showPreview ? "Hide 3D" : "Show 3D"}</button>
       </div>
 
       <div className="grid grid-cols-4 gap-2 text-[10px]">
@@ -259,6 +265,10 @@ function HitRow({ rank, hit, query }: { rank: number; hit: RetrievalHit; query: 
         <SliceChip label="structural" v={hit.slices.structural} />
         <SliceChip label="manuf" v={hit.slices.manuf} />
       </div>
+
+      {showPreview && (
+        <CandidatePreview3D nodes={hit.result.graph.nodes} matched={matched} />
+      )}
 
       <div className="space-y-1">
         <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -293,6 +303,113 @@ function HitRow({ rank, hit, query }: { rank: number; hit: RetrievalHit; query: 
           <span>← query</span><span>candidate →</span>
         </div>
       </div>
+    </div>
+  );
+}
+
+const FEATURE_HEX: Record<FeatureClass, string> = {
+  bulk: "#cbd5e1",
+  boundary: "#94a3b8",
+  thin_wall: "#f59e0b",
+  overhang: "#d946ef",
+  cavity: "#ef4444",
+  stress_concentrator: "#ef4444",
+  thermal_bottleneck: "#fb923c",
+  symmetry_seed: "#10b981",
+};
+
+interface ProjectionViewProps {
+  nodes: TopoNode[];
+  matched: Set<FeatureClass>;
+  hAxis: 0 | 1 | 2;
+  vAxis: 0 | 1 | 2;
+  dAxis: 0 | 1 | 2;
+  label: string;
+}
+
+function ProjectionView({ nodes, matched, hAxis, vAxis, dAxis, label }: ProjectionViewProps) {
+  const size = 180;
+  const pad = 8;
+  if (nodes.length === 0) return null;
+  let minH = Infinity, maxH = -Infinity, minV = Infinity, maxV = -Infinity;
+  let minD = Infinity, maxD = -Infinity, maxR = 0;
+  for (const n of nodes) {
+    const c = n.center as Vec3;
+    if (c[hAxis] < minH) minH = c[hAxis];
+    if (c[hAxis] > maxH) maxH = c[hAxis];
+    if (c[vAxis] < minV) minV = c[vAxis];
+    if (c[vAxis] > maxV) maxV = c[vAxis];
+    if (c[dAxis] < minD) minD = c[dAxis];
+    if (c[dAxis] > maxD) maxD = c[dAxis];
+    if (n.radius > maxR) maxR = n.radius;
+  }
+  const spanH = Math.max(1e-6, maxH - minH + 2 * maxR);
+  const spanV = Math.max(1e-6, maxV - minV + 2 * maxR);
+  const spanD = Math.max(1e-6, maxD - minD);
+  const scale = (size - 2 * pad) / Math.max(spanH, spanV);
+  const cx0 = pad + (size - 2 * pad - spanH * scale) / 2 - (minH - maxR) * scale;
+  const cy0 = pad + (size - 2 * pad - spanV * scale) / 2 - (minV - maxR) * scale;
+  const order = nodes.map((_, i) => i).sort((a, b) => nodes[a].center[dAxis] - nodes[b].center[dAxis]);
+
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <svg width={size} height={size} className="rounded-md border border-border bg-background/40">
+        {order.map((i) => {
+          const n = nodes[i];
+          const c = n.center as Vec3;
+          const x = cx0 + c[hAxis] * scale;
+          const y = size - (cy0 + c[vAxis] * scale);
+          const r = Math.max(1, n.radius * scale);
+          const isMatch = matched.has(n.feature);
+          const depth = (c[dAxis] - minD) / spanD;
+          if (!isMatch) {
+            const alpha = 0.08 + 0.18 * depth;
+            return (
+              <rect key={i} x={x - r} y={y - r} width={r * 2} height={r * 2} fill={`rgba(148,163,184,${alpha.toFixed(3)})`} />
+            );
+          }
+          const col = FEATURE_HEX[n.feature];
+          return (
+            <g key={i}>
+              <rect x={x - r * 1.6} y={y - r * 1.6} width={r * 3.2} height={r * 3.2} fill={col} opacity={0.25} />
+              <rect x={x - r} y={y - r} width={r * 2} height={r * 2} fill={col} stroke="white" strokeWidth={0.5} opacity={0.9} />
+            </g>
+          );
+        })}
+      </svg>
+      <span className="text-[9px] uppercase tracking-wide text-muted-foreground font-mono">{label}</span>
+    </div>
+  );
+}
+
+function CandidatePreview3D({ nodes, matched }: { nodes: TopoNode[]; matched: Set<FeatureClass> }) {
+  const matchedCount = useMemo(
+    () => nodes.reduce((s, n) => s + (matched.has(n.feature) ? 1 : 0), 0),
+    [nodes, matched],
+  );
+  return (
+    <div className="rounded-md border border-border bg-background/30 p-2 space-y-2">
+      <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+        <span className="uppercase tracking-wide">3D preview · matched features highlighted</span>
+        <span className="font-mono">
+          {matchedCount}/{nodes.length} leaves · {Array.from(matched).map((f) => FEATURE_LABELS[f]).join(" · ") || "—"}
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-3 justify-center">
+        <ProjectionView nodes={nodes} matched={matched} hAxis={0} vAxis={1} dAxis={2} label="XY · front" />
+        <ProjectionView nodes={nodes} matched={matched} hAxis={0} vAxis={2} dAxis={1} label="XZ · top" />
+        <ProjectionView nodes={nodes} matched={matched} hAxis={2} vAxis={1} dAxis={0} label="ZY · side" />
+      </div>
+      {matched.size > 0 && (
+        <div className="flex flex-wrap gap-2 text-[10px] justify-center pt-1">
+          {Array.from(matched).map((f) => (
+            <span key={f} className="inline-flex items-center gap-1 font-mono">
+              <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: FEATURE_HEX[f] }} />
+              {FEATURE_LABELS[f]}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
