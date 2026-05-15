@@ -11,6 +11,7 @@ import {
   exportRefinedMesh,
   sharedPriorStore,
   physicsFeedbackBus,
+  DEFAULT_WEIGHTS,
   type AdaptivePassResult,
   type DistributedAction,
   type RefinementExportFormat,
@@ -58,6 +59,10 @@ export function RefinementPanel() {
   const [feedbackMode, setFeedbackMode] = useState<"physics" | "auto" | "synthetic">("physics");
   const [distributed, setDistributed] = useState(false);
   const [imbThr, setImbThr] = useState(1.15);
+  const [weights, setWeights] = useState<{ stress: number; thermal: number; deformation: number; contact: number }>({
+    stress: 1.0, thermal: 0.6, deformation: 0.8, contact: 0.9,
+  });
+  const setWeight = (k: keyof typeof weights, v: number) => setWeights((w) => ({ ...w, [k]: v }));
   const [last, setLast] = useState<AdaptivePassResult | null>(null);
   const [history, setHistory] = useState<PassRow[]>([]);
   const [actions, setActions] = useState<DistributedAction[]>([]);
@@ -108,7 +113,7 @@ export function RefinementPanel() {
           step,
           feedbackSource: feedbackMode,
           imbalanceThreshold: imbThr,
-          options: { splitThreshold: splitThr, extraDepth, maxNewLeaves: 5000 },
+          options: { splitThreshold: splitThr, extraDepth, maxNewLeaves: 5000, weights: { ...DEFAULT_WEIGHTS, ...weights } },
         });
         r = dr.adaptive;
         act = dr.action;
@@ -126,7 +131,7 @@ export function RefinementPanel() {
           basePartition: baseSetup.part,
           step,
           feedbackSource: feedbackMode,
-          options: { splitThreshold: splitThr, extraDepth, maxNewLeaves: 5000 },
+          options: { splitThreshold: splitThr, extraDepth, maxNewLeaves: 5000, weights: { ...DEFAULT_WEIGHTS, ...weights } },
         });
         setLastBaseMesh(baseSetup.mesh);
         setLastPartition(baseSetup.part);
@@ -392,7 +397,7 @@ export function RefinementPanel() {
       </div>
 
       {last && (
-        <PhysicsChannelStrip last={last} />
+        <PhysicsChannelStrip last={last} weights={weights} onWeightChange={setWeight} />
       )}
 
       {last && lastBaseMesh && (
@@ -561,7 +566,8 @@ function Sparkline({ values, color, height = 18 }: { values: number[]; color: st
   );
 }
 
-function PhysicsChannelStrip({ last }: { last: AdaptivePassResult }) {
+type ChannelWeights = { stress: number; thermal: number; deformation: number; contact: number };
+function PhysicsChannelStrip({ last, weights, onWeightChange }: { last: AdaptivePassResult; weights: ChannelWeights; onWeightChange: (k: keyof ChannelWeights, v: number) => void }) {
   const realPhysics = last.fieldSource === "physics";
   const ageStr = last.snapshotAgeMs !== undefined ? `${(last.snapshotAgeMs / 1000).toFixed(2)}s` : "—";
   const N = last.snapshot?.N ?? 0;
@@ -617,6 +623,19 @@ function PhysicsChannelStrip({ last }: { last: AdaptivePassResult }) {
               <div className="flex justify-between text-[8px] font-mono text-muted-foreground/70 tabular-nums">
                 <span>last {series.length}/{HISTORY_LEN}</span>
                 <span>max {(Math.max(0, ...series)).toFixed(2)}</span>
+              </div>
+              <div className="pt-1 space-y-0.5">
+                <div className="flex justify-between text-[9px] font-mono">
+                  <span className="uppercase tracking-[0.12em] text-muted-foreground">weight</span>
+                  <span className="tabular-nums" style={{ color: c.color }}>{weights[c.key].toFixed(2)}×</span>
+                </div>
+                <Slider
+                  value={[weights[c.key]]}
+                  min={0}
+                  max={2}
+                  step={0.05}
+                  onValueChange={([v]) => onWeightChange(c.key, v)}
+                />
               </div>
             </div>
           );
