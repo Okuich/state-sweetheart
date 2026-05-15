@@ -422,7 +422,12 @@ export function buildReportPDF(r: TopologyResult, label?: string, sections?: Rep
           doc.setTextColor(20); doc.setFont("helvetica", "normal");
         }
         y += headerH - 2;
-        // Body rows.
+        // Body rows + per-block aggregates (row sums, col sums, max cell).
+        const rowSums = new Array(rN - r0).fill(0) as number[];
+        const colSums = new Array(cN - c0).fill(0) as number[];
+        let blockMax = 0;
+        let blockMaxR = r0, blockMaxC = c0;
+        let blockTotal = 0;
         for (let r2 = r0; r2 < rN; r2++) {
           doc.setFontSize(Math.min(8, Math.max(5, cellH * 0.45)));
           if (showRow(r2)) {
@@ -432,6 +437,10 @@ export function buildReportPDF(r: TopologyResult, label?: string, sections?: Rep
           }
           for (let c = c0; c < cN; c++) {
             const v = rep.partition.commMatrix[r2 * P + c];
+            rowSums[r2 - r0] += v;
+            colSums[c - c0] += v;
+            blockTotal += v;
+            if (v > blockMax) { blockMax = v; blockMaxR = r2; blockMaxC = c; }
             const t = v / maxFlow;
             doc.setFillColor(255 - Math.round(t * 195), 255 - Math.round(t * 145), 255 - Math.round(t * 55));
             doc.rect(M + labelW + (c - c0) * cellW, y, cellW - 1, cellH - 1, "F");
@@ -450,6 +459,33 @@ export function buildReportPDF(r: TopologyResult, label?: string, sections?: Rep
         }
         doc.setTextColor(20);
         y += 6;
+
+        // Per-block summary: totals, hottest cell, top row/col senders.
+        ensure(46);
+        doc.setDrawColor(200);
+        doc.line(M, y, W - M, y);
+        y += 8;
+        doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(40);
+        doc.text(`Block summary (rows ${numCol(r0)}–${numCol(rN - 1)} × cols ${numCol(c0)}–${numCol(cN - 1)})`, M, y);
+        y += 10;
+        doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(60);
+        doc.text(`total flow: ${blockTotal} · max cell: ${blockMax} @ (${numCol(blockMaxR)} ← ${numCol(blockMaxC)})`, M, y);
+        y += 10;
+
+        const topK = (arr: number[], offset: number, k: number) =>
+          arr.map((v, i) => ({ v, i: i + offset }))
+             .filter((x) => x.v > 0)
+             .sort((a, b) => b.v - a.v)
+             .slice(0, k);
+        const topRows = topK(rowSums, r0, 3)
+          .map((x) => `${numCol(x.i)}=${x.v}`).join(", ") || "—";
+        const topCols = topK(colSums, c0, 3)
+          .map((x) => `${numCol(x.i)}=${x.v}`).join(", ") || "—";
+        doc.text(`top row sums (receivers): ${topRows}`, M, y); y += 10;
+        doc.text(`top col sums (senders):   ${topCols}`, M, y); y += 10;
+        doc.setTextColor(20);
+        y += 4;
+
         r0 = rN;
         firstBlockOnThisColRange = false;
       }
