@@ -4,7 +4,7 @@
  * The underlying engine is intentionally not named in the UI.
  */
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, RotateCw } from "lucide-react";
 import {
   physicsFabFeed,
   type FeedSnapshot,
@@ -132,6 +132,7 @@ export function FabPredictionsPanel() {
                 <th className="px-3 py-2">cost</th>
                 <th className="px-3 py-2">conf</th>
                 <th className="px-3 py-2">ms</th>
+                <th className="px-3 py-2 text-right">re-run</th>
               </tr>
             </thead>
             <tbody className="font-mono text-[11px]">
@@ -167,6 +168,20 @@ export function FabPredictionsPanel() {
                   </td>
                   <td className="px-3 py-2 tabular-nums text-muted-foreground">
                     {pr.ms ?? "—"}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <button
+                      type="button"
+                      onClick={() => physicsFabFeed.predict(pr.partId)}
+                      disabled={pr.status === "queued" || pr.status === "processing"}
+                      title="Re-run prediction for this part"
+                      className="inline-flex items-center gap-1 rounded-md border border-border bg-background/60 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-muted-foreground transition hover:border-primary/50 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-border disabled:hover:text-muted-foreground"
+                    >
+                      <RotateCw
+                        className={`h-3 w-3 ${pr.status === "processing" || pr.status === "queued" ? "animate-spin" : ""}`}
+                      />
+                      re-run
+                    </button>
                   </td>
                 </tr>
               ))}
