@@ -4,12 +4,18 @@
  * The underlying engine is intentionally not named in the UI.
  */
 import { useEffect, useState } from "react";
-import { Loader2, RotateCw, X, AlertTriangle } from "lucide-react";
+import { Loader2, RotateCw, X, AlertTriangle, ChevronRight } from "lucide-react";
 import {
   physicsFabFeed,
   type FeedSnapshot,
   type PartStatus,
 } from "@/lib/physicsFabBridge";
+
+function fmtTime(iso: string) {
+  const d = new Date(iso);
+  return d.toLocaleTimeString(undefined, { hour12: false }) +
+    "." + String(d.getMilliseconds()).padStart(3, "0");
+}
 
 function fmt(n: number | undefined, digits = 2, unit = "") {
   if (n === undefined || n === null || Number.isNaN(n)) return "—";
