@@ -22,8 +22,10 @@ function stateAt(x: number, y: number, mass = 1): ContactState {
 
 describe("resolveSDFContacts — gradient projection", () => {
   // Sphere of radius 0.5 centred at origin; particle radius 0.05.
+  // The SDF needs a bbox that fully contains the sphere so the band
+  // is populated everywhere we sample.
   const sdf = buildSparseSDF(
-    { min: [-1, -1, -0.1], max: [1, 1, 0.1] },
+    { min: [-1, -1, -1], max: [1, 1, 1] },
     [{ kind: "sphere", center: [0, 0, 0], radius: 0.5 }],
   );
 
