@@ -311,12 +311,12 @@ function solveSequential(
   }
 
   return { contacts: P, iters, totalPenetration: totalPen, maxPenetration: maxPen,
-    sdfContacts: 0, sdfTotalPenetration: 0, sdfMaxPenetration: 0 };
+    sdfContacts: 0, sdfTotalPenetration: 0, sdfMaxPenetration: 0, sdfChecks: 0 };
 }
 
 function emptyStats(): ContactStats {
   return { contacts: 0, iters: 0, totalPenetration: 0, maxPenetration: 0,
-    sdfContacts: 0, sdfTotalPenetration: 0, sdfMaxPenetration: 0 };
+    sdfContacts: 0, sdfTotalPenetration: 0, sdfMaxPenetration: 0, sdfChecks: 0 };
 }
 
 /**
