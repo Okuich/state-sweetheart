@@ -433,7 +433,7 @@ async function solvePairsGpu(
     // typed inputs (the default in some lib.dom variants) are accepted.
     const bytes = new Uint8Array(data.byteLength);
     bytes.set(new Uint8Array(data.buffer as ArrayBuffer, data.byteOffset, data.byteLength));
-    device.queue.writeBuffer(buf, 0, bytes);
+    writeTypedBuffer(device, buf, bytes);
     return buf;
   };
 
@@ -468,7 +468,7 @@ async function solvePairsGpu(
   const paramsGpu = device.createBuffer({
     size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
-  device.queue.writeBuffer(paramsGpu, 0, paramsHost);
+  writeTypedBuffer(device, paramsGpu, paramsHost);
 
   const bg = device.createBindGroup({
     layout: pipeline.getBindGroupLayout(0),

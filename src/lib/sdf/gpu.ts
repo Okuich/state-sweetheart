@@ -81,11 +81,11 @@ export async function createGpuSdfBackend(sdf: SparseSDF): Promise<GpuBackend | 
   for (let i = 0; i < lookups.length; i++) lookupAll.set(lookups[i], offsets[i]);
 
   const voxelBuf = device.createBuffer({ size: voxels.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
-  device.queue.writeBuffer(voxelBuf, 0, voxels);
+  writeTypedBuffer(device, voxelBuf, voxels);
   const metaBuf = device.createBuffer({ size: meta.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
-  device.queue.writeBuffer(metaBuf, 0, meta);
+  writeTypedBuffer(device, metaBuf, meta);
   const lookupBuf = device.createBuffer({ size: lookupAll.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
-  device.queue.writeBuffer(lookupBuf, 0, lookupAll);
+  writeTypedBuffer(device, lookupBuf, lookupAll);
 
   const shader = /* wgsl */ `
     const BRICK : u32 = ${BRICK}u;
@@ -232,7 +232,7 @@ export async function createGpuSdfBackend(sdf: SparseSDF): Promise<GpuBackend | 
         q[i * 4 + 2] = points[i * 3 + 2];
       }
       const queryBuf = device.createBuffer({ size: q.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
-      device.queue.writeBuffer(queryBuf, 0, q);
+      writeTypedBuffer(device, queryBuf, q);
 
       const outSize = N * 16;
       const outBuf = device.createBuffer({ size: outSize, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
@@ -262,7 +262,7 @@ export async function createGpuSdfBackend(sdf: SparseSDF): Promise<GpuBackend | 
           u[base] = 0; u[base + 1] = 0; u[base + 2] = 0; u[base + 3] = 0;
         }
       }
-      device.queue.writeBuffer(paramBuf, 0, params);
+      writeTypedBuffer(device, paramBuf, params);
 
       const bg = device.createBindGroup({
         layout: pipeline.getBindGroupLayout(0),
