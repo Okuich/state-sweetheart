@@ -20,11 +20,11 @@ export const Route = createFileRoute("/_authenticated/")({
   component: FabricationDashboard,
   head: () => ({
     meta: [
-      { title: "Fabrication OS" },
+      { title: "Midwater" },
       {
         name: "description",
         content:
-          "Fabrication OS — scan ingest, calibration feedback, materials and templates for production parts.",
+          "Midwater — scan ingest, calibration feedback, materials and templates for production parts.",
       },
     ],
   }),
