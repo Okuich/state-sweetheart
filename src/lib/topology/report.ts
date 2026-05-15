@@ -19,19 +19,21 @@ const FEATURE_ORDER: FeatureClass[] = [
 export interface TopologyReport {
   generatedAt: string;
   pipelineMs: number;
-  graph: {
+  /** Sections that were included in this snapshot (omitted = all). */
+  sections?: ReportSections;
+  graph?: {
     nodes: number;
     edges: number;
     meanValence: number;
     buildMs: number;
   };
-  features: {
+  features?: {
     counts: Record<FeatureClass, number>;
     symmetryScore: number;
     minWallThickness: number;
     avgThinWallThickness: number;
   };
-  manufacturability: {
+  manufacturability?: {
     feasibility: number;
     machiningAccess: number;
     supportFraction: number;
@@ -45,13 +47,13 @@ export interface TopologyReport {
       thermalPenalty: number;
     };
   };
-  priors: {
+  priors?: {
     timestepScale: number;
     damping: number;
     contactStiffness: number;
     refinementHints: Record<FeatureClass, number>;
   };
-  partition: {
+  partition?: {
     partitionCount: number;
     edgeCut: number;
     imbalance: number;
@@ -59,11 +61,34 @@ export interface TopologyReport {
     halos: number[];
     commMatrix: number[];
   };
-  embedding: {
+  embedding?: {
     dim: number;
     slices: { curvature: [number, number]; features: [number, number]; structural: [number, number]; manuf: [number, number] };
     vector: number[];
   };
+}
+
+export interface ReportSections {
+  graph?: boolean;
+  features?: boolean;
+  manufacturability?: boolean;
+  partition?: boolean;
+  embedding?: boolean;
+  /** PDF-only: include the auto-generated topology thumbnail page. */
+  thumbnails?: boolean;
+}
+
+export const ALL_SECTIONS: Required<ReportSections> = {
+  graph: true,
+  features: true,
+  manufacturability: true,
+  partition: true,
+  embedding: true,
+  thumbnails: true,
+};
+
+function resolveSections(s?: ReportSections): Required<ReportSections> {
+  return { ...ALL_SECTIONS, ...(s ?? {}) };
 }
 
 export function buildReportJSON(r: TopologyResult): TopologyReport {
