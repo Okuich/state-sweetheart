@@ -186,6 +186,7 @@ export function FabPredictionsPanel() {
           <table className="w-full text-left text-xs">
             <thead className="bg-muted/40 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
               <tr>
+                <th className="w-6 px-2 py-2"></th>
                 <th className="px-3 py-2">part</th>
                 <th className="px-3 py-2">status</th>
                 <th className="px-3 py-2">material</th>
