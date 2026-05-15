@@ -33,6 +33,7 @@ export function DistPartPanel() {
   const [running, setRunning] = useState(false);
   const [last, setLast] = useState<DistPartResult | null>(null);
   const [commSort, setCommSort] = useState<CommSort>("none");
+  const [topK, setTopK] = useState(0); // 0 = off, otherwise highlight K hottest edges
   const [history, setHistory] = useState<{ algo: PartitionAlgorithm; P: number; cut: number; imb: number; us: number; bytes: number; rounds: number }[]>([]);
 
   const setup = useMemo(() => {
@@ -111,6 +112,24 @@ export function DistPartPanel() {
       Array.from(perm).sort((a, b) => score[b] - score[a]),
     );
   }, [commMatrix, commSort, Plast]);
+
+  // Top-K threshold: the K-th largest off-diagonal nonzero edge weight.
+  // Cells with v >= threshold are highlighted; others get dimmed.
+  const topKThreshold = useMemo(() => {
+    if (!Plast || topK <= 0) return 0;
+    const vals: number[] = [];
+    for (let r = 0; r < Plast; r++) {
+      for (let c = 0; c < Plast; c++) {
+        if (r === c) continue;
+        const v = commMatrix[r * Plast + c];
+        if (v > 0) vals.push(v);
+      }
+    }
+    if (!vals.length) return 0;
+    vals.sort((a, b) => b - a);
+    return vals[Math.min(topK, vals.length) - 1];
+  }, [commMatrix, topK, Plast]);
+  const topKOptions = [0, 4, 8, 16, 32];
 
 
   return (
@@ -247,6 +266,28 @@ export function DistPartPanel() {
               ))}
             </div>
           </div>
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground">
+              top-K edges
+            </div>
+            <div className="flex gap-1" role="group" aria-label="Top-K edge highlight">
+              {topKOptions.map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setTopK(k)}
+                  className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-[0.14em] border transition-colors ${
+                    topK === k
+                      ? "border-accent text-accent bg-accent/10"
+                      : "border-border text-muted-foreground hover:text-foreground"
+                  }`}
+                  title={k === 0 ? "Show all edges" : `Highlight top ${k} sender→receiver edges`}
+                >
+                  {k === 0 ? "off" : `K=${k}`}
+                </button>
+              ))}
+            </div>
+          </div>
           {last ? (
             <div className="grid gap-[2px]" style={{ gridTemplateColumns: `repeat(${last.partitionCount}, minmax(0, 1fr))` }}>
               {Array.from({ length: Plast * Plast }, (_, idx) => {
@@ -256,14 +297,23 @@ export function DistPartPanel() {
                 const cOrig = commPerm[cDisp];
                 const v = commMatrix[rOrig * Plast + cOrig];
                 const intensity = v / commMax;
+                const filtered = topK > 0 && (v === 0 || rOrig === cOrig || v < topKThreshold);
+                let bg: string;
+                if (v === 0) {
+                  bg = "hsl(var(--muted) / 0.2)";
+                } else if (filtered) {
+                  bg = `hsl(var(--muted) / ${0.15 + intensity * 0.2})`;
+                } else if (topK > 0) {
+                  bg = `hsl(var(--accent) / ${0.35 + intensity * 0.65})`;
+                } else {
+                  bg = `hsl(var(--primary) / ${0.15 + intensity * 0.85})`;
+                }
                 return (
                   <div
                     key={idx}
                     className="aspect-square rounded-[1px]"
-                    style={{
-                      background: v === 0 ? "hsl(var(--muted) / 0.2)" : `hsl(var(--primary) / ${0.15 + intensity * 0.85})`,
-                    }}
-                    title={`rank ${rOrig} → ${cOrig}: ${v}`}
+                    style={{ background: bg, opacity: filtered ? 0.55 : 1 }}
+                    title={`rank ${rOrig} → ${cOrig}: ${v}${filtered && topK > 0 ? " (below top-K)" : ""}`}
                   />
                 );
               })}
