@@ -24,12 +24,15 @@ const ALGO_LABEL: Record<PartitionAlgorithm, string> = {
   kway: "k-way refine",
 };
 
+type CommSort = "none" | "haloOut" | "haloIn";
+
 export function DistPartPanel() {
   const [algo, setAlgo] = useState<PartitionAlgorithm>("kway");
   const [P, setP] = useState(8);
   const [skew, setSkew] = useState(3);
   const [running, setRunning] = useState(false);
   const [last, setLast] = useState<DistPartResult | null>(null);
+  const [commSort, setCommSort] = useState<CommSort>("none");
   const [history, setHistory] = useState<{ algo: PartitionAlgorithm; P: number; cut: number; imb: number; us: number; bytes: number; rounds: number }[]>([]);
 
   const setup = useMemo(() => {
