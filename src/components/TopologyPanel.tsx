@@ -196,14 +196,47 @@ export function TopologyPanel() {
             Leaf-graph topology, feature classification, manufacturability scoring, structural embeddings, distributed partitioning, and Physics OS priors.
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={indexCorpus} disabled={running}>Index corpus</Button>
-          <Button variant="outline" onClick={() => result && downloadReport(result, "json", PRESETS[presetIdx].label)} disabled={!result || running}>Export JSON</Button>
-          <Button variant="outline" onClick={() => result && downloadReport(result, "pdf", PRESETS[presetIdx].label)} disabled={!result || running}>Export PDF</Button>
-          <Button variant="outline" onClick={benchTraversal} disabled={!result || running}>Bench GPU traversal</Button>
+        <div className="flex gap-2 flex-wrap">
+          <Button variant="outline" onClick={indexCorpus} disabled={running || !!imported}>Index corpus</Button>
+          <Button variant="outline" onClick={() => result && downloadReport(result, "json", imported?.name ?? PRESETS[presetIdx].label)} disabled={!result || running}>Export JSON</Button>
+          <Button variant="outline" onClick={() => result && downloadReport(result, "pdf", imported?.name ?? PRESETS[presetIdx].label)} disabled={!result || running}>Export PDF</Button>
+          <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={running}>Import JSON</Button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) onImportFile(f);
+              e.target.value = "";
+            }}
+          />
+          <Button variant="outline" onClick={benchTraversal} disabled={!result || running || !!imported} title={imported ? "Live graph not available for imported reports" : undefined}>Bench GPU traversal</Button>
           <Button onClick={run} disabled={running}>{running ? "Analyzing…" : "Analyze"}</Button>
         </div>
       </header>
+
+      {(imported || importError) && (
+        <div className={`rounded-md border px-3 py-2 text-xs flex items-center justify-between gap-2 ${importError ? "border-destructive/50 bg-destructive/10 text-destructive" : "border-primary/40 bg-primary/5 text-foreground"}`}>
+          {importError ? (
+            <span>Import failed · {importError}</span>
+          ) : (
+            <span>
+              Viewing imported report · <span className="font-mono">{imported!.name}</span>
+              <span className="text-muted-foreground"> · generated {imported!.generatedAt}</span>
+              <span className="text-muted-foreground"> · GPU bench &amp; retrieval disabled</span>
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => { setImported(null); setImportError(null); if (imported) setResult(null); }}
+            className="text-[11px] uppercase tracking-wide opacity-70 hover:opacity-100"
+          >
+            {importError ? "dismiss" : "clear"}
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
         {PRESETS.map((p, i) => (
