@@ -42,16 +42,28 @@ export interface PhysicsPrediction {
   error?: string;
 }
 
+export interface PartHistoryEntry {
+  at: string;
+  ok: boolean;
+  ms?: number;
+  confidence?: number;
+  error?: string;
+  attempt: number;
+}
+
 export interface FeedSnapshot {
   predictions: PhysicsPrediction[];
   progress: PartProgress[];
+  history: Record<string, PartHistoryEntry[]>;
   counts: { queued: number; processing: number; ready: number; failed: number };
 }
 
 type Listener = (snap: FeedSnapshot) => void;
 
+const HISTORY_LIMIT = 20;
 const cache = new Map<string, PhysicsPrediction>();
 const progress = new Map<string, PartProgress>();
+const history = new Map<string, PartHistoryEntry[]>();
 const listeners = new Set<Listener>();
 let started = false;
 
