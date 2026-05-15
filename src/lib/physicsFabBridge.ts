@@ -177,6 +177,7 @@ async function runForPart(partId: string, attempt = 0) {
       ok: false,
       error,
     });
+    pushHistory(partId, { at: new Date().toISOString(), ok: false, ms, error, attempt });
     setStatus(partId, "failed", { ms, error, attempt });
     emit();
   }
