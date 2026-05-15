@@ -166,6 +166,56 @@ export function buildReportPDF(r: TopologyResult, label?: string): Blob {
   doc.text(`${label ?? "preset"} · generated ${rep.generatedAt}`, M, y); y += 18;
   doc.setTextColor(20);
 
+  // Auto-generated thumbnails of the topology (XY/XZ/YZ + partition view).
+  const thumbs = renderTopologyThumbnails(r, { size: 220, scale: 2 });
+  if (thumbs.length) {
+    h1("Topology views");
+    const cols = 2;
+    const gap = 12;
+    const tw = (W - M * 2 - gap * (cols - 1)) / cols;
+    const th = tw; // square renders
+    const captionH = 14;
+    for (let i = 0; i < thumbs.length; i += cols) {
+      ensure(th + captionH + 4);
+      const rowY = y;
+      for (let c = 0; c < cols && i + c < thumbs.length; c++) {
+        const t = thumbs[i + c];
+        const x = M + c * (tw + gap);
+        try {
+          doc.addImage(t.dataUrl, "PNG", x, rowY, tw, th);
+        } catch {
+          // If the canvas/dataUrl failed, fall back to a placeholder rect.
+          doc.setDrawColor(200); doc.rect(x, rowY, tw, th);
+        }
+        doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(110);
+        doc.text(t.title, x + 4, rowY + th + 10);
+        doc.setTextColor(20);
+      }
+      y = rowY + th + captionH;
+    }
+    // Compact legend for the feature-colored views.
+    ensure(18);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(90);
+    let lx = M;
+    const swatch = 7;
+    for (const item of FEATURE_THUMB_LEGEND) {
+      const text = item.label;
+      const tWidth = doc.getTextWidth(text);
+      if (lx + swatch + 3 + tWidth + 8 > W - M) {
+        y += 10;
+        ensure(10);
+        lx = M;
+      }
+      const [rr, gg, bb] = hexToRgb(item.color);
+      doc.setFillColor(rr, gg, bb);
+      doc.rect(lx, y - swatch + 1, swatch, swatch, "F");
+      doc.text(text, lx + swatch + 3, y);
+      lx += swatch + 3 + tWidth + 8;
+    }
+    doc.setTextColor(20);
+    y += 10;
+  }
+
   h1("Topology graph");
   kv([
     ["nodes", `${rep.graph.nodes}`],
