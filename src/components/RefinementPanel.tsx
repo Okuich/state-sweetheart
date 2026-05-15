@@ -55,7 +55,7 @@ export function RefinementPanel() {
   const [splitThr, setSplitThr] = useState(0.45);
   const [extraDepth, setExtraDepth] = useState(2);
   const [partitions, setPartitions] = useState(8);
-  const [feedbackMode, setFeedbackMode] = useState<"auto" | "synthetic">("auto");
+  const [feedbackMode, setFeedbackMode] = useState<"physics" | "auto" | "synthetic">("physics");
   const [distributed, setDistributed] = useState(false);
   const [imbThr, setImbThr] = useState(1.15);
   const [last, setLast] = useState<AdaptivePassResult | null>(null);
