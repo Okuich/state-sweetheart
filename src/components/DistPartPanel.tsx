@@ -341,8 +341,18 @@ export function DistPartPanel() {
 
         <div className="rounded-md border border-border bg-background/40 p-4 space-y-3">
           <div className="flex items-center justify-between gap-2">
-            <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-              comm matrix · cross-rank halo (NCCL)
+            <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground flex items-center gap-2">
+              <span>comm matrix · cross-rank halo (NCCL)</span>
+              {selectedPart !== null && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedPart(null)}
+                  className="rounded border border-foreground/40 px-1.5 py-0 text-foreground hover:bg-muted/30 normal-case tracking-normal"
+                  title="Clear partition filter"
+                >
+                  filter · rank {selectedPart} ✕
+                </button>
+              )}
             </div>
             <div className="flex gap-1" role="group" aria-label="Sort partitions">
               {([
