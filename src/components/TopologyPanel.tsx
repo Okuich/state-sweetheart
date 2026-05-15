@@ -7,7 +7,9 @@ import {
   kHopCpu, computeHalosCpu, createCsrGpuBackend,
   type TopologyResult, type FeatureClass,
 } from "@/lib/topology";
-import { downloadReport, parseTopologyReport, rehydrateFromReport } from "@/lib/topology/report";
+import { downloadReport, parseTopologyReport, rehydrateFromReport, ALL_SECTIONS, type ReportSections } from "@/lib/topology/report";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface TraversalBench {
   N: number; E: number;
