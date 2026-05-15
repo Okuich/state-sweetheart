@@ -85,6 +85,46 @@ export function DistPartPanel() {
     }
   };
 
+  const exportCsv = () => {
+    if (!last) return;
+    const P = last.partitionCount;
+    const sizes = Array.from((last.rebalanced ?? last.assignment).stats.sizes);
+    const cm = last.halo.commMatrix;
+    const lines: string[] = [];
+    lines.push(`# distpart export · algo=${last.algorithm} · P=${P}`);
+    lines.push(`# edgeCut=${last.assignment.stats.edgeCut} · imbalance=${last.assignment.stats.imbalance.toFixed(4)}` +
+      (last.rebalanced ? ` → ${last.rebalanced.stats.imbalance.toFixed(4)}` : ""));
+    lines.push(`# syncBytes=${last.halo.syncBytes} · rounds=${last.halo.rounds.length} · totalUs=${last.latency.totalUs.toFixed(2)}`);
+    lines.push("");
+    lines.push("# per-partition stats");
+    lines.push("rank,tets,haloOutBytes,haloInBytes");
+    for (let r = 0; r < P; r++) {
+      let out = 0, inn = 0;
+      for (let c = 0; c < P; c++) {
+        out += cm[r * P + c];
+        inn += cm[c * P + r];
+      }
+      lines.push(`${r},${sizes[r] ?? 0},${out},${inn}`);
+    }
+    lines.push("");
+    lines.push("# comm matrix · rows=sender, cols=receiver, values=halo bytes");
+    lines.push(["sender\\receiver", ...Array.from({ length: P }, (_, c) => `r${c}`)].join(","));
+    for (let r = 0; r < P; r++) {
+      const row = [`r${r}`];
+      for (let c = 0; c < P; c++) row.push(String(cm[r * P + c]));
+      lines.push(row.join(","));
+    }
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `distpart-${last.algorithm}-P${P}-${Date.now()}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
   const sizes = last ? Array.from((last.rebalanced ?? last.assignment).stats.sizes) : [];
   const maxSize = Math.max(1, ...sizes);
   const commMatrix = last ? last.halo.commMatrix : new Uint32Array(0);
