@@ -42,16 +42,28 @@ export interface PhysicsPrediction {
   error?: string;
 }
 
+export interface PartHistoryEntry {
+  at: string;
+  ok: boolean;
+  ms?: number;
+  confidence?: number;
+  error?: string;
+  attempt: number;
+}
+
 export interface FeedSnapshot {
   predictions: PhysicsPrediction[];
   progress: PartProgress[];
+  history: Record<string, PartHistoryEntry[]>;
   counts: { queued: number; processing: number; ready: number; failed: number };
 }
 
 type Listener = (snap: FeedSnapshot) => void;
 
+const HISTORY_LIMIT = 20;
 const cache = new Map<string, PhysicsPrediction>();
 const progress = new Map<string, PartProgress>();
+const history = new Map<string, PartHistoryEntry[]>();
 const listeners = new Set<Listener>();
 let started = false;
 
@@ -62,14 +74,23 @@ function buildSnapshot(): FeedSnapshot {
   const prog = Array.from(progress.values()).sort((a, b) =>
     b.updatedAt.localeCompare(a.updatedAt),
   );
+  const hist: Record<string, PartHistoryEntry[]> = {};
+  for (const [k, v] of history) hist[k] = v;
   const counts = { queued: 0, processing: 0, ready: 0, failed: 0 };
   for (const p of prog) counts[p.status] += 1;
-  return { predictions, progress: prog, counts };
+  return { predictions, progress: prog, history: hist, counts };
 }
 
 function emit() {
   const snap = buildSnapshot();
   for (const l of listeners) l(snap);
+}
+
+function pushHistory(partId: string, entry: PartHistoryEntry) {
+  const arr = history.get(partId) ?? [];
+  arr.unshift(entry);
+  if (arr.length > HISTORY_LIMIT) arr.length = HISTORY_LIMIT;
+  history.set(partId, arr);
 }
 
 function setStatus(partId: string, status: PartStatus, extra: Partial<PartProgress> = {}) {
@@ -128,6 +149,7 @@ async function runForPart(partId: string, attempt = 0) {
       ms,
       ok: true,
     });
+    pushHistory(partId, { at: new Date().toISOString(), ok: true, ms, confidence: out?.confidence, attempt });
     setStatus(partId, "ready", { ms, attempt });
     emit();
   } catch (e) {
@@ -162,6 +184,7 @@ async function runForPart(partId: string, attempt = 0) {
       ok: false,
       error,
     });
+    pushHistory(partId, { at: new Date().toISOString(), ok: false, ms, error, attempt });
     setStatus(partId, "failed", { ms, error, attempt });
     emit();
   }
@@ -213,6 +236,7 @@ export const physicsFabFeed = {
     cancelRetry(partId);
     cache.delete(partId);
     progress.delete(partId);
+    history.delete(partId);
     emit();
   },
   /** Dismiss every currently-failed part. */
@@ -222,15 +246,21 @@ export const physicsFabFeed = {
         cancelRetry(id);
         cache.delete(id);
         progress.delete(id);
+        history.delete(id);
       }
     }
     emit();
+  },
+  /** Per-part run history (most recent first). */
+  historyFor(partId: string): PartHistoryEntry[] {
+    return history.get(partId) ?? [];
   },
   clear() {
     for (const t of retryTimers.values()) clearTimeout(t);
     retryTimers.clear();
     cache.clear();
     progress.clear();
+    history.clear();
     emit();
   },
 };
