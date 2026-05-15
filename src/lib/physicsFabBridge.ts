@@ -236,6 +236,7 @@ export const physicsFabFeed = {
     cancelRetry(partId);
     cache.delete(partId);
     progress.delete(partId);
+    history.delete(partId);
     emit();
   },
   /** Dismiss every currently-failed part. */
@@ -245,15 +246,21 @@ export const physicsFabFeed = {
         cancelRetry(id);
         cache.delete(id);
         progress.delete(id);
+        history.delete(id);
       }
     }
     emit();
+  },
+  /** Per-part run history (most recent first). */
+  historyFor(partId: string): PartHistoryEntry[] {
+    return history.get(partId) ?? [];
   },
   clear() {
     for (const t of retryTimers.values()) clearTimeout(t);
     retryTimers.clear();
     cache.clear();
     progress.clear();
+    history.clear();
     emit();
   },
 };
