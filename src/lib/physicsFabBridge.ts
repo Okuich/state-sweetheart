@@ -1,20 +1,29 @@
 /**
- * Physics OS → Fabrication OS bridge (client-side).
+ * Hidden prediction bridge powering the Midwater dashboard.
  *
  * Subscribes to scan-import observations, then for each unique part
- * triggers the Physics OS `runPipeline` server function in the
- * background. Results are stored in a small in-memory cache and
- * surfaced to the Fabrication OS dashboard as predictions feeding
- * calibration. Customers never see Physics OS directly — they only
- * see the resulting fab predictions.
+ * triggers a background prediction. Results and per-part processing
+ * status are surfaced to Midwater UI panels. Customers see only the
+ * Midwater pipeline — the underlying engine names are never exposed.
  */
 import type { Observation } from "./fabFeedback";
 import { scanImportBridge } from "./scanImportStore";
 import { predictForMidwater } from "./physics.functions";
 
+export type PartStatus = "queued" | "processing" | "ready" | "failed";
+
+export interface PartProgress {
+  partId: string;
+  status: PartStatus;
+  startedAt: string;
+  updatedAt: string;
+  ms?: number;
+  error?: string;
+}
+
 export interface PhysicsPrediction {
   partId: string;
-  source: string; // engine source (analytical / hybrid / etc.)
+  source: string;
   confidence?: number;
   predictedStressMPa?: number;
   predictedDeflectionMm?: number;
@@ -28,22 +37,49 @@ export interface PhysicsPrediction {
   error?: string;
 }
 
-type Listener = (preds: PhysicsPrediction[]) => void;
+export interface FeedSnapshot {
+  predictions: PhysicsPrediction[];
+  progress: PartProgress[];
+  counts: { queued: number; processing: number; ready: number; failed: number };
+}
+
+type Listener = (snap: FeedSnapshot) => void;
 
 const cache = new Map<string, PhysicsPrediction>();
-const inflight = new Set<string>();
+const progress = new Map<string, PartProgress>();
 const listeners = new Set<Listener>();
 let started = false;
 
-function emit() {
-  const snapshot = Array.from(cache.values()).sort((a, b) =>
+function buildSnapshot(): FeedSnapshot {
+  const predictions = Array.from(cache.values()).sort((a, b) =>
     b.computedAt.localeCompare(a.computedAt),
   );
-  for (const l of listeners) l(snapshot);
+  const prog = Array.from(progress.values()).sort((a, b) =>
+    b.updatedAt.localeCompare(a.updatedAt),
+  );
+  const counts = { queued: 0, processing: 0, ready: 0, failed: 0 };
+  for (const p of prog) counts[p.status] += 1;
+  return { predictions, progress: prog, counts };
 }
 
-// Default reference geometry — used when the scan does not carry
-// part dimensions. Mirrors the analytical engine's medium-beam preset.
+function emit() {
+  const snap = buildSnapshot();
+  for (const l of listeners) l(snap);
+}
+
+function setStatus(partId: string, status: PartStatus, extra: Partial<PartProgress> = {}) {
+  const now = new Date().toISOString();
+  const prev = progress.get(partId);
+  progress.set(partId, {
+    partId,
+    status,
+    startedAt: prev?.startedAt ?? now,
+    updatedAt: now,
+    ms: extra.ms ?? prev?.ms,
+    error: extra.error ?? prev?.error,
+  });
+}
+
 const DEFAULT_REF = {
   geometry: { volume: 0.035, surfaceArea: 2.4 },
   material: "steel",
@@ -55,13 +91,22 @@ const DEFAULT_REF = {
 };
 
 async function runForPart(partId: string) {
-  if (inflight.has(partId)) return;
-  inflight.add(partId);
+  const cur = progress.get(partId);
+  if (cur && (cur.status === "queued" || cur.status === "processing")) return;
+
+  setStatus(partId, "queued");
+  emit();
+  // Yield so UI shows "queued" before flipping to "processing".
+  await Promise.resolve();
+  setStatus(partId, "processing");
+  emit();
+
   const t0 = Date.now();
   try {
     const out = await predictForMidwater({
       data: { ...DEFAULT_REF, geometryId: partId },
     });
+    const ms = Date.now() - t0;
     cache.set(partId, {
       partId,
       source: out?.source ?? "analytical",
@@ -73,20 +118,23 @@ async function runForPart(partId: string) {
       recommendations: out?.recommendations,
       materialName: out?.materialName,
       computedAt: out?.timestamp ?? new Date().toISOString(),
-      ms: Date.now() - t0,
+      ms,
       ok: true,
     });
+    setStatus(partId, "ready", { ms });
   } catch (e) {
+    const ms = Date.now() - t0;
+    const error = e instanceof Error ? e.message : String(e);
     cache.set(partId, {
       partId,
       source: "error",
       computedAt: new Date().toISOString(),
-      ms: Date.now() - t0,
+      ms,
       ok: false,
-      error: e instanceof Error ? e.message : String(e),
+      error,
     });
+    setStatus(partId, "failed", { ms, error });
   } finally {
-    inflight.delete(partId);
     emit();
   }
 }
@@ -111,11 +159,11 @@ export function startPhysicsFabBridge(): () => void {
 export const physicsFabFeed = {
   subscribe(l: Listener): () => void {
     listeners.add(l);
-    l(Array.from(cache.values()));
+    l(buildSnapshot());
     return () => listeners.delete(l);
   },
-  snapshot(): PhysicsPrediction[] {
-    return Array.from(cache.values());
+  snapshot(): FeedSnapshot {
+    return buildSnapshot();
   },
   /** Manual fire-and-forget for parts without a scan import. */
   predict(partId: string) {
@@ -123,6 +171,7 @@ export const physicsFabFeed = {
   },
   clear() {
     cache.clear();
+    progress.clear();
     emit();
   },
 };
