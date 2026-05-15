@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { buildOctreeMesh, type RefinementSeed, type OctreeMesh } from "@/lib/meshing/octree";
@@ -535,11 +535,56 @@ function fieldStats(arr: Float32Array): { mean: number; peak: number; coverage: 
   return { mean: arr.length ? s / arr.length : 0, peak, coverage: arr.length ? hits / arr.length : 0 };
 }
 
+type ChannelKey = "stress" | "thermal" | "deformation" | "contact";
+const HISTORY_LEN = 32;
+
+function Sparkline({ values, color, height = 18 }: { values: number[]; color: string; height?: number }) {
+  if (values.length < 2) {
+    return <div className="h-[18px] text-[8px] font-mono text-muted-foreground/60 flex items-center">collecting…</div>;
+  }
+  const max = Math.max(1e-6, ...values);
+  const w = 100;
+  const step = w / (HISTORY_LEN - 1);
+  const pts = values.map((v, i) => {
+    const x = (i + (HISTORY_LEN - values.length)) * step;
+    const y = height - (v / max) * (height - 2) - 1;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+  const last = values[values.length - 1];
+  const lastX = (values.length - 1 + (HISTORY_LEN - values.length)) * step;
+  const lastY = height - (last / max) * (height - 2) - 1;
+  return (
+    <svg viewBox={`0 0 ${w} ${height}`} preserveAspectRatio="none" className="w-full h-[18px]">
+      <polyline fill="none" stroke={color} strokeWidth={1} strokeLinejoin="round" points={pts} opacity={0.9} />
+      <circle cx={lastX} cy={lastY} r={1.4} fill={color} />
+    </svg>
+  );
+}
+
 function PhysicsChannelStrip({ last }: { last: AdaptivePassResult }) {
   const realPhysics = last.fieldSource === "physics";
   const ageStr = last.snapshotAgeMs !== undefined ? `${(last.snapshotAgeMs / 1000).toFixed(2)}s` : "—";
   const N = last.snapshot?.N ?? 0;
   const contactCount = last.snapshot?.contacts.length ?? 0;
+
+  // Per-channel ring buffer of peak strength across the last N adaptive passes.
+  const [history, setHistory] = useState<Record<ChannelKey, number[]>>({
+    stress: [], thermal: [], deformation: [], contact: [],
+  });
+  const lastRef = useRef<AdaptivePassResult | null>(null);
+  useEffect(() => {
+    if (lastRef.current === last) return;
+    lastRef.current = last;
+    setHistory((h) => {
+      const next: Record<ChannelKey, number[]> = { ...h };
+      for (const c of CHANNEL_DEFS) {
+        const peak = fieldStats(last.fields[c.key]).peak;
+        next[c.key] = [...h[c.key], peak].slice(-HISTORY_LEN);
+      }
+      return next;
+    });
+  }, [last]);
+
   return (
     <div className="rounded-md border border-border bg-background/40 p-4 space-y-3">
       <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
@@ -554,6 +599,7 @@ function PhysicsChannelStrip({ last }: { last: AdaptivePassResult }) {
           const stats = fieldStats(last.fields[c.key]);
           const cover = Math.round(stats.coverage * 100);
           const live = stats.peak > 1e-6;
+          const series = history[c.key];
           return (
             <div key={c.key} className="rounded-sm border border-border bg-background/30 p-2 space-y-1">
               <div className="flex items-center justify-between text-[10px] font-mono">
@@ -563,9 +609,14 @@ function PhysicsChannelStrip({ last }: { last: AdaptivePassResult }) {
               <div className="h-1.5 rounded-sm bg-muted/40 overflow-hidden">
                 <div className="h-full rounded-sm" style={{ width: `${cover}%`, background: c.color }} />
               </div>
+              <Sparkline values={series} color={c.color} />
               <div className="flex justify-between text-[9px] font-mono text-muted-foreground tabular-nums">
                 <span>cover {cover}%</span>
                 <span>peak {stats.peak.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-[8px] font-mono text-muted-foreground/70 tabular-nums">
+                <span>last {series.length}/{HISTORY_LEN}</span>
+                <span>max {(Math.max(0, ...series)).toFixed(2)}</span>
               </div>
             </div>
           );
