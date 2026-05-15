@@ -200,8 +200,23 @@ export function FabPredictionsPanel() {
               </tr>
             </thead>
             <tbody className="font-mono text-[11px]">
-              {rows.map(({ progress: pr, pred }) => (
+              {rows.map(({ progress: pr, pred }) => {
+                const hist = snap.history[pr.partId] ?? [];
+                const isOpen = expanded.has(pr.partId);
+                return (
+                <>
                 <tr key={pr.partId} className="border-t border-border">
+                  <td className="px-2 py-2">
+                    <button
+                      type="button"
+                      onClick={() => toggle(pr.partId)}
+                      disabled={hist.length === 0}
+                      title={hist.length === 0 ? "No history yet" : `${hist.length} run${hist.length === 1 ? "" : "s"}`}
+                      className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground transition hover:text-foreground disabled:opacity-30"
+                    >
+                      <ChevronRight className={`h-3 w-3 transition-transform ${isOpen ? "rotate-90" : ""}`} />
+                    </button>
+                  </td>
                   <td className="px-3 py-2 text-foreground">{pr.partId}</td>
                   <td className="px-3 py-2">
                     <StatusPill status={pr.status} />
@@ -264,7 +279,44 @@ export function FabPredictionsPanel() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                {isOpen && (
+                  <tr className="border-t border-border bg-muted/20">
+                    <td></td>
+                    <td colSpan={10} className="px-3 py-3">
+                      <div className="mb-1.5 text-[9px] uppercase tracking-[0.22em] text-muted-foreground">
+                        Run history · {hist.length} {hist.length === 1 ? "run" : "runs"}
+                      </div>
+                      {hist.length === 0 ? (
+                        <div className="text-[11px] text-muted-foreground">No completed runs yet.</div>
+                      ) : (
+                        <ol className="space-y-1">
+                          {hist.map((h, i) => (
+                            <li key={i} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px]">
+                              <span className={`inline-flex h-1.5 w-1.5 shrink-0 rounded-full ${h.ok ? "bg-emerald-500" : "bg-destructive"}`} />
+                              <span className="tabular-nums text-muted-foreground">{fmtTime(h.at)}</span>
+                              <span className={`uppercase tracking-[0.14em] text-[10px] ${h.ok ? "text-emerald-500" : "text-destructive"}`}>
+                                {h.ok ? "succeeded" : "failed"}
+                              </span>
+                              <span className="tabular-nums text-muted-foreground">{h.ms ?? "—"} ms</span>
+                              <span className="tabular-nums text-primary">
+                                conf {h.confidence !== undefined ? `${(h.confidence * 100).toFixed(0)}%` : "—"}
+                              </span>
+                              <span className="text-muted-foreground">attempt {h.attempt + 1}</span>
+                              {!h.ok && h.error && (
+                                <span className="min-w-0 flex-1 truncate font-mono text-destructive/80" title={h.error}>
+                                  {h.error}
+                                </span>
+                              )}
+                            </li>
+                          ))}
+                        </ol>
+                      )}
+                    </td>
+                  </tr>
+                )}
+                </>
+                );
+              })}
             </tbody>
           </table>
         </div>
