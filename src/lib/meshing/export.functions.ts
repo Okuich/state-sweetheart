@@ -48,8 +48,10 @@ const InputSchema = z.object({
 });
 
 export const exportMeshFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => InputSchema.parse(input))
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
     try {
       const result = generateMesh({
         bbox: data.bbox,
