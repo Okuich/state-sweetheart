@@ -24,12 +24,15 @@ const ALGO_LABEL: Record<PartitionAlgorithm, string> = {
   kway: "k-way refine",
 };
 
+type CommSort = "none" | "haloOut" | "haloIn";
+
 export function DistPartPanel() {
   const [algo, setAlgo] = useState<PartitionAlgorithm>("kway");
   const [P, setP] = useState(8);
   const [skew, setSkew] = useState(3);
   const [running, setRunning] = useState(false);
   const [last, setLast] = useState<DistPartResult | null>(null);
+  const [commSort, setCommSort] = useState<CommSort>("none");
   const [history, setHistory] = useState<{ algo: PartitionAlgorithm; P: number; cut: number; imb: number; us: number; bytes: number; rounds: number }[]>([]);
 
   const setup = useMemo(() => {
@@ -85,6 +88,30 @@ export function DistPartPanel() {
   const maxSize = Math.max(1, ...sizes);
   const commMatrix = last ? last.halo.commMatrix : new Uint32Array(0);
   const commMax = last ? Math.max(1, ...Array.from(commMatrix)) : 1;
+
+  // Permutation of ranks for the comm matrix display. Reorder rows AND
+  // cols by total halo OUT (row sum) or halo IN (col sum) so the most
+  // chatty ranks cluster top-left and structural hotspots pop out.
+  const Plast = last?.partitionCount ?? 0;
+  const commPerm = useMemo(() => {
+    const perm = new Int32Array(Plast);
+    for (let i = 0; i < Plast; i++) perm[i] = i;
+    if (Plast === 0 || commSort === "none") return perm;
+    const score = new Float64Array(Plast);
+    for (let r = 0; r < Plast; r++) {
+      let s = 0;
+      for (let c = 0; c < Plast; c++) {
+        s += commSort === "haloOut"
+          ? commMatrix[r * Plast + c]   // bytes sent FROM r
+          : commMatrix[c * Plast + r];  // bytes received BY r
+      }
+      score[r] = s;
+    }
+    return new Int32Array(
+      Array.from(perm).sort((a, b) => score[b] - score[a]),
+    );
+  }, [commMatrix, commSort, Plast]);
+
 
   return (
     <div className="space-y-5">
@@ -190,21 +217,53 @@ export function DistPartPanel() {
         </div>
 
         <div className="rounded-md border border-border bg-background/40 p-4 space-y-3">
-          <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-            comm matrix · cross-rank halo (NCCL)
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+              comm matrix · cross-rank halo (NCCL)
+            </div>
+            <div className="flex gap-1" role="group" aria-label="Sort partitions">
+              {([
+                ["none", "rank"],
+                ["haloOut", "halo↑"],
+                ["haloIn", "halo↓"],
+              ] as [CommSort, string][]).map(([k, label]) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setCommSort(k)}
+                  className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-[0.14em] border transition-colors ${
+                    commSort === k
+                      ? "border-primary text-primary bg-primary/10"
+                      : "border-border text-muted-foreground hover:text-foreground"
+                  }`}
+                  title={
+                    k === "none" ? "Default rank order" :
+                    k === "haloOut" ? "Sort by halo bytes sent (row sum) desc" :
+                    "Sort by halo bytes received (column sum) desc"
+                  }
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
           {last ? (
             <div className="grid gap-[2px]" style={{ gridTemplateColumns: `repeat(${last.partitionCount}, minmax(0, 1fr))` }}>
-              {Array.from(commMatrix).map((v, i) => {
+              {Array.from({ length: Plast * Plast }, (_, idx) => {
+                const rDisp = Math.floor(idx / Plast);
+                const cDisp = idx % Plast;
+                const rOrig = commPerm[rDisp];
+                const cOrig = commPerm[cDisp];
+                const v = commMatrix[rOrig * Plast + cOrig];
                 const intensity = v / commMax;
                 return (
                   <div
-                    key={i}
+                    key={idx}
                     className="aspect-square rounded-[1px]"
                     style={{
                       background: v === 0 ? "hsl(var(--muted) / 0.2)" : `hsl(var(--primary) / ${0.15 + intensity * 0.85})`,
                     }}
-                    title={`rank ${Math.floor(i / last.partitionCount)} → ${i % last.partitionCount}: ${v}`}
+                    title={`rank ${rOrig} → ${cOrig}: ${v}`}
                   />
                 );
               })}
