@@ -162,6 +162,8 @@ export function TopologyPanel() {
       });
       const r = analyzeTopology(mesh, { partitionCount: partitions });
       setResult(r);
+      setImported(null);
+      setImportError(null);
       setRunning(false);
     }, 0);
   };
