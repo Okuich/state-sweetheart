@@ -12,6 +12,7 @@
  */
 
 import { BRICK, type SparseSDF } from "./sparseField";
+import { writeTypedBuffer } from "../gpu/writeBuffer";
 
 export type GpuMode = "distance" | "gradient" | "collide" | "nearest";
 
