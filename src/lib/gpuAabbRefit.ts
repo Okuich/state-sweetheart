@@ -513,7 +513,7 @@ async function refitStepGpu(ctx: AabbRefitContext): Promise<void> {
   }
 
   // Per-step uploads.
-  device.queue.writeBuffer(res.vertBuf, 0, scene.vertices as unknown as BufferSource);
+  writeTypedBuffer(device, res.vertBuf, scene.vertices);
   // dirty array: pack the Uint8 wasDirty into u32-per-element for the GPU.
   const dirty32 = new Uint32Array(tree.N);
   for (let i = 0; i < tree.N; i++) dirty32[i] = tree.dirty[i];
