@@ -219,29 +219,75 @@ export function buildReportPDF(r: TopologyResult, label?: string): Blob {
 
   h2("Communication matrix (rows = receiver)");
   const P = rep.partition.partitionCount;
-  const cellW = Math.min(36, (W - M * 2 - 30) / P);
-  const cellH = 14;
   const maxFlow = Math.max(1, ...rep.partition.commMatrix);
-  ensure(cellH * (P + 1) + 10);
-  doc.setFontSize(8);
-  for (let c = 0; c < P; c++) doc.text(`P${c}`, M + 30 + c * cellW + cellW / 2 - 4, y);
-  y += 10;
-  for (let r2 = 0; r2 < P; r2++) {
-    doc.text(`P${r2}`, M, y + cellH - 4);
-    for (let c = 0; c < P; c++) {
-      const v = rep.partition.commMatrix[r2 * P + c];
-      const t = v / maxFlow;
-      doc.setFillColor(255 - Math.round(t * 195), 255 - Math.round(t * 145), 255 - Math.round(t * 55));
-      doc.rect(M + 30 + c * cellW, y, cellW - 2, cellH - 2, "F");
-      if (v > 0) {
-        doc.setTextColor(t > 0.55 ? 255 : 30);
-        doc.text(`${v}`, M + 30 + c * cellW + cellW / 2 - 4, y + cellH - 5);
+  const labelW = 30;        // left "P##" gutter
+  const headerH = 12;       // top "P##" header strip
+  const availW = W - M * 2 - labelW;
+  const availH = H - M - y - 4; // remaining height on current page
+  // Pick a target cell size that keeps the whole matrix legible. Cells
+  // shrink with P, but never below 4pt (pure heatmap, no inline text).
+  const idealCell = Math.min(36, Math.max(4, Math.floor(720 / Math.max(8, P))));
+  const cellW = Math.max(4, Math.min(idealCell, Math.floor(availW)));
+  const cellH = cellW; // square cells regardless of page
+  // How many cols fit across one page; how many rows fit per page block.
+  const colsPerPage = Math.max(1, Math.min(P, Math.floor(availW / cellW)));
+  const rowsFirstPage = Math.max(1, Math.floor((availH - headerH) / cellH));
+  const rowsFullPage = Math.max(1, Math.floor((H - M * 2 - headerH) / cellH));
+  const showText = cellW >= 18 && cellH >= 14;
+  const numCol = (n: number) => `P${n}`;
+
+  for (let c0 = 0; c0 < P; c0 += colsPerPage) {
+    const cN = Math.min(P, c0 + colsPerPage);
+    let r0 = 0;
+    let firstBlockOnThisColRange = true;
+    while (r0 < P) {
+      // Decide capacity: first block reuses leftover space on the current
+      // page; subsequent blocks for the same column-range start fresh.
+      if (!firstBlockOnThisColRange || c0 > 0) {
+        doc.addPage();
+        y = M;
       }
+      const cap = firstBlockOnThisColRange && c0 === 0
+        ? rowsFirstPage
+        : rowsFullPage;
+      const rN = Math.min(P, r0 + cap);
+      // Sub-block caption when matrix paginates.
+      if (P > colsPerPage || rN - r0 < P) {
+        doc.setFont("helvetica", "italic"); doc.setFontSize(8); doc.setTextColor(110);
+        doc.text(`cols ${numCol(c0)}–${numCol(cN - 1)} · rows ${numCol(r0)}–${numCol(rN - 1)} of P=${P}`, M, y);
+        y += 10;
+        doc.setTextColor(20);
+      }
+      // Column header.
+      doc.setFont("helvetica", "normal"); doc.setFontSize(Math.min(8, Math.max(5, cellW * 0.45)));
+      for (let c = c0; c < cN; c++) {
+        const cx = M + labelW + (c - c0) * cellW + cellW / 2;
+        doc.text(numCol(c), cx, y, { align: "center" } as { align: "center" });
+      }
+      y += headerH - 2;
+      // Body rows.
+      for (let r2 = r0; r2 < rN; r2++) {
+        doc.setFontSize(Math.min(8, Math.max(5, cellH * 0.45)));
+        doc.text(numCol(r2), M, y + cellH - 4);
+        for (let c = c0; c < cN; c++) {
+          const v = rep.partition.commMatrix[r2 * P + c];
+          const t = v / maxFlow;
+          doc.setFillColor(255 - Math.round(t * 195), 255 - Math.round(t * 145), 255 - Math.round(t * 55));
+          doc.rect(M + labelW + (c - c0) * cellW, y, cellW - 1, cellH - 1, "F");
+          if (showText && v > 0) {
+            doc.setTextColor(t > 0.55 ? 255 : 30);
+            doc.text(`${v}`, M + labelW + (c - c0) * cellW + cellW / 2, y + cellH - 5, { align: "center" } as { align: "center" });
+          }
+        }
+        y += cellH;
+      }
+      doc.setTextColor(20);
+      y += 6;
+      r0 = rN;
+      firstBlockOnThisColRange = false;
     }
-    y += cellH;
   }
-  doc.setTextColor(20);
-  y += 6;
+  y += 2;
 
   h1(`Structural embedding (${rep.embedding.dim}-d)`);
   doc.setFontSize(8); doc.setTextColor(110);
