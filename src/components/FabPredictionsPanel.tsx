@@ -53,8 +53,18 @@ function StatusPill({ status }: { status: PartStatus }) {
 
 export function FabPredictionsPanel() {
   const [snap, setSnap] = useState<FeedSnapshot>(() => physicsFabFeed.snapshot());
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
 
   useEffect(() => physicsFabFeed.subscribe(setSnap), []);
+
+  const toggle = (partId: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(partId)) next.delete(partId);
+      else next.add(partId);
+      return next;
+    });
+  };
 
   const { predictions, progress, counts } = snap;
   const active = counts.queued + counts.processing;
