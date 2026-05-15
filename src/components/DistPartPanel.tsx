@@ -89,6 +89,30 @@ export function DistPartPanel() {
   const commMatrix = last ? last.halo.commMatrix : new Uint32Array(0);
   const commMax = last ? Math.max(1, ...Array.from(commMatrix)) : 1;
 
+  // Permutation of ranks for the comm matrix display. Reorder rows AND
+  // cols by total halo OUT (row sum) or halo IN (col sum) so the most
+  // chatty ranks cluster top-left and structural hotspots pop out.
+  const Plast = last?.partitionCount ?? 0;
+  const commPerm = useMemo(() => {
+    const perm = new Int32Array(Plast);
+    for (let i = 0; i < Plast; i++) perm[i] = i;
+    if (Plast === 0 || commSort === "none") return perm;
+    const score = new Float64Array(Plast);
+    for (let r = 0; r < Plast; r++) {
+      let s = 0;
+      for (let c = 0; c < Plast; c++) {
+        s += commSort === "haloOut"
+          ? commMatrix[r * Plast + c]   // bytes sent FROM r
+          : commMatrix[c * Plast + r];  // bytes received BY r
+      }
+      score[r] = s;
+    }
+    return new Int32Array(
+      Array.from(perm).sort((a, b) => score[b] - score[a]),
+    );
+  }, [commMatrix, commSort, Plast]);
+
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
