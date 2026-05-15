@@ -44,18 +44,31 @@ import { FederatedPanel } from "@/components/FederatedPanel";
 import { saveSnapshot } from "@/lib/worldMemory";
 
 export const Route = createFileRoute("/_authenticated/internal")({
-  component: Index,
+  component: GatedIndex,
   head: () => ({
     meta: [
-      { title: "PhysicsState — Interactive N-body Visualizer" },
-      {
-        name: "description",
-        content:
-          "Real-time particle physics sandbox: gravity, damping, attractors. Click and drag to push or pull particles.",
-      },
+      { title: "Internal · Physics OS / Geometry OS" },
+      { name: "description", content: "Internal hidden layer — Physics OS and Geometry OS controls." },
+      { name: "robots", content: "noindex, nofollow" },
     ],
   }),
 });
+
+function GatedIndex() {
+  const { isAdmin, loading } = useAccess();
+  if (loading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center text-xs uppercase tracking-[0.32em] text-muted-foreground">
+        Verifying access…
+      </main>
+    );
+  }
+  if (!isAdmin) {
+    throw redirect({ to: "/" });
+  }
+  return <Index />;
+}
+
 
 function Field({
   label,
