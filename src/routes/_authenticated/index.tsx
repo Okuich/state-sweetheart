@@ -83,9 +83,8 @@ function FabricationDashboard() {
         <FabPredictionsPanel />
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+      <div className="mt-6">
         <MaterialEditorPanel />
-        <TemplatesPanel />
       </div>
     </main>
   );
