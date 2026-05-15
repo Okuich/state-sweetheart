@@ -62,6 +62,26 @@ export interface SDFColliderOptions {
   sdf: SparseSDF;
   /** World-space Z slice the 2D sim lives on. Default 0. */
   worldZ?: number;
+  /**
+   * Performance guardrail: cap the number of particles tested against
+   * the SDF in a single call. When `N > maxChecksPerStep`, the solver
+   * processes a strided subset of particles. The stride offset rotates
+   * with `stepIndex` so every particle is covered over consecutive
+   * frames — contact stabilization stays bounded even on huge piles.
+   * Undefined or 0 disables the cap (test every particle).
+   */
+  maxChecksPerStep?: number;
+  /**
+   * Cheap reject threshold (world units). A particle is skipped before
+   * the more expensive `sphereCollide` (gradient) call if its
+   * `penetration + radius` is ≤ this value. Default 0 (only skip
+   * particles strictly outside the sphere of influence). Set to a
+   * small positive value (e.g. `0.25 * radius`) to drop shallow
+   * grazing contacts that don't justify a Newton-style resolve.
+   */
+  rejectThreshold?: number;
+  /** Frame counter used to rotate the strided subset. Default 0. */
+  stepIndex?: number;
 }
 
 export interface ContactOptions {
