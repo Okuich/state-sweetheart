@@ -334,6 +334,32 @@ export function buildReportPDF(r: TopologyResult, label?: string, sections?: Rep
     h2("Communication matrix (rows = receiver)");
     const P = rep.partition.partitionCount;
     const maxFlow = Math.max(1, ...rep.partition.commMatrix);
+
+    // Color legend: gradient strip from 0 (min) → maxFlow (max) using the
+    // same ramp as the heatmap cells below, so the matrix is interpretable
+    // when individual cell values are too small to print.
+    ensure(28);
+    const legendW = Math.min(220, W - M * 2 - 80);
+    const legendH = 8;
+    const legendX = M;
+    const legendY = y;
+    const steps = 64;
+    const sw = legendW / steps;
+    for (let i = 0; i < steps; i++) {
+      const t = i / (steps - 1);
+      doc.setFillColor(255 - Math.round(t * 195), 255 - Math.round(t * 145), 255 - Math.round(t * 55));
+      doc.rect(legendX + i * sw, legendY, sw + 0.5, legendH, "F");
+    }
+    doc.setDrawColor(170);
+    doc.rect(legendX, legendY, legendW, legendH);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(90);
+    doc.text("flow", legendX, legendY - 2);
+    doc.text("0", legendX, legendY + legendH + 7);
+    const midLabel = `${Math.round(maxFlow / 2)}`;
+    doc.text(midLabel, legendX + legendW / 2, legendY + legendH + 7, { align: "center" } as { align: "center" });
+    doc.text(`${maxFlow}`, legendX + legendW, legendY + legendH + 7, { align: "right" } as { align: "right" });
+    doc.setTextColor(20);
+    y += legendH + 14;
     const labelW = 30;        // left "P##" gutter
     const headerH = 12;       // top "P##" header strip
     const availW = W - M * 2 - labelW;
