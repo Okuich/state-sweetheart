@@ -947,7 +947,7 @@ export function PhysicsCanvas({
   const prevIntegratorEnergyRef = useRef<string>("");
   const lastSubStepsRef = useRef(1);
   const fpsEmaRef = useRef(60);
-  const lastContactStatsRef = useRef<ContactStats>({ contacts: 0, iters: 0, totalPenetration: 0, maxPenetration: 0, sdfContacts: 0, sdfTotalPenetration: 0, sdfMaxPenetration: 0 });
+  const lastContactStatsRef = useRef<ContactStats>({ contacts: 0, iters: 0, totalPenetration: 0, maxPenetration: 0, sdfContacts: 0, sdfTotalPenetration: 0, sdfMaxPenetration: 0, sdfChecks: 0 });
   const lastFeedbackPubRef = useRef(0);
   // ── Digital Twin telemetry (synthetic IoT/sensor stream) ─────────
   // Each sensor has: a Lissajous phase pair, an assigned particle id
@@ -1398,7 +1398,7 @@ export function PhysicsCanvas({
               slop: p.contactSlop,
             });
           } else {
-            lastContactStatsRef.current = { contacts: 0, iters: 0, totalPenetration: 0, maxPenetration: 0, sdfContacts: 0, sdfTotalPenetration: 0, sdfMaxPenetration: 0 };
+            lastContactStatsRef.current = { contacts: 0, iters: 0, totalPenetration: 0, maxPenetration: 0, sdfContacts: 0, sdfTotalPenetration: 0, sdfMaxPenetration: 0, sdfChecks: 0 };
           }
 
           {
