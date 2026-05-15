@@ -17,7 +17,10 @@ import {
 export const Route = createFileRoute("/_authenticated/api-keys")({
   component: ApiKeysPage,
   head: () => ({
-    meta: [{ title: "API Keys — Particle Dynamics Engine" }],
+    meta: [
+      { title: "API Keys — Midwater" },
+      { name: "description", content: "Midwater — per-caller API credentials for downstream services." },
+    ],
   }),
 });
 
@@ -97,7 +100,7 @@ function ApiKeysPage() {
             </p>
           </div>
           <Link to="/" className="text-sm text-muted-foreground underline">
-            ← Engine
+            ← Midwater
           </Link>
         </header>
 
