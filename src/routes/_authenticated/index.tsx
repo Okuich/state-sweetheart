@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { FabFeedbackPanel } from "@/components/FabFeedbackPanel";
 import { ScanImportPanel } from "@/components/ScanImportPanel";
 import { MaterialEditorPanel } from "@/components/MaterialEditorPanel";
-import { TemplatesPanel } from "@/components/TemplatesPanel";
+
 import { FabPredictionsPanel } from "@/components/FabPredictionsPanel";
 import { startPhysicsFabBridge } from "@/lib/physicsFabBridge";
 
