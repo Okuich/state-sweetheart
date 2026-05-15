@@ -277,6 +277,44 @@ export function DistPartPanel() {
           ) : (
             <div className="text-[11px] text-muted-foreground/70">no plan yet.</div>
           )}
+          {last && (() => {
+            const P = last.partitionCount;
+            const cm = last.halo.commMatrix;
+            const out = new Array(P).fill(0);
+            const inn = new Array(P).fill(0);
+            for (let r = 0; r < P; r++) {
+              for (let c = 0; c < P; c++) {
+                out[r] += cm[r * P + c];
+                inn[c] += cm[r * P + c];
+              }
+            }
+            const recv = last.halo.haloRecv.map((a) => a.length);
+            const maxHalo = Math.max(1, ...out, ...inn);
+            const sumOut = out.reduce((a, b) => a + b, 0);
+            const sumIn = inn.reduce((a, b) => a + b, 0);
+            return (
+              <div className="space-y-1">
+                <div className="flex justify-between text-[9px] uppercase tracking-[0.18em] text-muted-foreground">
+                  <span>halo distribution · out / in (tets)</span>
+                  <span className="font-mono normal-case tracking-normal">
+                    Σout <span className="text-primary">{sumOut}</span>
+                    {"  "}Σin <span className="text-accent">{sumIn}</span>
+                  </span>
+                </div>
+                <div className="flex gap-1 items-end h-16">
+                  {out.map((o, i) => (
+                    <div key={i} className="flex-1 flex flex-col items-center gap-0.5" title={`rank ${i} · out ${o} · in ${inn[i]} · ghost-recv ${recv[i]}`}>
+                      <div className="w-full h-12 bg-muted/20 rounded-sm overflow-hidden flex items-end gap-[1px] px-[1px]">
+                        <div className="flex-1 bg-primary/70 rounded-[1px]" style={{ height: `${(o / maxHalo) * 100}%` }} />
+                        <div className="flex-1 bg-accent/70 rounded-[1px]" style={{ height: `${(inn[i] / maxHalo) * 100}%` }} />
+                      </div>
+                      <div className="text-[8px] font-mono text-muted-foreground tabular-nums">{i}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
           {last?.rebalance && (
             <div className="text-[10px] font-mono text-muted-foreground">
               migrations · <span className="text-foreground">{last.rebalance.moves.length}</span>
