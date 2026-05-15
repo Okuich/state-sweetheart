@@ -372,17 +372,38 @@ export function buildReportPDF(r: TopologyResult, label?: string, sections?: Rep
           y += 10;
           doc.setTextColor(20);
         }
+        // Auto label stride: ensure roughly minLabelPt between adjacent label centers.
+        // Always show first and last labels in the visible range.
+        const minLabelPt = 14;
+        const colStride = Math.max(1, Math.ceil(minLabelPt / cellW));
+        const rowStride = Math.max(1, Math.ceil(minLabelPt / cellH));
+        const showCol = (c: number) => c === c0 || c === cN - 1 || (c - c0) % colStride === 0;
+        const showRow = (r: number) => r === r0 || r === rN - 1 || (r - r0) % rowStride === 0;
+
         // Column header.
         doc.setFont("helvetica", "normal"); doc.setFontSize(Math.min(8, Math.max(5, cellW * 0.45)));
         for (let c = c0; c < cN; c++) {
+          if (!showCol(c)) continue;
           const cx = M + labelW + (c - c0) * cellW + cellW / 2;
           doc.text(numCol(c), cx, y, { align: "center" } as { align: "center" });
+          // Tick mark above the column to anchor the (possibly sparse) label.
+          doc.setDrawColor(170);
+          doc.line(cx, y + 2, cx, y + 5);
+        }
+        if (colStride > 1) {
+          doc.setFont("helvetica", "italic"); doc.setFontSize(7); doc.setTextColor(120);
+          doc.text(`(every ${colStride} cols)`, M + labelW + (cN - c0) * cellW + 4, y);
+          doc.setTextColor(20); doc.setFont("helvetica", "normal");
         }
         y += headerH - 2;
         // Body rows.
         for (let r2 = r0; r2 < rN; r2++) {
           doc.setFontSize(Math.min(8, Math.max(5, cellH * 0.45)));
-          doc.text(numCol(r2), M, y + cellH - 4);
+          if (showRow(r2)) {
+            doc.text(numCol(r2), M, y + cellH - 4);
+            doc.setDrawColor(170);
+            doc.line(M + labelW - 5, y + cellH / 2, M + labelW - 2, y + cellH / 2);
+          }
           for (let c = c0; c < cN; c++) {
             const v = rep.partition.commMatrix[r2 * P + c];
             const t = v / maxFlow;
@@ -394,6 +415,12 @@ export function buildReportPDF(r: TopologyResult, label?: string, sections?: Rep
             }
           }
           y += cellH;
+        }
+        if (rowStride > 1) {
+          doc.setFont("helvetica", "italic"); doc.setFontSize(7); doc.setTextColor(120);
+          doc.text(`row labels every ${rowStride}`, M, y + 8);
+          doc.setTextColor(20); doc.setFont("helvetica", "normal");
+          y += 10;
         }
         doc.setTextColor(20);
         y += 6;
