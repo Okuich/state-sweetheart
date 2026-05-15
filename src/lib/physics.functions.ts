@@ -89,7 +89,7 @@ export const analyzePhysics = createServerFn({ method: "POST" })
     const t0 = Date.now();
     try {
       const r = handleSingle(data as AnalyzeBody);
-      if (r.error) throw new Error(r.error);
+      if ("error" in r) throw new Error(r.error);
       await logJob(context.userId, "analyze", data, r.data, Date.now() - t0);
       return r.data;
     } catch (e) {
@@ -128,7 +128,7 @@ export const runPipeline = createServerFn({ method: "POST" })
     await assertPhysicsAccess(context.userId);
     const t0 = Date.now();
     const r = handleSingle(data as AnalyzeBody);
-    if (r.error) throw new Error(r.error);
+    if ("error" in r) throw new Error(r.error);
     const d = r.data!;
     const out = {
       source: d.engineSource,
@@ -150,7 +150,7 @@ export const optimizeDesign = createServerFn({ method: "POST" })
     await assertPhysicsAccess(context.userId);
     const t0 = Date.now();
     const r = handleOptimize(data);
-    if (r.error) throw new Error(r.error);
+    if ("error" in r) throw new Error(r.error);
     await logJob(context.userId, "optimize", data, { optimal: r.data!.optimal, feasibleCount: r.data!.feasibleCount }, Date.now() - t0);
     return r.data;
   });
