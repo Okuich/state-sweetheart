@@ -413,7 +413,15 @@ export function DistPartPanel() {
                   bg = `hsl(var(--primary) / ${0.15 + intensity * 0.85})`;
                 }
                 const isSelected = drill !== null && drill.src === rOrig && drill.dst === cOrig;
+                const inSelectedAxis = selectedPart !== null && (rOrig === selectedPart || cOrig === selectedPart);
+                const dimmedByPart = selectedPart !== null && !inSelectedAxis;
                 const clickable = v > 0 && rOrig !== cOrig;
+                const finalOpacity = dimmedByPart ? 0.18 : (filtered ? 0.55 : 1);
+                const ringClass = isSelected
+                  ? "ring-2 ring-foreground outline-none"
+                  : inSelectedAxis
+                    ? "ring-1 ring-foreground/60"
+                    : "";
                 return (
                   <button
                     key={idx}
@@ -427,9 +435,9 @@ export function DistPartPanel() {
                     }}
                     className={`aspect-square rounded-[1px] transition-shadow ${
                       clickable ? "cursor-pointer hover:ring-1 hover:ring-foreground/40" : "cursor-default"
-                    } ${isSelected ? "ring-2 ring-foreground outline-none" : ""}`}
-                    style={{ background: bg, opacity: filtered ? 0.55 : 1 }}
-                    title={`rank ${rOrig} → ${cOrig}: ${v}${clickable ? " · click to drill" : ""}${filtered && topK > 0 ? " (below top-K)" : ""}`}
+                    } ${ringClass}`}
+                    style={{ background: bg, opacity: finalOpacity }}
+                    title={`rank ${rOrig} → ${cOrig}: ${v}${clickable ? " · click to drill" : ""}${filtered && topK > 0 ? " (below top-K)" : ""}${dimmedByPart ? " (filtered by partition " + selectedPart + ")" : ""}`}
                   />
                 );
               })}
