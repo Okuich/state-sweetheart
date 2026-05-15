@@ -7,8 +7,21 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { generateMesh } from "@/lib/meshing";
 import { exportMesh, type ExportFormat } from "@/lib/meshing/export";
+
+async function assertAdmin(userId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", userId)
+    .eq("role", "admin")
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("Admin role required");
+}
 
 const Vec3 = z.tuple([z.number(), z.number(), z.number()]);
 
