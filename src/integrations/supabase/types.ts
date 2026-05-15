@@ -88,6 +88,198 @@ export type Database = {
           },
         ]
       }
+      feature_flags: {
+        Row: {
+          allowed_roles: string[]
+          created_at: string
+          description: string | null
+          enabled: boolean
+          key: string
+          metadata: Json
+          rollout_percentage: number
+          updated_at: string
+        }
+        Insert: {
+          allowed_roles?: string[]
+          created_at?: string
+          description?: string | null
+          enabled?: boolean
+          key: string
+          metadata?: Json
+          rollout_percentage?: number
+          updated_at?: string
+        }
+        Update: {
+          allowed_roles?: string[]
+          created_at?: string
+          description?: string | null
+          enabled?: boolean
+          key?: string
+          metadata?: Json
+          rollout_percentage?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      materials: {
+        Row: {
+          cost_usd_per_kg: number | null
+          created_at: string
+          density_kg_m3: number | null
+          family: string
+          id: string
+          metadata: Json
+          name: string
+          slug: string
+          thermal_conductivity_w_mk: number | null
+          ultimate_strength_mpa: number | null
+          updated_at: string
+          yield_strength_mpa: number | null
+          youngs_modulus_gpa: number | null
+        }
+        Insert: {
+          cost_usd_per_kg?: number | null
+          created_at?: string
+          density_kg_m3?: number | null
+          family: string
+          id?: string
+          metadata?: Json
+          name: string
+          slug: string
+          thermal_conductivity_w_mk?: number | null
+          ultimate_strength_mpa?: number | null
+          updated_at?: string
+          yield_strength_mpa?: number | null
+          youngs_modulus_gpa?: number | null
+        }
+        Update: {
+          cost_usd_per_kg?: number | null
+          created_at?: string
+          density_kg_m3?: number | null
+          family?: string
+          id?: string
+          metadata?: Json
+          name?: string
+          slug?: string
+          thermal_conductivity_w_mk?: number | null
+          ultimate_strength_mpa?: number | null
+          updated_at?: string
+          yield_strength_mpa?: number | null
+          youngs_modulus_gpa?: number | null
+        }
+        Relationships: []
+      }
+      patent_records: {
+        Row: {
+          claims: Json
+          created_at: string
+          id: string
+          jurisdiction: string | null
+          metadata: Json
+          status: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          claims?: Json
+          created_at?: string
+          id?: string
+          jurisdiction?: string | null
+          metadata?: Json
+          status?: string
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          claims?: Json
+          created_at?: string
+          id?: string
+          jurisdiction?: string | null
+          metadata?: Json
+          status?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      physics_jobs: {
+        Row: {
+          created_at: string
+          duration_ms: number | null
+          error: string | null
+          id: string
+          input: Json
+          kind: string
+          result: Json | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          duration_ms?: number | null
+          error?: string | null
+          id?: string
+          input: Json
+          kind: string
+          result?: Json | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          duration_ms?: number | null
+          error?: string | null
+          id?: string
+          input?: Json
+          kind?: string
+          result?: Json | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      pilot_engagements: {
+        Row: {
+          company: string
+          contact_email: string
+          created_at: string
+          id: string
+          metadata: Json
+          notes: string | null
+          stage: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          company: string
+          contact_email: string
+          created_at?: string
+          id?: string
+          metadata?: Json
+          notes?: string | null
+          stage?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          company?: string
+          contact_email?: string
+          created_at?: string
+          id?: string
+          metadata?: Json
+          notes?: string | null
+          stage?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -110,6 +302,45 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      role_requests: {
+        Row: {
+          created_at: string
+          id: string
+          reason: string | null
+          requested_flag: string | null
+          requested_role: Database["public"]["Enums"]["app_role"]
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          reason?: string | null
+          requested_flag?: string | null
+          requested_role?: Database["public"]["Enums"]["app_role"]
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          reason?: string | null
+          requested_flag?: string | null
+          requested_role?: Database["public"]["Enums"]["app_role"]
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
           updated_at?: string
           user_id?: string
         }
@@ -242,15 +473,78 @@ export type Database = {
         }
         Relationships: []
       }
+      user_feature_flags: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          flag_key: string
+          granted_by: string | null
+          id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          enabled: boolean
+          flag_key: string
+          granted_by?: string | null
+          id?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          flag_key?: string
+          granted_by?: string | null
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_feature_flags_flag_key_fkey"
+            columns: ["flag_key"]
+            isOneToOne: false
+            referencedRelation: "feature_flags"
+            referencedColumns: ["key"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      is_admin: { Args: never; Returns: boolean }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "user" | "enterprise" | "admin"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -377,6 +671,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["user", "enterprise", "admin"],
+    },
   },
 } as const
