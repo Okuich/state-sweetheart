@@ -113,7 +113,7 @@ export function RefinementPanel() {
           step,
           feedbackSource: feedbackMode,
           imbalanceThreshold: imbThr,
-          options: { splitThreshold: splitThr, extraDepth, maxNewLeaves: 5000, weights },
+          options: { splitThreshold: splitThr, extraDepth, maxNewLeaves: 5000, weights: { ...DEFAULT_WEIGHTS, ...weights } },
         });
         r = dr.adaptive;
         act = dr.action;
