@@ -1,3 +1,5 @@
+import { writeTypedBuffer } from "./gpu/writeBuffer";
+
 /**
  * gpuAabbRefit.ts
  * ──────────────────────────────────────────────────────────────────────────
@@ -501,7 +503,7 @@ async function refitStepGpu(ctx: AabbRefitContext): Promise<void> {
       readBox:   make(tree.boxes.byteLength,     GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ),
       readDirty: make(tree.N * 4,                GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ),
     };
-    const wb = (b: GPUBuffer, d: ArrayBufferView) => device.queue.writeBuffer(b, 0, d as unknown as BufferSource);
+    const wb = (b: GPUBuffer, d: ArrayBufferView) => writeTypedBuffer(device, b, d);
     wb(res.primBuf,   scene.prims);
     wb(res.radBuf,    scene.radii);
     wb(res.leafIdBuf, tree.levels[0]);
@@ -513,7 +515,7 @@ async function refitStepGpu(ctx: AabbRefitContext): Promise<void> {
   }
 
   // Per-step uploads.
-  device.queue.writeBuffer(res.vertBuf, 0, scene.vertices as unknown as BufferSource);
+  writeTypedBuffer(device, res.vertBuf, scene.vertices);
   // dirty array: pack the Uint8 wasDirty into u32-per-element for the GPU.
   const dirty32 = new Uint32Array(tree.N);
   for (let i = 0; i < tree.N; i++) dirty32[i] = tree.dirty[i];

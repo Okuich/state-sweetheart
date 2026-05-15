@@ -298,6 +298,7 @@ export interface SolveOptions {
 }
 
 import { dedupPairs, type DedupResult } from "./pairDedup";
+import { writeTypedBuffer } from "./gpu/writeBuffer";
 
 const DEFAULT_MAX_PAIRS = 1 << 22;
 
@@ -433,7 +434,7 @@ async function solvePairsGpu(
     // typed inputs (the default in some lib.dom variants) are accepted.
     const bytes = new Uint8Array(data.byteLength);
     bytes.set(new Uint8Array(data.buffer as ArrayBuffer, data.byteOffset, data.byteLength));
-    device.queue.writeBuffer(buf, 0, bytes);
+    writeTypedBuffer(device, buf, bytes);
     return buf;
   };
 
@@ -449,7 +450,7 @@ async function solvePairsGpu(
   const countGpu = device.createBuffer({
     size: 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
   });
-  device.queue.writeBuffer(countGpu, 0, new Uint32Array([0]));
+  writeTypedBuffer(device, countGpu, new Uint32Array([0]));
 
   const contactsGpu = device.createBuffer({
     size: maxContacts * CONTACT_STRIDE_BYTES,
@@ -468,7 +469,7 @@ async function solvePairsGpu(
   const paramsGpu = device.createBuffer({
     size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
-  device.queue.writeBuffer(paramsGpu, 0, paramsHost);
+  writeTypedBuffer(device, paramsGpu, paramsHost);
 
   const bg = device.createBindGroup({
     layout: pipeline.getBindGroupLayout(0),
