@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import type { TopoNode, Vec3 } from "@/lib/topology/types";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { buildOctreeMesh, type RefinementSeed } from "@/lib/meshing/octree";
