@@ -325,10 +325,10 @@ interface ProjectionViewProps {
   vAxis: 0 | 1 | 2;
   dAxis: 0 | 1 | 2;
   label: string;
+  size?: number;
 }
 
-function ProjectionView({ nodes, matched, hAxis, vAxis, dAxis, label }: ProjectionViewProps) {
-  const size = 180;
+function ProjectionView({ nodes, matched, hAxis, vAxis, dAxis, label, size = 180 }: ProjectionViewProps) {
   const pad = 8;
   if (nodes.length === 0) return null;
   let minH = Infinity, maxH = -Infinity, minV = Infinity, maxV = -Infinity;
