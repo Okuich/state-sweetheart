@@ -543,24 +543,43 @@ function fieldStats(arr: Float32Array): { mean: number; peak: number; coverage: 
 type ChannelKey = "stress" | "thermal" | "deformation" | "contact";
 const HISTORY_LEN = 32;
 
-function Sparkline({ values, color, height = 18 }: { values: number[]; color: string; height?: number }) {
+function movingAverage(values: number[], window: number): number[] {
+  if (window <= 1 || values.length === 0) return values;
+  const out: number[] = new Array(values.length);
+  let sum = 0;
+  const q: number[] = [];
+  for (let i = 0; i < values.length; i++) {
+    sum += values[i]; q.push(values[i]);
+    if (q.length > window) sum -= q.shift()!;
+    out[i] = sum / q.length;
+  }
+  return out;
+}
+
+function Sparkline({ values, color, height = 18, smoothWindow = 1 }: { values: number[]; color: string; height?: number; smoothWindow?: number }) {
   if (values.length < 2) {
     return <div className="h-[18px] text-[8px] font-mono text-muted-foreground/60 flex items-center">collecting…</div>;
   }
-  const max = Math.max(1e-6, ...values);
+  const smoothed = movingAverage(values, smoothWindow);
+  const max = Math.max(1e-6, ...values, ...smoothed);
   const w = 100;
   const step = w / (HISTORY_LEN - 1);
-  const pts = values.map((v, i) => {
-    const x = (i + (HISTORY_LEN - values.length)) * step;
+  const toPts = (arr: number[]) => arr.map((v, i) => {
+    const x = (i + (HISTORY_LEN - arr.length)) * step;
     const y = height - (v / max) * (height - 2) - 1;
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(" ");
-  const last = values[values.length - 1];
-  const lastX = (values.length - 1 + (HISTORY_LEN - values.length)) * step;
+  const rawPts = toPts(values);
+  const smoothPts = toPts(smoothed);
+  const last = smoothed[smoothed.length - 1];
+  const lastX = (smoothed.length - 1 + (HISTORY_LEN - smoothed.length)) * step;
   const lastY = height - (last / max) * (height - 2) - 1;
   return (
     <svg viewBox={`0 0 ${w} ${height}`} preserveAspectRatio="none" className="w-full h-[18px]">
-      <polyline fill="none" stroke={color} strokeWidth={1} strokeLinejoin="round" points={pts} opacity={0.9} />
+      {smoothWindow > 1 && (
+        <polyline fill="none" stroke={color} strokeWidth={0.6} strokeLinejoin="round" points={rawPts} opacity={0.25} />
+      )}
+      <polyline fill="none" stroke={color} strokeWidth={1} strokeLinejoin="round" points={smoothPts} opacity={0.9} />
       <circle cx={lastX} cy={lastY} r={1.4} fill={color} />
     </svg>
   );
