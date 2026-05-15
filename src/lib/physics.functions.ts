@@ -17,24 +17,23 @@ import {
   type AnalyzeBody,
 } from "./physics-engine.server";
 
-// ── Access gate ──
+// ── Access gates ──
+async function assertAdmin(userId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", userId)
+    .eq("role", "admin")
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("Admin role required");
+}
+
 async function assertPhysicsAccess(userId: string) {
-  const [rolesRes, flagRes, overrideRes] = await Promise.all([
-    supabaseAdmin.from("user_roles").select("role").eq("user_id", userId),
-    supabaseAdmin.from("feature_flags").select("enabled, allowed_roles, rollout_percentage").eq("key", "physics_engine").maybeSingle(),
-    supabaseAdmin.from("user_feature_flags").select("enabled").eq("user_id", userId).eq("flag_key", "physics_engine").maybeSingle(),
-  ]);
-  const roles = (rolesRes.data ?? []).map((r) => r.role as string);
-  if (overrideRes.data) {
-    if (overrideRes.data.enabled) return;
-    throw new Error("Physics engine access disabled for your account");
-  }
-  const flag = flagRes.data;
-  if (!flag?.enabled) throw new Error("Physics engine is currently disabled");
-  const allowed = flag.allowed_roles ?? [];
-  if (allowed.length > 0 && !roles.some((r) => allowed.includes(r))) {
-    throw new Error("Physics engine requires enterprise or admin role. Request access from the admin panel.");
-  }
+  // Physics OS endpoints are admin-only. Customers reach the engine
+  // exclusively through `predictForMidwater`, never through these
+  // hidden routes.
+  await assertAdmin(userId);
 }
 
 async function logJob(userId: string, kind: string, input: unknown, result: unknown, durationMs: number, error?: string) {
