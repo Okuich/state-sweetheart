@@ -33,6 +33,7 @@ export function DistPartPanel() {
   const [running, setRunning] = useState(false);
   const [last, setLast] = useState<DistPartResult | null>(null);
   const [commSort, setCommSort] = useState<CommSort>("none");
+  const [topK, setTopK] = useState(0); // 0 = off, otherwise highlight K hottest edges
   const [history, setHistory] = useState<{ algo: PartitionAlgorithm; P: number; cut: number; imb: number; us: number; bytes: number; rounds: number }[]>([]);
 
   const setup = useMemo(() => {
