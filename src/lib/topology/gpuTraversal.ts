@@ -14,6 +14,7 @@
  */
 
 import type { TopologyGraph } from "./graph";
+import { writeTypedBuffer } from "../gpu/writeBuffer";
 
 const WG = 64;
 
