@@ -382,23 +382,55 @@ function ProjectionView({ nodes, matched, hAxis, vAxis, dAxis, label }: Projecti
   );
 }
 
+type ViewMode = "xy" | "xz" | "zy" | "all";
+const VIEW_MODES: { id: ViewMode; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "xy", label: "XY" },
+  { id: "xz", label: "XZ" },
+  { id: "zy", label: "ZY" },
+];
+
 function CandidatePreview3D({ nodes, matched }: { nodes: TopoNode[]; matched: Set<FeatureClass> }) {
+  const [mode, setMode] = useState<ViewMode>("all");
   const matchedCount = useMemo(
     () => nodes.reduce((s, n) => s + (matched.has(n.feature) ? 1 : 0), 0),
     [nodes, matched],
   );
+  const big = mode !== "all";
   return (
     <div className="rounded-md border border-border bg-background/30 p-2 space-y-2">
-      <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+      <div className="flex items-center justify-between text-[10px] text-muted-foreground gap-2">
         <span className="uppercase tracking-wide">3D preview · matched features highlighted</span>
-        <span className="font-mono">
-          {matchedCount}/{nodes.length} leaves · {Array.from(matched).map((f) => FEATURE_LABELS[f]).join(" · ") || "—"}
-        </span>
+        <div className="flex items-center gap-1">
+          {VIEW_MODES.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => setMode(m.id)}
+              className={`px-1.5 py-0.5 rounded border text-[9px] font-mono uppercase tracking-wide transition ${
+                mode === m.id
+                  ? "border-primary bg-primary/15 text-foreground"
+                  : "border-border hover:bg-muted/40"
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="text-[10px] text-muted-foreground font-mono text-right">
+        {matchedCount}/{nodes.length} leaves · {Array.from(matched).map((f) => FEATURE_LABELS[f]).join(" · ") || "—"}
       </div>
       <div className="flex flex-wrap gap-3 justify-center">
-        <ProjectionView nodes={nodes} matched={matched} hAxis={0} vAxis={1} dAxis={2} label="XY · front" />
-        <ProjectionView nodes={nodes} matched={matched} hAxis={0} vAxis={2} dAxis={1} label="XZ · top" />
-        <ProjectionView nodes={nodes} matched={matched} hAxis={2} vAxis={1} dAxis={0} label="ZY · side" />
+        {(mode === "all" || mode === "xy") && (
+          <ProjectionView nodes={nodes} matched={matched} hAxis={0} vAxis={1} dAxis={2} label="XY · front" size={big ? 220 : 140} />
+        )}
+        {(mode === "all" || mode === "xz") && (
+          <ProjectionView nodes={nodes} matched={matched} hAxis={0} vAxis={2} dAxis={1} label="XZ · top" size={big ? 220 : 140} />
+        )}
+        {(mode === "all" || mode === "zy") && (
+          <ProjectionView nodes={nodes} matched={matched} hAxis={2} vAxis={1} dAxis={0} label="ZY · side" size={big ? 220 : 140} />
+        )}
       </div>
       {matched.size > 0 && (
         <div className="flex flex-wrap gap-2 text-[10px] justify-center pt-1">
