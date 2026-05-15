@@ -449,7 +449,7 @@ async function solvePairsGpu(
   const countGpu = device.createBuffer({
     size: 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
   });
-  device.queue.writeBuffer(countGpu, 0, new Uint32Array([0]));
+  writeTypedBuffer(device, countGpu, new Uint32Array([0]));
 
   const contactsGpu = device.createBuffer({
     size: maxContacts * CONTACT_STRIDE_BYTES,
