@@ -219,6 +219,15 @@ export function DistPartPanel() {
           <Button onClick={run} disabled={running} className="w-full uppercase tracking-[0.18em] text-[10px]">
             {running ? "partitioning…" : "plan distribution"}
           </Button>
+          <Button
+            onClick={exportCsv}
+            disabled={!last}
+            variant="outline"
+            className="w-full uppercase tracking-[0.18em] text-[10px]"
+            title="Download per-partition stats and comm matrix as CSV"
+          >
+            export csv
+          </Button>
           {last && (
             <div className="grid grid-cols-2 gap-2 text-[10px] font-mono pt-1">
               <div>
