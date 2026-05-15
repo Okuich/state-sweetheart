@@ -9,6 +9,7 @@
 import { jsPDF } from "jspdf";
 import { FEATURE_LABELS, type FeatureClass } from "./types";
 import type { TopologyResult } from "./index";
+import { renderTopologyThumbnails, FEATURE_THUMB_LEGEND } from "./thumbnails";
 
 const FEATURE_ORDER: FeatureClass[] = [
   "bulk", "boundary", "thin_wall", "overhang",
