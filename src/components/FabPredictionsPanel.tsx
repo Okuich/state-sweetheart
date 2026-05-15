@@ -314,7 +314,7 @@ export function FabPredictionsPanel() {
                     </td>
                   </tr>
                 )}
-                </>
+                </Fragment>
                 );
               })}
             </tbody>
