@@ -105,7 +105,6 @@ export const batchAnalyze = createServerFn({ method: "POST" })
     await assertPhysicsAccess(context.userId);
     const t0 = Date.now();
     const r = handleBatch(data as AnalyzeBody);
-    if (r.error) throw new Error(r.error);
     await logJob(context.userId, "batch", data, r.data, Date.now() - t0);
     return r.data;
   });
@@ -117,7 +116,7 @@ export const compareEngines = createServerFn({ method: "POST" })
     await assertPhysicsAccess(context.userId);
     const t0 = Date.now();
     const r = handleCompare(data as AnalyzeBody);
-    if (r.error) throw new Error(r.error);
+    if ("error" in r) throw new Error(r.error);
     await logJob(context.userId, "compare", data, r.data, Date.now() - t0);
     return r.data;
   });
