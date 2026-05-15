@@ -55,11 +55,11 @@ const DEFAULT_REF = {
 };
 
 async function runForPart(partId: string) {
-  if (inflight.has(partId) || cache.has(partId)) return;
+  if (inflight.has(partId)) return;
   inflight.add(partId);
   const t0 = Date.now();
   try {
-    const out = await runPipeline({
+    const out = await predictForMidwater({
       data: { ...DEFAULT_REF, geometryId: partId },
     });
     cache.set(partId, {
