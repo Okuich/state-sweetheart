@@ -212,7 +212,7 @@ export function buildReportPDF(r: TopologyResult, label?: string, sections?: Rep
   doc.setTextColor(20);
 
   // Auto-generated thumbnails of the topology (XY/XZ/YZ + partition view).
-  const thumbs = renderTopologyThumbnails(r, { size: 220, scale: 2 });
+  const thumbs = sec.thumbnails ? renderTopologyThumbnails(r, { size: 220, scale: 2 }) : [];
   if (thumbs.length) {
     h1("Topology views");
     const cols = 2;
