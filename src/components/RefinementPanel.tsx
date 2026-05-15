@@ -11,6 +11,7 @@ import {
   exportRefinedMesh,
   sharedPriorStore,
   physicsFeedbackBus,
+  DEFAULT_WEIGHTS,
   type AdaptivePassResult,
   type DistributedAction,
   type RefinementExportFormat,
