@@ -142,6 +142,7 @@ async function runForPart(partId: string, attempt = 0) {
       ms,
       ok: true,
     });
+    pushHistory(partId, { at: new Date().toISOString(), ok: true, ms, confidence: out?.confidence, attempt });
     setStatus(partId, "ready", { ms, attempt });
     emit();
   } catch (e) {
