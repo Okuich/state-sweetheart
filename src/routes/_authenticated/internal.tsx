@@ -1,4 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
+import { useAccess } from "@/hooks/useAccess";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PhysicsCanvas, type SimParams, type ValidationReport } from "@/components/PhysicsCanvas";
 import { useEnergyPlot } from "@/components/EnergyPlot";
