@@ -23,28 +23,49 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
 type FieldMode = "potential" | "speed" | "cp" | "pressure";
+type FaceKey = "+x" | "-x" | "+y" | "-y" | "+z" | "-z";
+type FaceMode = "dirichlet" | "neumann" | "wall";
+
+interface FaceBC {
+  mode: FaceMode;
+  /** φ value (m²/s) when mode = "dirichlet". */
+  phi: number;
+  /** Normal velocity v·n_out (m/s) when mode = "neumann". Positive = outflow. */
+  vN: number;
+}
 
 interface Params {
   length: number;
   width: number;
   height: number;
-  phiInlet: number;
-  phiOutlet: number;
   density: number;        // ρ (kg/m³) — Bernoulli
   p0: number;             // stagnation / reference pressure (Pa)
   minDepth: number;
   maxDepth: number;
   seedsPerSide: number;
   rk4Steps: number;
+  faces: Record<FaceKey, FaceBC>;
+  /** Auto-pin a gauge node when no Dirichlet face is selected. */
+  pinGauge: boolean;
 }
+
+const FACE_KEYS: FaceKey[] = ["-x", "+x", "-y", "+y", "-z", "+z"];
 
 const DEFAULTS: Params = {
   length: 2, width: 0.5, height: 0.5,
-  phiInlet: 0, phiOutlet: 2,
   density: 1.225, p0: 101325,
   minDepth: 2, maxDepth: 3,
   seedsPerSide: 4,
   rk4Steps: 240,
+  faces: {
+    "-x": { mode: "dirichlet", phi: 0, vN: -1 },   // inlet (gauge)
+    "+x": { mode: "dirichlet", phi: 2, vN:  1 },   // outlet
+    "-y": { mode: "wall",      phi: 0, vN:  0 },
+    "+y": { mode: "wall",      phi: 0, vN:  0 },
+    "-z": { mode: "wall",      phi: 0, vN:  0 },
+    "+z": { mode: "wall",      phi: 0, vN:  0 },
+  },
+  pinGauge: true,
 };
 
 // Viridis-like ramp (distinct from thermal's inferno and electro's plasma).
