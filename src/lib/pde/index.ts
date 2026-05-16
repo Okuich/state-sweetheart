@@ -25,3 +25,7 @@ export {
   vcycle, makeMGPreconditioner, DEFAULT_MG_OPTS,
   type MGLevel, type MGOptions,
 } from "./solvers/multigrid";
+export {
+  assembleThermalStiffness, solveThermal,
+  type ThermalProblem, type ThermalSolution, type KappaTensor,
+} from "./thermal";
