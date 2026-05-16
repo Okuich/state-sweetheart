@@ -78,10 +78,10 @@ export function assembleFEMLaplacian(mesh: FEMMeshInput): AssemblyResult {
     // Shape-function gradients: g_i = (1/(6V)) · (cross of opposite edges).
     // Using the standard formula for linear tet basis on physical coords.
     const inv6V = 1 / (6 * V);
-    g[0] = scale(cross(sub(p[2], p[1]), sub(p[3], p[1])), inv6V);
-    g[1] = scale(cross(sub(p[3], p[0]), sub(p[2], p[0])), inv6V);
-    g[2] = scale(cross(sub(p[1], p[0]), sub(p[3], p[0])), inv6V);
-    g[3] = scale(cross(sub(p[2], p[0]), sub(p[1], p[0])), inv6V);
+    g[0] = scale(cross(sub(p[3], p[1]), sub(p[2], p[1])), inv6V);
+    g[1] = scale(cross(sub(p[2], p[0]), sub(p[3], p[0])), inv6V);
+    g[2] = scale(cross(sub(p[3], p[0]), sub(p[1], p[0])), inv6V);
+    g[3] = scale(cross(sub(p[1], p[0]), sub(p[2], p[0])), inv6V);
 
     const k = (kappa ? kappa[t] : 1) * absV;
     for (let i = 0; i < 4; i++) {
