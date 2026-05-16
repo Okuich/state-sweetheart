@@ -406,6 +406,8 @@ function FlowViewer({
       lo = out.phiMin.toFixed(3); hi = out.phiMax.toFixed(3); unit = "φ (m²/s)";
     } else if (mode === "speed") {
       lo = out.speedMin.toFixed(3); hi = out.speedMax.toFixed(3); unit = "|v| (m/s)";
+    } else if (mode === "pressure") {
+      lo = out.pMin.toExponential(2); hi = out.pMax.toExponential(2); unit = "p (Pa)";
     } else {
       lo = out.cpMin.toFixed(3); hi = out.cpMax.toFixed(3); unit = "Cp";
     }
