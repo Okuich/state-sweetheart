@@ -66,7 +66,7 @@ export function solvePotentialFlow(problem: PotentialFlowProblem): PotentialFlow
   const { mesh } = problem;
   const tets = mesh.tets;
   const nTets = tets.length / 4;
-  const nVerts = mesh.positions.length / 3;
+  const nVerts = mesh.vertices.length / 3;
 
   const weight = problem.weight ?? (() => {
     const w = new Float64Array(nTets);
@@ -78,7 +78,7 @@ export function solvePotentialFlow(problem: PotentialFlowProblem): PotentialFlow
 
   let dirichlet = problem.dirichlet;
   if ((!dirichlet || dirichlet.length === 0) && problem.pinGauge) {
-    dirichlet = [{ vertex: 0, value: 0 }];
+    dirichlet = [{ index: 0, value: 0 }];
   }
 
   const solve = solvePoisson({
@@ -156,7 +156,7 @@ export function makeVelocitySampler(
   velocityPerTet: Float64Array,
 ): (x: number, y: number, z: number) => readonly [number, number, number] | null {
   const tets = mesh.tets;
-  const pos = mesh.positions;
+  const pos = mesh.vertices;
   const nTets = tets.length / 4;
   const centroids = new Float64Array(nTets * 3);
   for (let t = 0; t < nTets; t++) {
