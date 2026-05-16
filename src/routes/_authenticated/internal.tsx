@@ -21,6 +21,7 @@ import { StepIngestionPanel } from "@/components/StepIngestionPanel";
 import { GeometryFeaturePanel } from "@/components/GeometryFeaturePanel";
 import { MeshingPanel } from "@/components/MeshingPanel";
 import { ThermalFieldPanel } from "@/components/ThermalFieldPanel";
+import { ElectrostaticFieldPanel } from "@/components/ElectrostaticFieldPanel";
 import { SpatialAccelPanel } from "@/components/SpatialAccelPanel";
 import { SDFPanel } from "@/components/SDFPanel";
 import { TopologyPanel } from "@/components/TopologyPanel";
@@ -972,6 +973,11 @@ function Index() {
       {/* Thermal Field Engine — Phase-2 PDE: steady-state heat conduction over the mesh */}
       <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
         <ThermalFieldPanel />
+      </section>
+
+      {/* Electrostatic Field Engine — Phase-3 PDE: −∇·(ε∇V)=ρ over the mesh */}
+      <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
+        <ElectrostaticFieldPanel />
       </section>
 
       {/* Spatial Acceleration — BVH, KD-tree, hash, fab intel */}
