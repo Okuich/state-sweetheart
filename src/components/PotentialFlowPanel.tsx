@@ -22,7 +22,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
-type FieldMode = "potential" | "speed" | "cp";
+type FieldMode = "potential" | "speed" | "cp" | "pressure";
 
 interface Params {
   length: number;
@@ -30,6 +30,8 @@ interface Params {
   height: number;
   phiInlet: number;
   phiOutlet: number;
+  density: number;        // ρ (kg/m³) — Bernoulli
+  p0: number;             // stagnation / reference pressure (Pa)
   minDepth: number;
   maxDepth: number;
   seedsPerSide: number;
@@ -39,6 +41,7 @@ interface Params {
 const DEFAULTS: Params = {
   length: 2, width: 0.5, height: 0.5,
   phiInlet: 0, phiOutlet: 2,
+  density: 1.225, p0: 101325,
   minDepth: 2, maxDepth: 3,
   seedsPerSide: 4,
   rk4Steps: 240,
@@ -75,6 +78,10 @@ interface SolveOutput {
   phiMin: number; phiMax: number;
   speedMin: number; speedMax: number;
   cpMin: number; cpMax: number;
+  /** Bernoulli pressure p = p₀ − ½ρ|v|² per vertex (Pa). */
+  pressure: Float64Array;
+  pMin: number; pMax: number;
+  density: number; p0: number;
   inletCount: number; outletCount: number;
   volumetricFlow: number;
 }
@@ -150,10 +157,23 @@ function runSolve(params: Params): SolveOutput {
   const meanUx = uxN > 0 ? uxSum / uxN : 0;
   const volumetricFlow = meanUx * width * height;
 
+  // Bernoulli (steady, incompressible, irrotational): p = p₀ − ½ρ|v|².
+  const nVerts = result.speed.length;
+  const pressure = new Float64Array(nVerts);
+  const half = 0.5 * params.density;
+  let pMin = Infinity, pMax = -Infinity;
+  for (let i = 0; i < nVerts; i++) {
+    const p = params.p0 - half * result.speed[i] * result.speed[i];
+    pressure[i] = p;
+    if (p < pMin) pMin = p;
+    if (p > pMax) pMax = p;
+  }
+
   return {
     mesh, result,
     elapsedMs: performance.now() - t0,
     phiMin, phiMax, speedMin, speedMax, cpMin, cpMax,
+    pressure, pMin, pMax, density: params.density, p0: params.p0,
     inletCount, outletCount, volumetricFlow,
   };
 }
@@ -278,12 +298,15 @@ function FlowViewer({
     const phi = out.result.phi;
     const sp2 = out.result.speed;
     const cpv = out.result.cp;
+    const prs = out.pressure;
     const phiSpan = Math.max(1e-12, out.phiMax - out.phiMin);
     const spSpan = Math.max(1e-12, out.speedMax - out.speedMin);
     const cpSpan = Math.max(1e-12, out.cpMax - out.cpMin);
+    const pSpan = Math.max(1e-12, out.pMax - out.pMin);
     const fieldNorm = (i: number) => {
       if (mode === "potential") return (phi[i] - out.phiMin) / phiSpan;
       if (mode === "speed")     return (sp2[i] - out.speedMin) / spSpan;
+      if (mode === "pressure")  return (prs[i] - out.pMin) / pSpan;
       return (cpv[i] - out.cpMin) / cpSpan;
     };
 
@@ -383,6 +406,8 @@ function FlowViewer({
       lo = out.phiMin.toFixed(3); hi = out.phiMax.toFixed(3); unit = "φ (m²/s)";
     } else if (mode === "speed") {
       lo = out.speedMin.toFixed(3); hi = out.speedMax.toFixed(3); unit = "|v| (m/s)";
+    } else if (mode === "pressure") {
+      lo = out.pMin.toExponential(2); hi = out.pMax.toExponential(2); unit = "p (Pa)";
     } else {
       lo = out.cpMin.toFixed(3); hi = out.cpMax.toFixed(3); unit = "Cp";
     }
@@ -471,6 +496,8 @@ export function PotentialFlowPanel() {
           <NumField label="max depth" value={params.maxDepth} step={1} onChange={(v) => set("maxDepth", Math.max(params.minDepth, Math.round(v)))} />
           <NumField label="φ inlet" value={params.phiInlet} step={0.1} onChange={(v) => set("phiInlet", v)} />
           <NumField label="φ outlet" value={params.phiOutlet} step={0.1} onChange={(v) => set("phiOutlet", v)} />
+          <NumField label="ρ (kg/m³)" value={params.density} step={0.1} onChange={(v) => set("density", Math.max(1e-9, v))} />
+          <NumField label="p₀ (Pa)" value={params.p0} step={100} onChange={(v) => set("p0", v)} />
           <NumField label="seeds / side" value={params.seedsPerSide} step={1} onChange={(v) => set("seedsPerSide", Math.max(1, Math.min(8, Math.round(v))))} />
           <NumField label="RK4 steps" value={params.rk4Steps} step={20} onChange={(v) => set("rk4Steps", Math.max(20, Math.round(v)))} />
         </div>
@@ -485,6 +512,7 @@ export function PotentialFlowPanel() {
               <SelectItem value="potential">Velocity potential φ</SelectItem>
               <SelectItem value="speed">Speed |v|</SelectItem>
               <SelectItem value="cp">Pressure coefficient Cp</SelectItem>
+              <SelectItem value="pressure">Bernoulli pressure p</SelectItem>
             </SelectContent>
           </Select>
           <Button variant={showVectors ? "default" : "outline"} size="sm" onClick={() => setShowVectors((s) => !s)}>
@@ -520,6 +548,9 @@ export function PotentialFlowPanel() {
               <Stat label="vertices" value={out.result.phi.length.toLocaleString()} />
               <Stat label="residual" value={out.result.solve.result.residual.toExponential(2)} />
               <Stat label="Q ≈ ūx·A" value={`${out.volumetricFlow.toExponential(2)} m³/s`} />
+              <Stat label="p min" value={`${out.pMin.toExponential(3)} Pa`} />
+              <Stat label="p max" value={`${out.pMax.toExponential(3)} Pa`} />
+              <Stat label="Δp = ½ρ|v|²max" value={`${(0.5 * out.density * out.speedMax * out.speedMax).toExponential(2)} Pa`} />
             </div>
           </>
         )}
