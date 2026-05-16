@@ -138,34 +138,37 @@ describe("Differentiable thermal solves", () => {
 
   it("gradient descent on κ recovers a target temperature profile", () => {
     const mesh = buildBarMesh(4);
+    const nV = mesh.vertices.length / 3;
     const nTets = mesh.tets.length / 4;
-    // Start uniform; target a profile achievable by κ varying along x.
-    const kappa0 = new Float64Array(nTets).fill(1);
-    const dirichlet = makeDirichlet(mesh, 1, 0);
+    // Pin both ends to 0 and drive interior with a volumetric source so the
+    // solution genuinely depends on κ (with zero source the BCs alone fix T).
+    const dirichlet = makeDirichlet(mesh, 0, 0);
+    const source = new Float64Array(nV).fill(1);
 
-    // Build the "ground truth" κ field and the resulting T, then optimize.
     const kappaGT = new Float64Array(nTets);
-    for (let t = 0; t < nTets; t++) kappaGT[t] = 0.5 + 1.5 * (t % 6) / 6;
-    const truth = solveThermal({ mesh, kappa: kappaGT, dirichlet, cg: { tol: 1e-12 } });
+    for (let t = 0; t < nTets; t++) kappaGT[t] = 0.4 + 1.2 * (t % 5) / 5;
+    const truth = solveThermal({
+      mesh, kappa: kappaGT, source, dirichlet, cg: { tol: 1e-12, maxIter: 5000 },
+    });
     const probes: { index: number; target: number; weight: number }[] = [];
-    for (let v = 0; v < mesh.vertices.length / 3; v++) {
+    for (let v = 0; v < nV; v++) {
       const x = mesh.vertices[v * 3];
       if (x > 0.05 && x < 0.95) probes.push({ index: v, target: truth.T[v], weight: 1 });
     }
 
+    const kappa0 = new Float64Array(nTets).fill(1);
     const initialLoss = targetTemperatureLoss(
-      solveThermal({ mesh, kappa: kappa0, dirichlet }).T, probes,
+      solveThermal({ mesh, kappa: kappa0, source, dirichlet, cg: { tol: 1e-12 } }).T,
+      probes,
     ).loss;
+    expect(initialLoss).toBeGreaterThan(1e-6);
 
     const result = inverseDesignKappa(
-      { mesh, kappa: kappa0, dirichlet, cg: { tol: 1e-10 } },
+      { mesh, kappa: kappa0, source, dirichlet, cg: { tol: 1e-10, maxIter: 5000 } },
       probes,
-      { steps: 40, learningRate: 0.2 },
+      { steps: 80, learningRate: 0.2 },
     );
-
     const finalLoss = result.history[result.history.length - 1].loss;
-    // Optimization should monotone-ish reduce loss by a meaningful factor.
     expect(finalLoss).toBeLessThan(initialLoss * 0.2);
-    expect(finalLoss).toBeLessThan(initialLoss);
   });
 });
