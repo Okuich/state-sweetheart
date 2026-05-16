@@ -157,10 +157,23 @@ function runSolve(params: Params): SolveOutput {
   const meanUx = uxN > 0 ? uxSum / uxN : 0;
   const volumetricFlow = meanUx * width * height;
 
+  // Bernoulli (steady, incompressible, irrotational): p = p₀ − ½ρ|v|².
+  const nVerts = result.speed.length;
+  const pressure = new Float64Array(nVerts);
+  const half = 0.5 * params.density;
+  let pMin = Infinity, pMax = -Infinity;
+  for (let i = 0; i < nVerts; i++) {
+    const p = params.p0 - half * result.speed[i] * result.speed[i];
+    pressure[i] = p;
+    if (p < pMin) pMin = p;
+    if (p > pMax) pMax = p;
+  }
+
   return {
     mesh, result,
     elapsedMs: performance.now() - t0,
     phiMin, phiMax, speedMin, speedMax, cpMin, cpMax,
+    pressure, pMin, pMax, density: params.density, p0: params.p0,
     inletCount, outletCount, volumetricFlow,
   };
 }
