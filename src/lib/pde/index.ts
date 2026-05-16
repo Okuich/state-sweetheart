@@ -29,3 +29,8 @@ export {
   assembleThermalStiffness, solveThermal,
   type ThermalProblem, type ThermalSolution, type KappaTensor,
 } from "./thermal";
+export {
+  solveElectrostatic, traceFieldLine,
+  type ElectrostaticProblem, type ElectrostaticSolution,
+  type FieldLineOptions, type SampleE,
+} from "./electrostatic";
