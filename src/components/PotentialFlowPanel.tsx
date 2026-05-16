@@ -548,6 +548,9 @@ export function PotentialFlowPanel() {
               <Stat label="vertices" value={out.result.phi.length.toLocaleString()} />
               <Stat label="residual" value={out.result.solve.result.residual.toExponential(2)} />
               <Stat label="Q ≈ ūx·A" value={`${out.volumetricFlow.toExponential(2)} m³/s`} />
+              <Stat label="p min" value={`${out.pMin.toExponential(3)} Pa`} />
+              <Stat label="p max" value={`${out.pMax.toExponential(3)} Pa`} />
+              <Stat label="Δp = ½ρ|v|²max" value={`${(0.5 * out.density * out.speedMax * out.speedMax).toExponential(2)} Pa`} />
             </div>
           </>
         )}
