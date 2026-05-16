@@ -298,12 +298,15 @@ function FlowViewer({
     const phi = out.result.phi;
     const sp2 = out.result.speed;
     const cpv = out.result.cp;
+    const prs = out.pressure;
     const phiSpan = Math.max(1e-12, out.phiMax - out.phiMin);
     const spSpan = Math.max(1e-12, out.speedMax - out.speedMin);
     const cpSpan = Math.max(1e-12, out.cpMax - out.cpMin);
+    const pSpan = Math.max(1e-12, out.pMax - out.pMin);
     const fieldNorm = (i: number) => {
       if (mode === "potential") return (phi[i] - out.phiMin) / phiSpan;
       if (mode === "speed")     return (sp2[i] - out.speedMin) / spSpan;
+      if (mode === "pressure")  return (prs[i] - out.pMin) / pSpan;
       return (cpv[i] - out.cpMin) / cpSpan;
     };
 
