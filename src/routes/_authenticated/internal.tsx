@@ -22,6 +22,7 @@ import { GeometryFeaturePanel } from "@/components/GeometryFeaturePanel";
 import { MeshingPanel } from "@/components/MeshingPanel";
 import { ThermalFieldPanel } from "@/components/ThermalFieldPanel";
 import { ElectrostaticFieldPanel } from "@/components/ElectrostaticFieldPanel";
+import { PotentialFlowPanel } from "@/components/PotentialFlowPanel";
 import { SpatialAccelPanel } from "@/components/SpatialAccelPanel";
 import { SDFPanel } from "@/components/SDFPanel";
 import { TopologyPanel } from "@/components/TopologyPanel";
@@ -978,6 +979,11 @@ function Index() {
       {/* Electrostatic Field Engine — Phase-3 PDE: −∇·(ε∇V)=ρ over the mesh */}
       <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
         <ElectrostaticFieldPanel />
+      </section>
+
+      {/* Potential-Flow Engine — Phase-4 PDE: ∇²φ=0, v=∇φ with RK4 streamlines */}
+      <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
+        <PotentialFlowPanel />
       </section>
 
       {/* Spatial Acceleration — BVH, KD-tree, hash, fab intel */}

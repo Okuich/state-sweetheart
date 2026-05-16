@@ -1,0 +1,558 @@
+/**
+ * Potential-Flow Panel — Phase-4 visualization.
+ *
+ * Solves ∇²φ = 0 on a Geometry OS bar mesh with prescribed inlet/outlet
+ * potentials and renders the velocity potential φ or speed |v| over the
+ * surface, with optional per-tet velocity arrows and RK4 streamlines
+ * seeded on the inlet face. Uses `makeVelocitySampler` to feed the same
+ * `traceFieldLine` RK4 integrator that drives the electrostatic engine.
+ */
+import { useEffect, useMemo, useRef, useState } from "react";
+import { generateMesh, type MeshingResult } from "@/lib/meshing";
+import {
+  solvePotentialFlow, makeVelocitySampler, traceFieldLine,
+  type PotentialFlowSolution,
+} from "@/lib/pde";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+
+type FieldMode = "potential" | "speed" | "cp";
+
+interface Params {
+  length: number;
+  width: number;
+  height: number;
+  phiInlet: number;
+  phiOutlet: number;
+  minDepth: number;
+  maxDepth: number;
+  seedsPerSide: number;
+  rk4Steps: number;
+}
+
+const DEFAULTS: Params = {
+  length: 2, width: 0.5, height: 0.5,
+  phiInlet: 0, phiOutlet: 2,
+  minDepth: 2, maxDepth: 3,
+  seedsPerSide: 4,
+  rk4Steps: 240,
+};
+
+// Viridis-like ramp (distinct from thermal's inferno and electro's plasma).
+const RAMP: Array<[number, [number, number, number]]> = [
+  [0.0,  [ 68,   1,  84]],
+  [0.25, [ 59,  82, 139]],
+  [0.5,  [ 33, 144, 141]],
+  [0.75, [ 93, 201,  99]],
+  [1.0,  [253, 231,  37]],
+];
+function ramp(t: number): [number, number, number] {
+  const x = Math.min(1, Math.max(0, t));
+  for (let i = 1; i < RAMP.length; i++) {
+    if (x <= RAMP[i][0]) {
+      const a = RAMP[i - 1], b = RAMP[i];
+      const f = (x - a[0]) / (b[0] - a[0]);
+      return [
+        Math.round(a[1][0] + (b[1][0] - a[1][0]) * f),
+        Math.round(a[1][1] + (b[1][1] - a[1][1]) * f),
+        Math.round(a[1][2] + (b[1][2] - a[1][2]) * f),
+      ];
+    }
+  }
+  return RAMP[RAMP.length - 1][1];
+}
+
+interface SolveOutput {
+  mesh: MeshingResult;
+  result: PotentialFlowSolution;
+  elapsedMs: number;
+  phiMin: number; phiMax: number;
+  speedMin: number; speedMax: number;
+  cpMin: number; cpMax: number;
+  inletCount: number; outletCount: number;
+  volumetricFlow: number;
+}
+
+function extractSurfaceTriangles(tets: Uint32Array): Array<[number, number, number]> {
+  const map = new Map<string, { tri: [number, number, number]; count: number }>();
+  const add = (a: number, b: number, c: number) => {
+    const sorted = [a, b, c].sort((x, y) => x - y) as [number, number, number];
+    const k = sorted.join(",");
+    const ex = map.get(k);
+    if (ex) ex.count++; else map.set(k, { tri: [a, b, c], count: 1 });
+  };
+  const n = tets.length / 4;
+  for (let t = 0; t < n; t++) {
+    const v0 = tets[t * 4], v1 = tets[t * 4 + 1];
+    const v2 = tets[t * 4 + 2], v3 = tets[t * 4 + 3];
+    add(v0, v1, v2); add(v0, v1, v3); add(v0, v2, v3); add(v1, v2, v3);
+  }
+  const out: Array<[number, number, number]> = [];
+  map.forEach((v) => { if (v.count === 1) out.push(v.tri); });
+  return out;
+}
+
+function runSolve(params: Params): SolveOutput {
+  const t0 = performance.now();
+  const { length, width, height } = params;
+  const mesh = generateMesh({
+    bbox: { min: [0, 0, 0], max: [length, width, height] },
+    seeds: [],
+    octree: { minDepth: params.minDepth, maxDepth: params.maxDepth },
+    partitionCount: 1,
+  });
+  const verts = mesh.mesh.vertices;
+  const tets = mesh.mesh.tets;
+  const nV = verts.length / 3;
+  const tol = length * 1e-4;
+
+  const dirichlet: { index: number; value: number }[] = [];
+  let inletCount = 0, outletCount = 0;
+  for (let i = 0; i < nV; i++) {
+    const x = verts[i * 3];
+    if (x <= tol) { dirichlet.push({ index: i, value: params.phiInlet }); inletCount++; }
+    else if (x >= length - tol) { dirichlet.push({ index: i, value: params.phiOutlet }); outletCount++; }
+  }
+
+  const result = solvePotentialFlow({
+    mesh: { vertices: verts, tets },
+    dirichlet,
+  });
+
+  let phiMin = Infinity, phiMax = -Infinity;
+  for (let i = 0; i < result.phi.length; i++) {
+    if (result.phi[i] < phiMin) phiMin = result.phi[i];
+    if (result.phi[i] > phiMax) phiMax = result.phi[i];
+  }
+  let speedMin = Infinity, speedMax = 0;
+  for (let i = 0; i < result.speed.length; i++) {
+    const s = result.speed[i];
+    if (s < speedMin) speedMin = s;
+    if (s > speedMax) speedMax = s;
+  }
+  let cpMin = Infinity, cpMax = -Infinity;
+  for (let i = 0; i < result.cp.length; i++) {
+    if (result.cp[i] < cpMin) cpMin = result.cp[i];
+    if (result.cp[i] > cpMax) cpMax = result.cp[i];
+  }
+
+  // Mean axial velocity × inlet area (sanity check for incompressibility).
+  let uxSum = 0, uxN = 0;
+  for (let t = 0; t < result.velocityPerTet.length / 3; t++) {
+    uxSum += result.velocityPerTet[t * 3]; uxN++;
+  }
+  const meanUx = uxN > 0 ? uxSum / uxN : 0;
+  const volumetricFlow = meanUx * width * height;
+
+  return {
+    mesh, result,
+    elapsedMs: performance.now() - t0,
+    phiMin, phiMax, speedMin, speedMax, cpMin, cpMax,
+    inletCount, outletCount, volumetricFlow,
+  };
+}
+
+interface ViewerProps {
+  out: SolveOutput;
+  mode: FieldMode;
+  showVectors: boolean;
+  showStreamlines: boolean;
+  seedsPerSide: number;
+  rk4Steps: number;
+  height?: number;
+}
+
+function FlowViewer({
+  out, mode, showVectors, showStreamlines, seedsPerSide, rk4Steps, height = 380,
+}: ViewerProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [yaw, setYaw] = useState(0.7);
+  const [pitch, setPitch] = useState(-0.35);
+  const [zoom, setZoom] = useState(1);
+  const drag = useRef<{ x: number; y: number; yaw: number; pitch: number } | null>(null);
+
+  const geo = useMemo(() => {
+    const verts = out.mesh.mesh.vertices;
+    const tets = out.mesh.mesh.tets;
+    const bb = out.mesh.mesh.bbox;
+    const ext = Math.max(
+      bb.max[0] - bb.min[0], bb.max[1] - bb.min[1], bb.max[2] - bb.min[2],
+    ) || 1;
+    const cx = (bb.min[0] + bb.max[0]) / 2;
+    const cy = (bb.min[1] + bb.max[1]) / 2;
+    const cz = (bb.min[2] + bb.max[2]) / 2;
+    const nV = verts.length / 3;
+    const norm = new Float32Array(nV * 3);
+    for (let i = 0; i < nV; i++) {
+      norm[i * 3]     = (verts[i * 3]     - cx) / ext;
+      norm[i * 3 + 1] = (verts[i * 3 + 1] - cy) / ext;
+      norm[i * 3 + 2] = (verts[i * 3 + 2] - cz) / ext;
+    }
+    const nTets = tets.length / 4;
+    const tetCentroidNorm = new Float32Array(nTets * 3);
+    for (let t = 0; t < nTets; t++) {
+      let xs = 0, ys = 0, zs = 0;
+      for (let k = 0; k < 4; k++) {
+        const v = tets[t * 4 + k];
+        xs += norm[v * 3]; ys += norm[v * 3 + 1]; zs += norm[v * 3 + 2];
+      }
+      tetCentroidNorm[t * 3] = xs / 4;
+      tetCentroidNorm[t * 3 + 1] = ys / 4;
+      tetCentroidNorm[t * 3 + 2] = zs / 4;
+    }
+    const surface = extractSurfaceTriangles(tets);
+    const toNorm = (x: number, y: number, z: number): [number, number, number] =>
+      [(x - cx) / ext, (y - cy) / ext, (z - cz) / ext];
+    return { norm, tetCentroidNorm, surface, nV, nTets, ext, bb, toNorm };
+  }, [out]);
+
+  // RK4 streamlines through the mesh-backed velocity sampler.
+  const streamlines = useMemo(() => {
+    if (!showStreamlines) return [] as Float64Array[];
+    const meshIn = { vertices: out.mesh.mesh.vertices, tets: out.mesh.mesh.tets };
+    const sampleV = makeVelocitySampler(meshIn, out.result.velocityPerTet);
+    // Normalize sampled velocity → unit direction so stepSize stays in world units.
+    const sample = (x: number, y: number, z: number) => {
+      const v = sampleV(x, y, z);
+      if (!v) return null;
+      const m = Math.hypot(v[0], v[1], v[2]);
+      if (m < 1e-20) return null;
+      return [v[0] / m, v[1] / m, v[2] / m] as const;
+    };
+    const bb = out.mesh.mesh.bbox;
+    const ext = Math.max(
+      bb.max[0] - bb.min[0], bb.max[1] - bb.min[1], bb.max[2] - bb.min[2],
+    );
+    const step = ext * 0.015;
+    const seeds: Array<[number, number, number]> = [];
+    const inletX = bb.min[0] + ext * 1e-3;
+    const n = Math.max(1, seedsPerSide);
+    for (let j = 1; j <= n; j++) {
+      for (let k = 1; k <= n; k++) {
+        seeds.push([
+          inletX,
+          bb.min[1] + (j / (n + 1)) * (bb.max[1] - bb.min[1]),
+          bb.min[2] + (k / (n + 1)) * (bb.max[2] - bb.min[2]),
+        ]);
+      }
+    }
+    const lines: Float64Array[] = [];
+    for (const s of seeds) {
+      const pts = traceFieldLine(s, sample, {
+        stepSize: step, maxSteps: rk4Steps, direction: 1,
+      });
+      lines.push(pts);
+    }
+    return lines;
+  }, [out, showStreamlines, seedsPerSide, rk4Steps]);
+
+  useEffect(() => {
+    const c = canvasRef.current;
+    if (!c) return;
+    const ctx = c.getContext("2d");
+    if (!ctx) return;
+    const W = c.clientWidth * devicePixelRatio;
+    const H = c.clientHeight * devicePixelRatio;
+    c.width = W; c.height = H;
+    ctx.fillStyle = "#040608";
+    ctx.fillRect(0, 0, W, H);
+
+    const cy = Math.cos(yaw), sy = Math.sin(yaw);
+    const cp = Math.cos(pitch), sp = Math.sin(pitch);
+    const project = (x: number, y: number, z: number): [number, number, number] => {
+      const xr = x * cy - z * sy;
+      const zr = x * sy + z * cy;
+      const yr = y * cp - zr * sp;
+      const zr2 = y * sp + zr * cp;
+      const dist = 2.5;
+      const f = (W * 0.45 * zoom) / (dist + zr2);
+      return [W / 2 + xr * f, H / 2 - yr * f, zr2];
+    };
+
+    const phi = out.result.phi;
+    const sp2 = out.result.speed;
+    const cpv = out.result.cp;
+    const phiSpan = Math.max(1e-12, out.phiMax - out.phiMin);
+    const spSpan = Math.max(1e-12, out.speedMax - out.speedMin);
+    const cpSpan = Math.max(1e-12, out.cpMax - out.cpMin);
+    const fieldNorm = (i: number) => {
+      if (mode === "potential") return (phi[i] - out.phiMin) / phiSpan;
+      if (mode === "speed")     return (sp2[i] - out.speedMin) / spSpan;
+      return (cpv[i] - out.cpMin) / cpSpan;
+    };
+
+    const px = new Float32Array(geo.nV);
+    const py = new Float32Array(geo.nV);
+    const pz = new Float32Array(geo.nV);
+    for (let i = 0; i < geo.nV; i++) {
+      const [x, y, z] = project(geo.norm[i * 3], geo.norm[i * 3 + 1], geo.norm[i * 3 + 2]);
+      px[i] = x; py[i] = y; pz[i] = z;
+    }
+    const tris = geo.surface.map((tri) => {
+      const [a, b, c] = tri;
+      return { a, b, c, z: (pz[a] + pz[b] + pz[c]) / 3 };
+    }).sort((u, v) => u.z - v.z);
+    for (const tri of tris) {
+      const { a, b, c } = tri;
+      const ux = px[b] - px[a], uy = py[b] - py[a];
+      const vx = px[c] - px[a], vy = py[c] - py[a];
+      if (ux * vy - uy * vx <= 0) continue;
+      const fa = fieldNorm(a), fb = fieldNorm(b), fc = fieldNorm(c);
+      const f = (fa + fb + fc) / 3;
+      const [r, g, bl] = ramp(f);
+      ctx.beginPath();
+      ctx.moveTo(px[a], py[a]); ctx.lineTo(px[b], py[b]); ctx.lineTo(px[c], py[c]);
+      ctx.closePath();
+      ctx.fillStyle = `rgba(${r},${g},${bl},0.92)`;
+      ctx.fill();
+      ctx.lineWidth = 0.5;
+      ctx.strokeStyle = "rgba(0,0,0,0.3)";
+      ctx.stroke();
+    }
+
+    if (showVectors && out.speedMax > 0) {
+      const V = out.result.velocityPerTet;
+      const Sp = out.result.speedTet;
+      const scale = 0.09 / out.speedMax;
+      ctx.lineWidth = 1;
+      const step = Math.max(1, Math.floor(geo.nTets / 600));
+      for (let t = 0; t < geo.nTets; t += step) {
+        const m = Sp[t];
+        if (m === 0) continue;
+        const cx0 = geo.tetCentroidNorm[t * 3];
+        const cy0 = geo.tetCentroidNorm[t * 3 + 1];
+        const cz0 = geo.tetCentroidNorm[t * 3 + 2];
+        const vxw = V[t * 3] * scale / geo.ext;
+        const vyw = V[t * 3 + 1] * scale / geo.ext;
+        const vzw = V[t * 3 + 2] * scale / geo.ext;
+        const [x0, y0] = project(cx0, cy0, cz0);
+        const [x1, y1] = project(cx0 + vxw, cy0 + vyw, cz0 + vzw);
+        const alpha = 0.35 + 0.55 * (m / out.speedMax);
+        ctx.strokeStyle = `rgba(226, 232, 240, ${alpha})`;
+        ctx.beginPath();
+        ctx.moveTo(x0, y0); ctx.lineTo(x1, y1);
+        ctx.stroke();
+      }
+    }
+
+    if (showStreamlines) {
+      ctx.lineWidth = 1.6;
+      for (const line of streamlines) {
+        ctx.beginPath();
+        let started = false;
+        for (let i = 0; i < line.length; i += 3) {
+          const [nx, ny, nz] = geo.toNorm(line[i], line[i + 1], line[i + 2]);
+          const [sx, sy2] = project(nx, ny, nz);
+          if (!started) { ctx.moveTo(sx, sy2); started = true; }
+          else ctx.lineTo(sx, sy2);
+        }
+        ctx.strokeStyle = "rgba(165, 243, 252, 0.92)";
+        ctx.stroke();
+        // Seed dot.
+        if (line.length >= 3) {
+          const [nx, ny, nz] = geo.toNorm(line[0], line[1], line[2]);
+          const [sx, sy2] = project(nx, ny, nz);
+          ctx.fillStyle = "rgba(125, 211, 252, 1)";
+          ctx.beginPath();
+          ctx.arc(sx, sy2, 2.5 * devicePixelRatio, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+
+    // Legend.
+    const lw = 160 * devicePixelRatio, lh = 10 * devicePixelRatio;
+    const lx = 16 * devicePixelRatio, ly = H - 28 * devicePixelRatio;
+    const grad = ctx.createLinearGradient(lx, 0, lx + lw, 0);
+    for (let i = 0; i <= 10; i++) {
+      const [r, g, bl] = ramp(i / 10);
+      grad.addColorStop(i / 10, `rgb(${r},${g},${bl})`);
+    }
+    ctx.fillStyle = grad;
+    ctx.fillRect(lx, ly, lw, lh);
+    ctx.fillStyle = "rgba(229,231,235,0.9)";
+    ctx.font = `${10 * devicePixelRatio}px ui-sans-serif, system-ui`;
+    let lo = "", hi = "", unit = "";
+    if (mode === "potential") {
+      lo = out.phiMin.toFixed(3); hi = out.phiMax.toFixed(3); unit = "φ (m²/s)";
+    } else if (mode === "speed") {
+      lo = out.speedMin.toFixed(3); hi = out.speedMax.toFixed(3); unit = "|v| (m/s)";
+    } else {
+      lo = out.cpMin.toFixed(3); hi = out.cpMax.toFixed(3); unit = "Cp";
+    }
+    ctx.fillText(lo, lx, ly - 4 * devicePixelRatio);
+    const hiW = ctx.measureText(hi).width;
+    ctx.fillText(hi, lx + lw - hiW, ly - 4 * devicePixelRatio);
+    ctx.fillText(unit, lx, ly + lh + 12 * devicePixelRatio);
+  }, [out, geo, yaw, pitch, zoom, mode, showVectors, showStreamlines, streamlines]);
+
+  return (
+    <div
+      className="relative w-full overflow-hidden rounded-md border border-border bg-black"
+      style={{ height }}
+      onMouseDown={(e) => { drag.current = { x: e.clientX, y: e.clientY, yaw, pitch }; }}
+      onMouseMove={(e) => {
+        if (!drag.current) return;
+        const dx = e.clientX - drag.current.x;
+        const dy = e.clientY - drag.current.y;
+        setYaw(drag.current.yaw + dx * 0.01);
+        setPitch(drag.current.pitch + dy * 0.01);
+      }}
+      onMouseUp={() => { drag.current = null; }}
+      onMouseLeave={() => { drag.current = null; }}
+      onWheel={(e) => {
+        setZoom((z) => Math.max(0.3, Math.min(4, z * (e.deltaY < 0 ? 1.1 : 0.9))));
+      }}
+    >
+      <canvas ref={canvasRef} className="h-full w-full cursor-grab active:cursor-grabbing" />
+    </div>
+  );
+}
+
+export function PotentialFlowPanel() {
+  const [params, setParams] = useState<Params>(DEFAULTS);
+  const [out, setOut] = useState<SolveOutput | null>(null);
+  const [mode, setMode] = useState<FieldMode>("speed");
+  const [showVectors, setShowVectors] = useState(false);
+  const [showStreamlines, setShowStreamlines] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const run = () => {
+    setBusy(true); setErr(null);
+    setTimeout(() => {
+      try { setOut(runSolve(params)); }
+      catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+      finally { setBusy(false); }
+    }, 0);
+  };
+
+  useEffect(() => { run(); // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const set = <K extends keyof Params>(k: K, v: Params[K]) =>
+    setParams((p) => ({ ...p, [k]: v }));
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <CardTitle>Potential-Flow Engine</CardTitle>
+            <div className="text-xs text-muted-foreground mt-1">
+              ∇²φ = 0 · v = ∇φ on Geometry OS mesh · FEM P1 tets · RK4 streamlines
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {out && (
+              <>
+                <Badge variant="outline">{out.mesh.summary.tets.count.toLocaleString()} tets</Badge>
+                <Badge variant="outline">{out.result.solve.result.iterations} iters</Badge>
+                <Badge variant={out.result.solve.result.converged ? "default" : "destructive"}>
+                  {out.result.solve.result.converged ? "converged" : "no conv"}
+                </Badge>
+                <Badge variant="outline">{out.elapsedMs.toFixed(0)} ms</Badge>
+              </>
+            )}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <NumField label="Length (m)" value={params.length} step={0.1} onChange={(v) => set("length", v)} />
+          <NumField label="Width (m)" value={params.width} step={0.05} onChange={(v) => set("width", v)} />
+          <NumField label="Height (m)" value={params.height} step={0.05} onChange={(v) => set("height", v)} />
+          <NumField label="max depth" value={params.maxDepth} step={1} onChange={(v) => set("maxDepth", Math.max(params.minDepth, Math.round(v)))} />
+          <NumField label="φ inlet" value={params.phiInlet} step={0.1} onChange={(v) => set("phiInlet", v)} />
+          <NumField label="φ outlet" value={params.phiOutlet} step={0.1} onChange={(v) => set("phiOutlet", v)} />
+          <NumField label="seeds / side" value={params.seedsPerSide} step={1} onChange={(v) => set("seedsPerSide", Math.max(1, Math.min(8, Math.round(v))))} />
+          <NumField label="RK4 steps" value={params.rk4Steps} step={20} onChange={(v) => set("rk4Steps", Math.max(20, Math.round(v)))} />
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button onClick={run} disabled={busy} size="sm">
+            {busy ? "Solving…" : "Run solver"}
+          </Button>
+          <Select value={mode} onValueChange={(v) => setMode(v as FieldMode)}>
+            <SelectTrigger className="w-[220px] h-9"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="potential">Velocity potential φ</SelectItem>
+              <SelectItem value="speed">Speed |v|</SelectItem>
+              <SelectItem value="cp">Pressure coefficient Cp</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button variant={showVectors ? "default" : "outline"} size="sm" onClick={() => setShowVectors((s) => !s)}>
+            v arrows {showVectors ? "on" : "off"}
+          </Button>
+          <Button variant={showStreamlines ? "default" : "outline"} size="sm" onClick={() => setShowStreamlines((s) => !s)}>
+            Streamlines {showStreamlines ? "on" : "off"}
+          </Button>
+        </div>
+
+        {err && (
+          <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            {err}
+          </div>
+        )}
+
+        {out && (
+          <>
+            <FlowViewer
+              out={out} mode={mode}
+              showVectors={showVectors}
+              showStreamlines={showStreamlines}
+              seedsPerSide={params.seedsPerSide}
+              rk4Steps={params.rk4Steps}
+            />
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
+              <Stat label="φ min" value={out.phiMin.toFixed(3)} />
+              <Stat label="φ max" value={out.phiMax.toFixed(3)} />
+              <Stat label="|v| max" value={`${out.speedMax.toFixed(3)} m/s`} />
+              <Stat label="Cp range" value={`${out.cpMin.toFixed(2)} … ${out.cpMax.toFixed(2)}`} />
+              <Stat label="V_ref" value={`${out.result.referenceSpeed.toFixed(3)} m/s`} />
+              <Stat label="inlet / outlet" value={`${out.inletCount} · ${out.outletCount}`} />
+              <Stat label="vertices" value={out.result.phi.length.toLocaleString()} />
+              <Stat label="residual" value={out.result.solve.result.residual.toExponential(2)} />
+              <Stat label="Q ≈ ūx·A" value={`${out.volumetricFlow.toExponential(2)} m³/s`} />
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function NumField({
+  label, value, step, onChange,
+}: { label: string; value: number; step: number; onChange: (v: number) => void }) {
+  return (
+    <div className="space-y-1">
+      <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</Label>
+      <Input
+        type="number"
+        value={value}
+        step={step}
+        className="h-9"
+        onChange={(e) => {
+          const v = parseFloat(e.target.value);
+          if (Number.isFinite(v)) onChange(v);
+        }}
+      />
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-border bg-muted/30 px-3 py-2">
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="font-mono text-sm text-foreground">{value}</div>
+    </div>
+  );
+}
