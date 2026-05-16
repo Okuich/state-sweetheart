@@ -50,7 +50,7 @@ describe("Thermal field engine", () => {
       if (Math.abs(x) < 1e-9)          dirichlet.push({ index: v, value: 0 });
       else if (Math.abs(x - 1) < 1e-9) dirichlet.push({ index: v, value: 1 });
     }
-    const sol = solveThermal({ mesh, dirichlet });
+    const sol = solveThermal({ mesh, dirichlet, cg: { tol: 1e-10, maxIter: 2000 } });
     expect(sol.solve.result.converged).toBe(true);
     // Interior nodes must satisfy T ≈ x (Laplace solution is linear).
     for (let v = 0; v < mesh.vertices.length / 3; v++) {
