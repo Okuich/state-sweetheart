@@ -629,3 +629,55 @@ function Stat({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+
+const FACE_OPTIONS: FaceKey[] = ["+x", "-x", "+y", "-y", "+z", "-z"];
+
+function NeumannEditor({
+  value, onChange,
+}: { value: NeumannBC[]; onChange: (v: NeumannBC[]) => void }) {
+  const add = () => {
+    const used = new Set(value.map((b) => b.face));
+    const next = FACE_OPTIONS.find((f) => !used.has(f)) ?? "+y";
+    onChange([...value, { id: `bc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, face: next, flux: 10_000 }]);
+  };
+  const update = (id: string, patch: Partial<NeumannBC>) =>
+    onChange(value.map((b) => (b.id === id ? { ...b, ...patch } : b)));
+  const remove = (id: string) => onChange(value.filter((b) => b.id !== id));
+
+  return (
+    <div className="rounded-md border border-border bg-muted/20 p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Neumann heat-flux patches</div>
+          <div className="text-[11px] text-muted-foreground">Positive flux = heat entering the body (W/m²). Side faces default to insulated.</div>
+        </div>
+        <Button size="sm" variant="outline" onClick={add}>+ Add patch</Button>
+      </div>
+      {value.length === 0 && (
+        <div className="text-xs text-muted-foreground italic">No side-face patches. Add one to inject or extract heat.</div>
+      )}
+      {value.map((bc) => (
+        <div key={bc.id} className="grid grid-cols-[110px_1fr_auto] gap-2 items-end">
+          <div className="space-y-1">
+            <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">Face</Label>
+            <Select value={bc.face} onValueChange={(v) => update(bc.id, { face: v as FaceKey })}>
+              <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {FACE_OPTIONS.map((f) => (
+                  <SelectItem key={f} value={f}>{f}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <NumField
+            label="Flux q (W/m²)"
+            value={bc.flux}
+            step={1000}
+            onChange={(v) => update(bc.id, { flux: v })}
+          />
+          <Button size="sm" variant="ghost" onClick={() => remove(bc.id)}>Remove</Button>
+        </div>
+      ))}
+    </div>
+  );
+}
