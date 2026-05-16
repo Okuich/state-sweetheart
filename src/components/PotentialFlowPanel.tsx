@@ -92,6 +92,19 @@ function ramp(t: number): [number, number, number] {
   return RAMP[RAMP.length - 1][1];
 }
 
+interface FaceSummary {
+  face: FaceKey;
+  mode: FaceMode;
+  area: number;
+  nodes: number;
+  /** Dirichlet: φ value applied. */
+  phi?: number;
+  /** Neumann: prescribed v_N (m/s). */
+  vN?: number;
+  /** Neumann: integrated volumetric flow ∫ v_N dA (m³/s). */
+  flow?: number;
+}
+
 interface SolveOutput {
   mesh: MeshingResult;
   result: PotentialFlowSolution;
@@ -103,7 +116,9 @@ interface SolveOutput {
   pressure: Float64Array;
   pMin: number; pMax: number;
   density: number; p0: number;
-  inletCount: number; outletCount: number;
+  dirichletCount: number;
+  faceSummary: FaceSummary[];
+  netFlux: number;
   volumetricFlow: number;
 }
 
