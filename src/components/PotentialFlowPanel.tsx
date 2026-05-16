@@ -512,6 +512,7 @@ export function PotentialFlowPanel() {
               <SelectItem value="potential">Velocity potential φ</SelectItem>
               <SelectItem value="speed">Speed |v|</SelectItem>
               <SelectItem value="cp">Pressure coefficient Cp</SelectItem>
+              <SelectItem value="pressure">Bernoulli pressure p</SelectItem>
             </SelectContent>
           </Select>
           <Button variant={showVectors ? "default" : "outline"} size="sm" onClick={() => setShowVectors((s) => !s)}>
