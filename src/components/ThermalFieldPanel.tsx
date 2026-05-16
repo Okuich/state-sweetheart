@@ -21,21 +21,40 @@ import { Badge } from "@/components/ui/badge";
 
 type FieldMode = "temperature" | "hotspot";
 
+type FaceKey = "+x" | "-x" | "+y" | "-y" | "+z" | "-z";
+type HotMode = "dirichlet" | "neumann" | "insulated";
+
+interface NeumannBC {
+  /** Stable id for list editing. */
+  id: string;
+  face: FaceKey;
+  /** Inward heat flux q_N (W/m²). Positive = heat entering the body. */
+  flux: number;
+}
+
 interface Params {
   length: number;
   width: number;
   height: number;
   hotT: number;
   coldT: number;
+  hotMode: HotMode;
+  /** Inward flux on the +x face when hotMode = "neumann" (W/m²). */
+  hotFlux: number;
   kappa: number;
   minDepth: number;
   maxDepth: number;
+  /** Extra Neumann patches on side faces. */
+  neumann: NeumannBC[];
 }
 
 const DEFAULTS: Params = {
   length: 2, width: 0.4, height: 0.4,
-  hotT: 400, coldT: 300, kappa: 45,
+  hotT: 400, coldT: 300,
+  hotMode: "dirichlet", hotFlux: 50_000,
+  kappa: 45,
   minDepth: 2, maxDepth: 3,
+  neumann: [],
 };
 
 // Viridis-ish 5-stop ramp.
@@ -66,9 +85,57 @@ interface SolveOutput {
   mesh: MeshingResult;
   thermal: ThermalSolution;
   dirichletCount: { hot: number; cold: number };
+  neumannSummary: Array<{ face: FaceKey; flux: number; area: number; nodes: number; power: number }>;
+  totalNeumannPower: number;
   elapsedMs: number;
   Tmin: number; Tmax: number;
   fluxMax: number;
+}
+
+/** Min/max bbox extent along each axis for a face key. */
+function faceTest(
+  face: FaceKey, bb: { min: ReadonlyArray<number>; max: ReadonlyArray<number> }, tol: number,
+): (x: number, y: number, z: number) => boolean {
+  switch (face) {
+    case "-x": return (x) => x <= bb.min[0] + tol;
+    case "+x": return (x) => x >= bb.max[0] - tol;
+    case "-y": return (_x, y) => y <= bb.min[1] + tol;
+    case "+y": return (_x, y) => y >= bb.max[1] - tol;
+    case "-z": return (_x, _y, z) => z <= bb.min[2] + tol;
+    case "+z": return (_x, _y, z) => z >= bb.max[2] - tol;
+  }
+}
+
+/** Surface triangles (faces shared by exactly one tet). */
+function extractSurfaceTriangles(tets: Uint32Array): Array<[number, number, number]> {
+  const map = new Map<string, { tri: [number, number, number]; count: number }>();
+  const add = (a: number, b: number, c: number) => {
+    const sorted = [a, b, c].sort((x, y) => x - y) as [number, number, number];
+    const k = sorted.join(",");
+    const ex = map.get(k);
+    if (ex) ex.count++; else map.set(k, { tri: [a, b, c], count: 1 });
+  };
+  const n = tets.length / 4;
+  for (let t = 0; t < n; t++) {
+    const v0 = tets[t * 4], v1 = tets[t * 4 + 1];
+    const v2 = tets[t * 4 + 2], v3 = tets[t * 4 + 3];
+    add(v0, v1, v2); add(v0, v1, v3); add(v0, v2, v3); add(v1, v2, v3);
+  }
+  const out: Array<[number, number, number]> = [];
+  map.forEach((v) => { if (v.count === 1) out.push(v.tri); });
+  return out;
+}
+
+function triArea(
+  v: Float32Array, a: number, b: number, c: number,
+): number {
+  const ax = v[a * 3], ay = v[a * 3 + 1], az = v[a * 3 + 2];
+  const bx = v[b * 3] - ax, by = v[b * 3 + 1] - ay, bz = v[b * 3 + 2] - az;
+  const cx = v[c * 3] - ax, cy = v[c * 3 + 1] - ay, cz = v[c * 3 + 2] - az;
+  const nx = by * cz - bz * cy;
+  const ny = bz * cx - bx * cz;
+  const nz = bx * cy - by * cx;
+  return 0.5 * Math.sqrt(nx * nx + ny * ny + nz * nz);
 }
 
 function runSolve(params: Params): SolveOutput {
@@ -81,29 +148,82 @@ function runSolve(params: Params): SolveOutput {
     partitionCount: 1,
   });
   const verts = mesh.mesh.vertices;
+  const tets = mesh.mesh.tets;
+  const bb = mesh.mesh.bbox;
   const nV = verts.length / 3;
-  const nTets = mesh.mesh.tets.length / 4;
-  // Identify Dirichlet vertices at x≈0 (cold) and x≈length (hot).
-  const tol = length * 1e-4;
+  const nTets = tets.length / 4;
+  const ext = Math.max(length, width, height);
+  const tol = ext * 1e-4;
+
+  // Dirichlet on -x (cold) always; +x conditional.
+  const onMinusX = faceTest("-x", bb, tol);
+  const onPlusX = faceTest("+x", bb, tol);
   const dirichlet: { index: number; value: number }[] = [];
-  let hot = 0, cold = 0;
+  let coldCount = 0, hotCount = 0;
+  const dirichletSet = new Set<number>();
   for (let i = 0; i < nV; i++) {
-    const x = verts[i * 3];
-    if (x <= tol) { dirichlet.push({ index: i, value: params.coldT }); cold++; }
-    else if (x >= length - tol) { dirichlet.push({ index: i, value: params.hotT }); hot++; }
+    const x = verts[i * 3], y = verts[i * 3 + 1], z = verts[i * 3 + 2];
+    if (onMinusX(x, y, z)) {
+      dirichlet.push({ index: i, value: params.coldT });
+      dirichletSet.add(i);
+      coldCount++;
+    } else if (params.hotMode === "dirichlet" && onPlusX(x, y, z)) {
+      dirichlet.push({ index: i, value: params.hotT });
+      dirichletSet.add(i);
+      hotCount++;
+    }
   }
+
+  // Build combined Neumann list (hot-face Neumann + user side patches).
+  const neumannBCs: Array<{ face: FaceKey; flux: number }> = [];
+  if (params.hotMode === "neumann") {
+    neumannBCs.push({ face: "+x", flux: params.hotFlux });
+  }
+  for (const bc of params.neumann) {
+    if (bc.flux !== 0) neumannBCs.push({ face: bc.face, flux: bc.flux });
+  }
+
+  // Integrate Neumann fluxes into nodal loads via surface triangles.
+  // For each tri whose 3 vertices all lie on the face plane, distribute
+  // (flux · area) equally to its 3 vertices. Dirichlet nodes still receive
+  // the contribution but the Dirichlet pin overrides them in the solver.
+  const surface = extractSurfaceTriangles(tets);
+  const loads = new Float64Array(nV);
+  const summary: SolveOutput["neumannSummary"] = [];
+  for (const bc of neumannBCs) {
+    const test = faceTest(bc.face, bb, tol);
+    let area = 0;
+    const nodes = new Set<number>();
+    for (const [a, b, c] of surface) {
+      const ax = verts[a * 3], ay = verts[a * 3 + 1], az = verts[a * 3 + 2];
+      const bx = verts[b * 3], by = verts[b * 3 + 1], bz = verts[b * 3 + 2];
+      const cx = verts[c * 3], cy = verts[c * 3 + 1], cz = verts[c * 3 + 2];
+      if (test(ax, ay, az) && test(bx, by, bz) && test(cx, cy, cz)) {
+        const A = triArea(verts as Float32Array, a, b, c);
+        const share = (bc.flux * A) / 3;
+        loads[a] += share; loads[b] += share; loads[c] += share;
+        area += A;
+        nodes.add(a); nodes.add(b); nodes.add(c);
+      }
+    }
+    summary.push({
+      face: bc.face, flux: bc.flux, area,
+      nodes: nodes.size, power: bc.flux * area,
+    });
+  }
+  const totalNeumannPower = summary.reduce((s, x) => s + x.power, 0);
+
   const kappa = new Float64Array(nTets);
   for (let t = 0; t < nTets; t++) kappa[t] = params.kappa;
 
   const thermal = solveThermal({
-    mesh: {
-      vertices: verts,
-      tets: mesh.mesh.tets,
-    },
+    mesh: { vertices: verts, tets },
     kappa,
     dirichlet,
+    neumannLoads: loads,
     referenceTemperature: (params.hotT + params.coldT) / 2,
   });
+
   let Tmin = Infinity, Tmax = -Infinity;
   for (let i = 0; i < thermal.T.length; i++) {
     if (thermal.T[i] < Tmin) Tmin = thermal.T[i];
@@ -115,7 +235,9 @@ function runSolve(params: Params): SolveOutput {
   }
   return {
     mesh, thermal,
-    dirichletCount: { hot, cold },
+    dirichletCount: { hot: hotCount, cold: coldCount },
+    neumannSummary: summary,
+    totalNeumannPower,
     elapsedMs: performance.now() - t0,
     Tmin, Tmax, fluxMax,
   };
@@ -385,11 +507,32 @@ export function ThermalFieldPanel() {
           <NumField label="Width" value={params.width} step={0.05} onChange={(v) => set("width", v)} />
           <NumField label="Height" value={params.height} step={0.05} onChange={(v) => set("height", v)} />
           <NumField label="κ (W/m·K)" value={params.kappa} step={1} onChange={(v) => set("kappa", v)} />
-          <NumField label="Hot face T (K)" value={params.hotT} step={5} onChange={(v) => set("hotT", v)} />
           <NumField label="Cold face T (K)" value={params.coldT} step={5} onChange={(v) => set("coldT", v)} />
+          <div className="space-y-1">
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Hot face (+x) BC</Label>
+            <Select value={params.hotMode} onValueChange={(v) => set("hotMode", v as HotMode)}>
+              <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="dirichlet">Dirichlet (fixed T)</SelectItem>
+                <SelectItem value="neumann">Neumann (heat flux)</SelectItem>
+                <SelectItem value="insulated">Insulated (q=0)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {params.hotMode === "dirichlet" && (
+            <NumField label="Hot face T (K)" value={params.hotT} step={5} onChange={(v) => set("hotT", v)} />
+          )}
+          {params.hotMode === "neumann" && (
+            <NumField label="Hot face flux (W/m²)" value={params.hotFlux} step={1000} onChange={(v) => set("hotFlux", v)} />
+          )}
           <NumField label="min depth" value={params.minDepth} step={1} onChange={(v) => set("minDepth", Math.max(1, Math.round(v)))} />
           <NumField label="max depth" value={params.maxDepth} step={1} onChange={(v) => set("maxDepth", Math.max(params.minDepth, Math.round(v)))} />
         </div>
+
+        <NeumannEditor
+          value={params.neumann}
+          onChange={(n) => set("neumann", n)}
+        />
 
         <div className="flex items-center gap-2 flex-wrap">
           <Button onClick={run} disabled={busy} size="sm">
@@ -429,7 +572,28 @@ export function ThermalFieldPanel() {
               <Stat label="vertices" value={out.thermal.T.length.toLocaleString()} />
               <Stat label="residual" value={out.thermal.solve.result.residual.toExponential(2)} />
               <Stat label="solver" value={`${out.thermal.solve.result.iterations} PCG iters`} />
+              <Stat label="Σ Neumann power" value={`${out.totalNeumannPower.toFixed(1)} W`} />
             </div>
+            {out.neumannSummary.length > 0 && (
+              <div className="rounded-md border border-border bg-muted/20 p-3">
+                <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2">
+                  Neumann patches (integrated)
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs font-mono">
+                  {out.neumannSummary.map((s, i) => (
+                    <div key={i} className="flex items-center justify-between rounded border border-border/60 bg-background/40 px-2 py-1">
+                      <span>face <span className="text-foreground">{s.face}</span></span>
+                      <span>q={s.flux.toFixed(0)} W/m²</span>
+                      <span>A={s.area.toFixed(3)} m²</span>
+                      <span>{s.nodes} nodes</span>
+                      <span className={s.power >= 0 ? "text-emerald-400" : "text-amber-400"}>
+                        {s.power >= 0 ? "+" : ""}{s.power.toFixed(1)} W
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </>
         )}
       </CardContent>
@@ -462,6 +626,58 @@ function Stat({ label, value }: { label: string; value: string }) {
     <div className="rounded-md border border-border bg-muted/30 px-3 py-2">
       <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className="font-mono text-sm text-foreground">{value}</div>
+    </div>
+  );
+}
+
+const FACE_OPTIONS: FaceKey[] = ["+x", "-x", "+y", "-y", "+z", "-z"];
+
+function NeumannEditor({
+  value, onChange,
+}: { value: NeumannBC[]; onChange: (v: NeumannBC[]) => void }) {
+  const add = () => {
+    const used = new Set(value.map((b) => b.face));
+    const next = FACE_OPTIONS.find((f) => !used.has(f)) ?? "+y";
+    onChange([...value, { id: `bc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, face: next, flux: 10_000 }]);
+  };
+  const update = (id: string, patch: Partial<NeumannBC>) =>
+    onChange(value.map((b) => (b.id === id ? { ...b, ...patch } : b)));
+  const remove = (id: string) => onChange(value.filter((b) => b.id !== id));
+
+  return (
+    <div className="rounded-md border border-border bg-muted/20 p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Neumann heat-flux patches</div>
+          <div className="text-[11px] text-muted-foreground">Positive flux = heat entering the body (W/m²). Side faces default to insulated.</div>
+        </div>
+        <Button size="sm" variant="outline" onClick={add}>+ Add patch</Button>
+      </div>
+      {value.length === 0 && (
+        <div className="text-xs text-muted-foreground italic">No side-face patches. Add one to inject or extract heat.</div>
+      )}
+      {value.map((bc) => (
+        <div key={bc.id} className="grid grid-cols-[110px_1fr_auto] gap-2 items-end">
+          <div className="space-y-1">
+            <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">Face</Label>
+            <Select value={bc.face} onValueChange={(v) => update(bc.id, { face: v as FaceKey })}>
+              <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {FACE_OPTIONS.map((f) => (
+                  <SelectItem key={f} value={f}>{f}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <NumField
+            label="Flux q (W/m²)"
+            value={bc.flux}
+            step={1000}
+            onChange={(v) => update(bc.id, { flux: v })}
+          />
+          <Button size="sm" variant="ghost" onClick={() => remove(bc.id)}>Remove</Button>
+        </div>
+      ))}
     </div>
   );
 }
