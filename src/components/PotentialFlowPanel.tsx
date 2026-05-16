@@ -178,19 +178,62 @@ function runSolve(params: Params): SolveOutput {
   const verts = mesh.mesh.vertices;
   const tets = mesh.mesh.tets;
   const nV = verts.length / 3;
-  const tol = length * 1e-4;
+  const bb = mesh.mesh.bbox;
+  const ext = Math.max(
+    bb.max[0] - bb.min[0], bb.max[1] - bb.min[1], bb.max[2] - bb.min[2],
+  );
+  const tol = ext * 1e-4;
 
-  const dirichlet: { index: number; value: number }[] = [];
-  let inletCount = 0, outletCount = 0;
-  for (let i = 0; i < nV; i++) {
-    const x = verts[i * 3];
-    if (x <= tol) { dirichlet.push({ index: i, value: params.phiInlet }); inletCount++; }
-    else if (x >= length - tol) { dirichlet.push({ index: i, value: params.phiOutlet }); outletCount++; }
+  // Classify each vertex by which face(s) it touches.
+  const faceVerts: Record<FaceKey, number[]> = {
+    "-x": [], "+x": [], "-y": [], "+y": [], "-z": [], "+z": [],
+  };
+  for (const f of FACE_KEYS) {
+    const test = faceTest(f, bb, tol);
+    for (let i = 0; i < nV; i++) {
+      if (test(verts[i * 3], verts[i * 3 + 1], verts[i * 3 + 2])) faceVerts[f].push(i);
+    }
+  }
+
+  // Dirichlet — collect from face config; later face overrides earlier on shared edge nodes.
+  const dirichletMap = new Map<number, number>();
+  for (const f of FACE_KEYS) {
+    if (params.faces[f].mode !== "dirichlet") continue;
+    const v = params.faces[f].phi;
+    for (const i of faceVerts[f]) dirichletMap.set(i, v);
+  }
+  const dirichlet = Array.from(dirichletMap, ([index, value]) => ({ index, value }));
+
+  // Neumann — integrate v_N × area over surface triangles whose 3 verts
+  // all lie on a Neumann face. Distribute (v_N · A) equally to 3 nodes.
+  const surface = extractSurfaceTriangles(tets);
+  const loads = new Float64Array(nV);
+  const faceArea: Record<FaceKey, number> = {
+    "-x": 0, "+x": 0, "-y": 0, "+y": 0, "-z": 0, "+z": 0,
+  };
+  let anyNeumann = false;
+  for (const f of FACE_KEYS) {
+    if (params.faces[f].mode !== "neumann") continue;
+    anyNeumann = true;
+    const test = faceTest(f, bb, tol);
+    const vN = params.faces[f].vN;
+    for (const [a, b, c] of surface) {
+      const pass = (i: number) =>
+        test(verts[i * 3], verts[i * 3 + 1], verts[i * 3 + 2]);
+      if (pass(a) && pass(b) && pass(c)) {
+        const A = triArea(verts as Float32Array, a, b, c);
+        faceArea[f] += A;
+        const share = (vN * A) / 3;
+        loads[a] += share; loads[b] += share; loads[c] += share;
+      }
+    }
   }
 
   const result = solvePotentialFlow({
     mesh: { vertices: verts, tets },
-    dirichlet,
+    dirichlet: dirichlet.length > 0 ? dirichlet : undefined,
+    neumannLoads: anyNeumann ? loads : undefined,
+    pinGauge: dirichlet.length === 0 && params.pinGauge,
   });
 
   let phiMin = Infinity, phiMax = -Infinity;
@@ -210,7 +253,7 @@ function runSolve(params: Params): SolveOutput {
     if (result.cp[i] > cpMax) cpMax = result.cp[i];
   }
 
-  // Mean axial velocity × inlet area (sanity check for incompressibility).
+  // Domain-mean axial velocity × cross-section (simple incompressibility check).
   let uxSum = 0, uxN = 0;
   for (let t = 0; t < result.velocityPerTet.length / 3; t++) {
     uxSum += result.velocityPerTet[t * 3]; uxN++;
@@ -230,12 +273,37 @@ function runSolve(params: Params): SolveOutput {
     if (p > pMax) pMax = p;
   }
 
+  // Per-face area for Dirichlet faces too (for summary).
+  for (const f of FACE_KEYS) {
+    if (faceArea[f] > 0 || params.faces[f].mode === "wall") continue;
+    const test = faceTest(f, bb, tol);
+    for (const [a, b, c] of surface) {
+      const pass = (i: number) =>
+        test(verts[i * 3], verts[i * 3 + 1], verts[i * 3 + 2]);
+      if (pass(a) && pass(b) && pass(c)) {
+        faceArea[f] += triArea(verts as Float32Array, a, b, c);
+      }
+    }
+  }
+
+  const faceSummary: FaceSummary[] = FACE_KEYS.map((f) => {
+    const bc = params.faces[f];
+    const s: FaceSummary = {
+      face: f, mode: bc.mode, area: faceArea[f], nodes: faceVerts[f].length,
+    };
+    if (bc.mode === "dirichlet") s.phi = bc.phi;
+    if (bc.mode === "neumann") { s.vN = bc.vN; s.flow = bc.vN * faceArea[f]; }
+    return s;
+  });
+  const netFlux = faceSummary.reduce((s, x) => s + (x.flow ?? 0), 0);
+
   return {
     mesh, result,
     elapsedMs: performance.now() - t0,
     phiMin, phiMax, speedMin, speedMax, cpMin, cpMax,
     pressure, pMin, pMax, density: params.density, p0: params.p0,
-    inletCount, outletCount, volumetricFlow,
+    dirichletCount: dirichlet.length,
+    faceSummary, netFlux, volumetricFlow,
   };
 }
 
