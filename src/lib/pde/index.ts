@@ -34,3 +34,14 @@ export {
   type ElectrostaticProblem, type ElectrostaticSolution,
   type FieldLineOptions, type SampleE,
 } from "./electrostatic";
+export {
+  differentiateThermal,
+  targetTemperatureLoss,
+  fluxMagnitudeLoss,
+  inverseDesignKappa,
+  type DifferentiableThermalProblem,
+  type ThermalSensitivities,
+  type ThermalGradients,
+  type InverseDesignOptions,
+  type InverseDesignResult,
+} from "./differentiable";
