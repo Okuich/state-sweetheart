@@ -78,6 +78,10 @@ interface SolveOutput {
   phiMin: number; phiMax: number;
   speedMin: number; speedMax: number;
   cpMin: number; cpMax: number;
+  /** Bernoulli pressure p = p₀ − ½ρ|v|² per vertex (Pa). */
+  pressure: Float64Array;
+  pMin: number; pMax: number;
+  density: number; p0: number;
   inletCount: number; outletCount: number;
   volumetricFlow: number;
 }
