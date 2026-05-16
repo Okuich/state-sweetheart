@@ -22,7 +22,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
-type FieldMode = "potential" | "speed" | "cp";
+type FieldMode = "potential" | "speed" | "cp" | "pressure";
 
 interface Params {
   length: number;
@@ -30,6 +30,8 @@ interface Params {
   height: number;
   phiInlet: number;
   phiOutlet: number;
+  density: number;        // ρ (kg/m³) — Bernoulli
+  p0: number;             // stagnation / reference pressure (Pa)
   minDepth: number;
   maxDepth: number;
   seedsPerSide: number;
@@ -39,6 +41,7 @@ interface Params {
 const DEFAULTS: Params = {
   length: 2, width: 0.5, height: 0.5,
   phiInlet: 0, phiOutlet: 2,
+  density: 1.225, p0: 101325,
   minDepth: 2, maxDepth: 3,
   seedsPerSide: 4,
   rk4Steps: 240,
