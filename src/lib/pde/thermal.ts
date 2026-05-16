@@ -109,10 +109,10 @@ export function assembleThermalStiffness(
     tetVolumes[t] = absV;
 
     const inv6V = 1 / (6 * V);
-    g[0] = scale(cross(sub(p[2], p[1]), sub(p[3], p[1])), inv6V);
-    g[1] = scale(cross(sub(p[3], p[0]), sub(p[2], p[0])), inv6V);
-    g[2] = scale(cross(sub(p[1], p[0]), sub(p[3], p[0])), inv6V);
-    g[3] = scale(cross(sub(p[2], p[0]), sub(p[1], p[0])), inv6V);
+    g[0] = scale(cross(sub(p[3], p[1]), sub(p[2], p[1])), inv6V);
+    g[1] = scale(cross(sub(p[2], p[0]), sub(p[3], p[0])), inv6V);
+    g[2] = scale(cross(sub(p[3], p[0]), sub(p[1], p[0])), inv6V);
+    g[3] = scale(cross(sub(p[1], p[0]), sub(p[2], p[0])), inv6V);
     for (let k = 0; k < 4; k++) {
       tetGradients[t * 12 + k * 3]     = g[k][0];
       tetGradients[t * 12 + k * 3 + 1] = g[k][1];
