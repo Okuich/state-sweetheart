@@ -507,11 +507,32 @@ export function ThermalFieldPanel() {
           <NumField label="Width" value={params.width} step={0.05} onChange={(v) => set("width", v)} />
           <NumField label="Height" value={params.height} step={0.05} onChange={(v) => set("height", v)} />
           <NumField label="κ (W/m·K)" value={params.kappa} step={1} onChange={(v) => set("kappa", v)} />
-          <NumField label="Hot face T (K)" value={params.hotT} step={5} onChange={(v) => set("hotT", v)} />
           <NumField label="Cold face T (K)" value={params.coldT} step={5} onChange={(v) => set("coldT", v)} />
+          <div className="space-y-1">
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Hot face (+x) BC</Label>
+            <Select value={params.hotMode} onValueChange={(v) => set("hotMode", v as HotMode)}>
+              <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="dirichlet">Dirichlet (fixed T)</SelectItem>
+                <SelectItem value="neumann">Neumann (heat flux)</SelectItem>
+                <SelectItem value="insulated">Insulated (q=0)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {params.hotMode === "dirichlet" && (
+            <NumField label="Hot face T (K)" value={params.hotT} step={5} onChange={(v) => set("hotT", v)} />
+          )}
+          {params.hotMode === "neumann" && (
+            <NumField label="Hot face flux (W/m²)" value={params.hotFlux} step={1000} onChange={(v) => set("hotFlux", v)} />
+          )}
           <NumField label="min depth" value={params.minDepth} step={1} onChange={(v) => set("minDepth", Math.max(1, Math.round(v)))} />
           <NumField label="max depth" value={params.maxDepth} step={1} onChange={(v) => set("maxDepth", Math.max(params.minDepth, Math.round(v)))} />
         </div>
+
+        <NeumannEditor
+          value={params.neumann}
+          onChange={(n) => set("neumann", n)}
+        />
 
         <div className="flex items-center gap-2 flex-wrap">
           <Button onClick={run} disabled={busy} size="sm">
@@ -551,7 +572,28 @@ export function ThermalFieldPanel() {
               <Stat label="vertices" value={out.thermal.T.length.toLocaleString()} />
               <Stat label="residual" value={out.thermal.solve.result.residual.toExponential(2)} />
               <Stat label="solver" value={`${out.thermal.solve.result.iterations} PCG iters`} />
+              <Stat label="Σ Neumann power" value={`${out.totalNeumannPower.toFixed(1)} W`} />
             </div>
+            {out.neumannSummary.length > 0 && (
+              <div className="rounded-md border border-border bg-muted/20 p-3">
+                <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2">
+                  Neumann patches (integrated)
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs font-mono">
+                  {out.neumannSummary.map((s, i) => (
+                    <div key={i} className="flex items-center justify-between rounded border border-border/60 bg-background/40 px-2 py-1">
+                      <span>face <span className="text-foreground">{s.face}</span></span>
+                      <span>q={s.flux.toFixed(0)} W/m²</span>
+                      <span>A={s.area.toFixed(3)} m²</span>
+                      <span>{s.nodes} nodes</span>
+                      <span className={s.power >= 0 ? "text-emerald-400" : "text-amber-400"}>
+                        {s.power >= 0 ? "+" : ""}{s.power.toFixed(1)} W
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </>
         )}
       </CardContent>
