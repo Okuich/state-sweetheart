@@ -22,6 +22,7 @@ import { GeometryFeaturePanel } from "@/components/GeometryFeaturePanel";
 import { MeshingPanel } from "@/components/MeshingPanel";
 import { ThermalFieldPanel } from "@/components/ThermalFieldPanel";
 import { ElectrostaticFieldPanel } from "@/components/ElectrostaticFieldPanel";
+import { PotentialFlowPanel } from "@/components/PotentialFlowPanel";
 import { SpatialAccelPanel } from "@/components/SpatialAccelPanel";
 import { SDFPanel } from "@/components/SDFPanel";
 import { TopologyPanel } from "@/components/TopologyPanel";
