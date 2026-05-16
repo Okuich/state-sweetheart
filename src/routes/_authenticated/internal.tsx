@@ -981,6 +981,11 @@ function Index() {
         <ElectrostaticFieldPanel />
       </section>
 
+      {/* Potential-Flow Engine — Phase-4 PDE: ∇²φ=0, v=∇φ with RK4 streamlines */}
+      <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
+        <PotentialFlowPanel />
+      </section>
+
       {/* Spatial Acceleration — BVH, KD-tree, hash, fab intel */}
       <section className="relative z-10 mx-4 lg:mx-10 mb-6 rounded-xl border border-border bg-card p-6 backdrop-blur-sm">
         <SpatialAccelPanel />
