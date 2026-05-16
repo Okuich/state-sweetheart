@@ -45,3 +45,7 @@ export {
   type InverseDesignOptions,
   type InverseDesignResult,
 } from "./differentiable";
+export {
+  solvePotentialFlow, makeVelocitySampler,
+  type PotentialFlowProblem, type PotentialFlowSolution,
+} from "./potentialFlow";
