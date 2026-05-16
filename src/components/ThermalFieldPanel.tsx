@@ -369,9 +369,9 @@ export function ThermalFieldPanel() {
             {out && (
               <>
                 <Badge variant="outline">{out.mesh.summary.tets.count.toLocaleString()} tets</Badge>
-                <Badge variant="outline">{out.thermal.solve.iterations} iters</Badge>
-                <Badge variant={out.thermal.solve.converged ? "default" : "destructive"}>
-                  {out.thermal.solve.converged ? "converged" : "no conv"}
+                <Badge variant="outline">{out.thermal.solve.result.iterations} iters</Badge>
+                <Badge variant={out.thermal.solve.result.converged ? "default" : "destructive"}>
+                  {out.thermal.solve.result.converged ? "converged" : "no conv"}
                 </Badge>
                 <Badge variant="outline">{out.elapsedMs.toFixed(0)} ms</Badge>
               </>
@@ -427,8 +427,8 @@ export function ThermalFieldPanel() {
               <Stat label="|q| max" value={out.fluxMax.toExponential(2)} />
               <Stat label="Dirichlet" value={`hot ${out.dirichletCount.hot} · cold ${out.dirichletCount.cold}`} />
               <Stat label="vertices" value={out.thermal.T.length.toLocaleString()} />
-              <Stat label="residual" value={out.thermal.solve.residual.toExponential(2)} />
-              <Stat label="solver" value={`${out.thermal.solve.iterations} PCG iters`} />
+              <Stat label="residual" value={out.thermal.solve.result.residual.toExponential(2)} />
+              <Stat label="solver" value={`${out.thermal.solve.result.iterations} PCG iters`} />
             </div>
           </>
         )}
