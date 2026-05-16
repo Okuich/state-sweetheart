@@ -94,7 +94,7 @@ interface SolveOutput {
 
 /** Min/max bbox extent along each axis for a face key. */
 function faceTest(
-  face: FaceKey, bb: { min: [number, number, number]; max: [number, number, number] }, tol: number,
+  face: FaceKey, bb: { min: ReadonlyArray<number>; max: ReadonlyArray<number> }, tol: number,
 ): (x: number, y: number, z: number) => boolean {
   switch (face) {
     case "-x": return (x) => x <= bb.min[0] + tol;
