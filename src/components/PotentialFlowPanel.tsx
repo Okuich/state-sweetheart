@@ -496,6 +496,8 @@ export function PotentialFlowPanel() {
           <NumField label="max depth" value={params.maxDepth} step={1} onChange={(v) => set("maxDepth", Math.max(params.minDepth, Math.round(v)))} />
           <NumField label="φ inlet" value={params.phiInlet} step={0.1} onChange={(v) => set("phiInlet", v)} />
           <NumField label="φ outlet" value={params.phiOutlet} step={0.1} onChange={(v) => set("phiOutlet", v)} />
+          <NumField label="ρ (kg/m³)" value={params.density} step={0.1} onChange={(v) => set("density", Math.max(1e-9, v))} />
+          <NumField label="p₀ (Pa)" value={params.p0} step={100} onChange={(v) => set("p0", v)} />
           <NumField label="seeds / side" value={params.seedsPerSide} step={1} onChange={(v) => set("seedsPerSide", Math.max(1, Math.min(8, Math.round(v))))} />
           <NumField label="RK4 steps" value={params.rk4Steps} step={20} onChange={(v) => set("rk4Steps", Math.max(20, Math.round(v)))} />
         </div>
