@@ -141,6 +141,31 @@ function extractSurfaceTriangles(tets: Uint32Array): Array<[number, number, numb
   return out;
 }
 
+function triArea(
+  v: Float32Array | Float64Array, a: number, b: number, c: number,
+): number {
+  const ax = v[a * 3], ay = v[a * 3 + 1], az = v[a * 3 + 2];
+  const bx = v[b * 3] - ax, by = v[b * 3 + 1] - ay, bz = v[b * 3 + 2] - az;
+  const cx = v[c * 3] - ax, cy = v[c * 3 + 1] - ay, cz = v[c * 3 + 2] - az;
+  const nx = by * cz - bz * cy;
+  const ny = bz * cx - bx * cz;
+  const nz = bx * cy - by * cx;
+  return 0.5 * Math.sqrt(nx * nx + ny * ny + nz * nz);
+}
+
+function faceTest(
+  face: FaceKey, bb: { min: ReadonlyArray<number>; max: ReadonlyArray<number> }, tol: number,
+): (x: number, y: number, z: number) => boolean {
+  switch (face) {
+    case "-x": return (x) => x <= bb.min[0] + tol;
+    case "+x": return (x) => x >= bb.max[0] - tol;
+    case "-y": return (_x, y) => y <= bb.min[1] + tol;
+    case "+y": return (_x, y) => y >= bb.max[1] - tol;
+    case "-z": return (_x, _y, z) => z <= bb.min[2] + tol;
+    case "+z": return (_x, _y, z) => z >= bb.max[2] - tol;
+  }
+}
+
 function runSolve(params: Params): SolveOutput {
   const t0 = performance.now();
   const { length, width, height } = params;
