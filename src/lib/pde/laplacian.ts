@@ -49,8 +49,8 @@ export function assembleFEMLaplacian(mesh: FEMMeshInput): AssemblyResult {
   const mass = new Float64Array(nVerts);
   let totalVol = 0;
 
-  const p = [0, 0, 0, 0].map(() => new Float64Array(3));
-  const g = [0, 0, 0, 0].map(() => new Float64Array(3));
+  const p: Float64Array[] = [new Float64Array(3), new Float64Array(3), new Float64Array(3), new Float64Array(3)];
+  const g: Float64Array[] = [new Float64Array(3), new Float64Array(3), new Float64Array(3), new Float64Array(3)];
 
   for (let t = 0; t < nTets; t++) {
     const i0 = tets[t * 4];

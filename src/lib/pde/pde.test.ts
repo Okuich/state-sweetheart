@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   assembleFEMLaplacian, assembleFVMLaplacian, solvePoisson, cg, spmv, buildCSR,
+  applyDirichlet,
 } from "./index";
 
 /** Single unit tet [0,0,0]-[1,0,0]-[0,1,0]-[0,0,1], volume 1/6. */
@@ -71,7 +72,6 @@ describe("FVM Laplacian on a 1D-ish strip", () => {
     const A = assembleFVMLaplacian(n, 1, 1, 1 / n);
     const b = new Float64Array(n).fill(1);
     // Pin endpoints to 0.
-    const { applyDirichlet } = require("./sparse");
     applyDirichlet(A, b, 0, 0);
     applyDirichlet(A, b, n - 1, 0);
     const x = new Float64Array(n);
