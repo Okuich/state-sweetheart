@@ -469,12 +469,30 @@ function ThermalViewer({
     ctx.fillRect(lx, ly, lw, lh);
     ctx.fillStyle = "rgba(229,231,235,0.9)";
     ctx.font = `${10 * devicePixelRatio}px ui-sans-serif, system-ui`;
-    const lo = mode === "temperature" ? `${out.Tmin.toFixed(1)} K` : "0";
-    const hi = mode === "temperature" ? `${out.Tmax.toFixed(1)} K` : "1";
+    let lo: string, hi: string, midLabel: string;
+    if (overrideField) {
+      const { min, max, label, unit, diverging } = overrideField;
+      const u = unit ? ` ${unit}` : "";
+      if (diverging) {
+        const mAbs = Math.max(Math.abs(min), Math.abs(max));
+        lo = `${(-mAbs).toExponential(1)}${u}`;
+        hi = `${(+mAbs).toExponential(1)}${u}`;
+      } else {
+        lo = `${min.toExponential(1)}${u}`;
+        hi = `${max.toExponential(1)}${u}`;
+      }
+      midLabel = label;
+    } else if (mode === "temperature") {
+      lo = `${out.Tmin.toFixed(1)} K`;
+      hi = `${out.Tmax.toFixed(1)} K`;
+      midLabel = "T";
+    } else {
+      lo = "0"; hi = "1"; midLabel = "hotspot";
+    }
     ctx.fillText(lo, lx, ly - 4 * devicePixelRatio);
     const hiW = ctx.measureText(hi).width;
     ctx.fillText(hi, lx + lw - hiW, ly - 4 * devicePixelRatio);
-    ctx.fillText(mode === "temperature" ? "T" : "hotspot", lx, ly + lh + 12 * devicePixelRatio);
+    ctx.fillText(midLabel, lx, ly + lh + 12 * devicePixelRatio);
     // Probe markers (drawn on top).
     if (probes.length > 0) {
       const T = out.thermal.T;
