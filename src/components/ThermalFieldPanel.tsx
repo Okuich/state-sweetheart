@@ -733,9 +733,29 @@ export function ThermalFieldPanel() {
         />
 
         <div className="flex items-center gap-2 flex-wrap">
-          <Button onClick={run} disabled={busy} size="sm">
+          <Button onClick={() => run(kappaField ?? undefined)} disabled={busy} size="sm">
             {busy ? "Solving…" : "Run solver"}
           </Button>
+          <div className="inline-flex rounded-md border border-border overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setPanelMode("forward")}
+              className={`px-3 py-1.5 text-xs ${panelMode === "forward" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground"}`}
+            >Forward</button>
+            <button
+              type="button"
+              onClick={() => setPanelMode("optimize")}
+              className={`px-3 py-1.5 text-xs ${panelMode === "optimize" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground"}`}
+            >Optimize κ</button>
+          </div>
+          {kappaField && (
+            <Badge variant="secondary" className="font-mono">
+              κ range {Math.min(...Array.from(kappaField)).toFixed(2)} – {Math.max(...Array.from(kappaField)).toFixed(2)}
+            </Badge>
+          )}
+          {kappaField && (
+            <Button onClick={resetKappa} size="sm" variant="ghost">Reset κ</Button>
+          )}
           <Select value={mode} onValueChange={(v) => setMode(v as FieldMode)}>
             <SelectTrigger className="w-[180px] h-9"><SelectValue /></SelectTrigger>
             <SelectContent>
