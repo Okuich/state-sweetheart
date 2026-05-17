@@ -7,9 +7,12 @@
  * temperatures on the ±X end-caps, calls `solveThermal`, and renders
  * vertex colors (viridis ramp) plus optional flux arrows.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { generateMesh, type MeshingResult } from "@/lib/meshing";
-import { solveThermal, type ThermalSolution } from "@/lib/pde";
+import {
+  solveThermal, type ThermalSolution,
+  inverseDesignKappa,
+} from "@/lib/pde";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -84,12 +87,15 @@ function ramp(t: number): [number, number, number] {
 interface SolveOutput {
   mesh: MeshingResult;
   thermal: ThermalSolution;
+  kappa: Float64Array;
   dirichletCount: { hot: number; cold: number };
   neumannSummary: Array<{ face: FaceKey; flux: number; area: number; nodes: number; power: number }>;
   totalNeumannPower: number;
   elapsedMs: number;
   Tmin: number; Tmax: number;
   fluxMax: number;
+  dirichletSet: Set<number>;
+  loads: Float64Array;
 }
 
 /** Min/max bbox extent along each axis for a face key. */
@@ -138,7 +144,7 @@ function triArea(
   return 0.5 * Math.sqrt(nx * nx + ny * ny + nz * nz);
 }
 
-function runSolve(params: Params): SolveOutput {
+function runSolve(params: Params, kappaOverride?: Float64Array): SolveOutput {
   const t0 = performance.now();
   const { length, width, height } = params;
   const mesh = generateMesh({
@@ -214,7 +220,11 @@ function runSolve(params: Params): SolveOutput {
   const totalNeumannPower = summary.reduce((s, x) => s + x.power, 0);
 
   const kappa = new Float64Array(nTets);
-  for (let t = 0; t < nTets; t++) kappa[t] = params.kappa;
+  if (kappaOverride && kappaOverride.length === nTets) {
+    kappa.set(kappaOverride);
+  } else {
+    for (let t = 0; t < nTets; t++) kappa[t] = params.kappa;
+  }
 
   const thermal = solveThermal({
     mesh: { vertices: verts, tets },
@@ -234,13 +244,21 @@ function runSolve(params: Params): SolveOutput {
     if (thermal.fluxMagnitude[i] > fluxMax) fluxMax = thermal.fluxMagnitude[i];
   }
   return {
-    mesh, thermal,
+    mesh, thermal, kappa,
     dirichletCount: { hot: hotCount, cold: coldCount },
     neumannSummary: summary,
     totalNeumannPower,
     elapsedMs: performance.now() - t0,
     Tmin, Tmax, fluxMax,
+    dirichletSet, loads,
   };
+}
+
+interface Probe {
+  id: string;
+  index: number;
+  target: number;
+  weight: number;
 }
 
 interface ViewerProps {
@@ -248,14 +266,21 @@ interface ViewerProps {
   mode: FieldMode;
   showFlux: boolean;
   height?: number;
+  probes?: Probe[];
+  pickArmed?: boolean;
+  onPick?: (vertexIndex: number) => void;
 }
 
-function ThermalViewer({ out, mode, showFlux, height = 360 }: ViewerProps) {
+function ThermalViewer({
+  out, mode, showFlux, height = 360,
+  probes = [], pickArmed = false, onPick,
+}: ViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [yaw, setYaw] = useState(0.7);
   const [pitch, setPitch] = useState(-0.35);
   const [zoom, setZoom] = useState(1);
-  const drag = useRef<{ x: number; y: number; yaw: number; pitch: number } | null>(null);
+  const drag = useRef<{ x: number; y: number; yaw: number; pitch: number; moved: boolean } | null>(null);
+  const projectedRef = useRef<{ px: Float32Array; py: Float32Array; pz: Float32Array } | null>(null);
 
   const geo = useMemo(() => {
     const verts = out.mesh.mesh.vertices;
@@ -351,6 +376,7 @@ function ThermalViewer({ out, mode, showFlux, height = 360 }: ViewerProps) {
       );
       px[i] = x; py[i] = y; pz[i] = z;
     }
+    projectedRef.current = { px, py, pz };
 
     // Sort surface triangles back-to-front by avg depth.
     const tris = geo.surface.map((tri) => {
@@ -424,29 +450,113 @@ function ThermalViewer({ out, mode, showFlux, height = 360 }: ViewerProps) {
     const hiW = ctx.measureText(hi).width;
     ctx.fillText(hi, lx + lw - hiW, ly - 4 * devicePixelRatio);
     ctx.fillText(mode === "temperature" ? "T" : "hotspot", lx, ly + lh + 12 * devicePixelRatio);
-  }, [out, geo, yaw, pitch, zoom, mode, showFlux]);
+    // Probe markers (drawn on top).
+    if (probes.length > 0) {
+      const T = out.thermal.T;
+      for (const p of probes) {
+        if (p.index < 0 || p.index >= geo.nV) continue;
+        const x = px[p.index], y = py[p.index];
+        const cur = T[p.index];
+        const err = cur - p.target;
+        const ok = Math.abs(err) < 0.5;
+        ctx.beginPath();
+        ctx.arc(x, y, 6 * devicePixelRatio, 0, Math.PI * 2);
+        ctx.fillStyle = ok ? "rgba(34,197,94,0.95)" : "rgba(239,68,68,0.95)";
+        ctx.fill();
+        ctx.lineWidth = 1.5 * devicePixelRatio;
+        ctx.strokeStyle = "rgba(255,255,255,0.95)";
+        ctx.stroke();
+        ctx.fillStyle = "rgba(255,255,255,0.95)";
+        ctx.font = `${10 * devicePixelRatio}px ui-monospace, monospace`;
+        ctx.fillText(
+          `#${p.index} → ${p.target.toFixed(0)}K (${cur.toFixed(0)})`,
+          x + 9 * devicePixelRatio, y - 6 * devicePixelRatio,
+        );
+      }
+    }
+  }, [out, geo, yaw, pitch, zoom, mode, showFlux, probes]);
+
+  const handleClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!pickArmed || !onPick) return;
+    const proj = projectedRef.current;
+    const c = canvasRef.current;
+    if (!proj || !c) return;
+    const rect = c.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) * devicePixelRatio;
+    const my = (e.clientY - rect.top) * devicePixelRatio;
+    let best = -1, bestD = Infinity;
+    for (let i = 0; i < geo.nV; i++) {
+      const dx = proj.px[i] - mx, dy = proj.py[i] - my;
+      const d = dx * dx + dy * dy;
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    if (best >= 0 && bestD < (24 * devicePixelRatio) * (24 * devicePixelRatio)) {
+      onPick(best);
+    }
+  }, [pickArmed, onPick, geo]);
 
   return (
     <div
       className="relative w-full overflow-hidden rounded-md border border-border bg-black"
       style={{ height }}
-      onMouseDown={(e) => { drag.current = { x: e.clientX, y: e.clientY, yaw, pitch }; }}
+      onMouseDown={(e) => {
+        drag.current = { x: e.clientX, y: e.clientY, yaw, pitch, moved: false };
+      }}
       onMouseMove={(e) => {
         if (!drag.current) return;
         const dx = e.clientX - drag.current.x;
         const dy = e.clientY - drag.current.y;
+        if (Math.abs(dx) + Math.abs(dy) > 3) drag.current.moved = true;
         setYaw(drag.current.yaw + dx * 0.01);
         setPitch(drag.current.pitch + dy * 0.01);
       }}
-      onMouseUp={() => { drag.current = null; }}
+      onMouseUp={(e) => {
+        const wasDrag = drag.current?.moved;
+        drag.current = null;
+        if (!wasDrag) handleClick(e);
+      }}
       onMouseLeave={() => { drag.current = null; }}
       onWheel={(e) => {
         setZoom((z) => Math.max(0.3, Math.min(4, z * (e.deltaY < 0 ? 1.1 : 0.9))));
       }}
     >
-      <canvas ref={canvasRef} className="h-full w-full cursor-grab active:cursor-grabbing" />
+      <canvas
+        ref={canvasRef}
+        className={`h-full w-full ${pickArmed ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing"}`}
+      />
+      {pickArmed && (
+        <div className="absolute top-2 left-2 rounded bg-primary/90 text-primary-foreground text-[11px] px-2 py-1 font-mono">
+          Click a vertex to add probe
+        </div>
+      )}
     </div>
   );
+}
+
+type PanelMode = "forward" | "optimize";
+
+interface OptimizeOptions {
+  steps: number;
+  learningRate: number;
+  kappaMin: number;
+  kappaMax: number;
+  regularization: number;
+}
+
+const OPT_DEFAULTS: OptimizeOptions = {
+  steps: 25,
+  learningRate: 0.08,
+  kappaMin: 0.1,
+  kappaMax: 500,
+  regularization: 0.0,
+};
+
+interface OptimizeResult {
+  history: Array<{ step: number; loss: number; gradNorm: number }>;
+  kappa: Float64Array;
+  elapsedMs: number;
+  kappaMin: number;
+  kappaMax: number;
 }
 
 export function ThermalFieldPanel() {
@@ -457,12 +567,18 @@ export function ThermalFieldPanel() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const run = () => {
+  const [panelMode, setPanelMode] = useState<PanelMode>("forward");
+  const [probes, setProbes] = useState<Probe[]>([]);
+  const [pickArmed, setPickArmed] = useState(false);
+  const [optOpts, setOptOpts] = useState<OptimizeOptions>(OPT_DEFAULTS);
+  const [optResult, setOptResult] = useState<OptimizeResult | null>(null);
+  const [kappaField, setKappaField] = useState<Float64Array | null>(null);
+
+  const run = (kappaOverride?: Float64Array) => {
     setBusy(true); setErr(null);
-    // Defer to next tick so the busy state paints.
     setTimeout(() => {
       try {
-        setOut(runSolve(params));
+        setOut(runSolve(params, kappaOverride));
       } catch (e) {
         setErr(e instanceof Error ? e.message : String(e));
       } finally {
@@ -474,8 +590,90 @@ export function ThermalFieldPanel() {
   useEffect(() => { run(); /* initial */ // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Reset probes/optimization when geometry changes (probe vertex indices
+  // are mesh-dependent and become invalid on remesh).
+  useEffect(() => {
+    setProbes([]);
+    setOptResult(null);
+    setKappaField(null);
+    setPickArmed(false);
+  }, [params.length, params.width, params.height, params.minDepth, params.maxDepth]);
+
   const set = <K extends keyof Params>(k: K, v: Params[K]) =>
     setParams((p) => ({ ...p, [k]: v }));
+
+  const addProbe = useCallback((vertexIndex: number) => {
+    setProbes((prev) => {
+      if (prev.some((p) => p.index === vertexIndex)) return prev;
+      const currentT = out?.thermal.T[vertexIndex] ?? params.coldT;
+      return [...prev, {
+        id: `pr_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+        index: vertexIndex,
+        target: Math.round(currentT),
+        weight: 1,
+      }];
+    });
+    setPickArmed(false);
+  }, [out, params.coldT]);
+
+  const runOptimize = () => {
+    if (!out) { setErr("Run forward solver first."); return; }
+    if (probes.length === 0) { setErr("Add at least one probe target."); return; }
+    setBusy(true); setErr(null);
+    setTimeout(() => {
+      try {
+        const t0 = performance.now();
+        const dirichletArr = Array.from(out.dirichletSet).map((index) => ({
+          index,
+          value: out.thermal.T[index],
+        }));
+        const history: OptimizeResult["history"] = [];
+        const k0 = kappaField ?? out.kappa;
+        const result = inverseDesignKappa(
+          {
+            mesh: { vertices: out.mesh.mesh.vertices, tets: out.mesh.mesh.tets },
+            kappa: new Float64Array(k0),
+            neumannLoads: out.loads,
+            dirichlet: dirichletArr,
+          },
+          probes.map((p) => ({ index: p.index, target: p.target, weight: p.weight })),
+          {
+            steps: optOpts.steps,
+            learningRate: optOpts.learningRate,
+            kappaMin: optOpts.kappaMin,
+            kappaMax: optOpts.kappaMax,
+            regularization: optOpts.regularization,
+            onStep: (step, loss, _kappa) => {
+              history.push({ step, loss, gradNorm: 0 });
+            },
+          },
+        );
+        // Replace gradNorm placeholders with the precise history from the solver.
+        const final: OptimizeResult = {
+          history: result.history.length ? result.history : history,
+          kappa: result.kappa,
+          elapsedMs: performance.now() - t0,
+          kappaMin: Math.min(...Array.from(result.kappa)),
+          kappaMax: Math.max(...Array.from(result.kappa)),
+        };
+        setOptResult(final);
+        setKappaField(result.kappa);
+        // Re-run forward visualization with optimized κ.
+        setOut(runSolve(params, result.kappa));
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : String(e));
+      } finally {
+        setBusy(false);
+      }
+    }, 0);
+  };
+
+  const resetKappa = () => {
+    setKappaField(null);
+    setOptResult(null);
+    run();
+  };
+
 
   return (
     <Card>
@@ -535,9 +733,29 @@ export function ThermalFieldPanel() {
         />
 
         <div className="flex items-center gap-2 flex-wrap">
-          <Button onClick={run} disabled={busy} size="sm">
+          <Button onClick={() => run(kappaField ?? undefined)} disabled={busy} size="sm">
             {busy ? "Solving…" : "Run solver"}
           </Button>
+          <div className="inline-flex rounded-md border border-border overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setPanelMode("forward")}
+              className={`px-3 py-1.5 text-xs ${panelMode === "forward" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground"}`}
+            >Forward</button>
+            <button
+              type="button"
+              onClick={() => setPanelMode("optimize")}
+              className={`px-3 py-1.5 text-xs ${panelMode === "optimize" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground"}`}
+            >Optimize κ</button>
+          </div>
+          {kappaField && (
+            <Badge variant="secondary" className="font-mono">
+              κ range {Math.min(...Array.from(kappaField)).toFixed(2)} – {Math.max(...Array.from(kappaField)).toFixed(2)}
+            </Badge>
+          )}
+          {kappaField && (
+            <Button onClick={resetKappa} size="sm" variant="ghost">Reset κ</Button>
+          )}
           <Select value={mode} onValueChange={(v) => setMode(v as FieldMode)}>
             <SelectTrigger className="w-[180px] h-9"><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -562,7 +780,28 @@ export function ThermalFieldPanel() {
 
         {out && (
           <>
-            <ThermalViewer out={out} mode={mode} showFlux={showFlux} />
+            <ThermalViewer
+              out={out}
+              mode={mode}
+              showFlux={showFlux}
+              probes={probes}
+              pickArmed={panelMode === "optimize" && pickArmed}
+              onPick={addProbe}
+            />
+            {panelMode === "optimize" && (
+              <OptimizePanel
+                probes={probes}
+                onProbesChange={setProbes}
+                pickArmed={pickArmed}
+                onTogglePick={() => setPickArmed((p) => !p)}
+                opts={optOpts}
+                onOptsChange={setOptOpts}
+                onRun={runOptimize}
+                busy={busy}
+                result={optResult}
+                currentT={out.thermal.T}
+              />
+            )}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
               <Stat label="T min" value={`${out.Tmin.toFixed(2)} K`} />
               <Stat label="T max" value={`${out.Tmax.toFixed(2)} K`} />
@@ -678,6 +917,141 @@ function NeumannEditor({
           <Button size="sm" variant="ghost" onClick={() => remove(bc.id)}>Remove</Button>
         </div>
       ))}
+    </div>
+  );
+}
+
+function OptimizePanel({
+  probes, onProbesChange, pickArmed, onTogglePick,
+  opts, onOptsChange, onRun, busy, result, currentT,
+}: {
+  probes: Probe[];
+  onProbesChange: (p: Probe[]) => void;
+  pickArmed: boolean;
+  onTogglePick: () => void;
+  opts: OptimizeOptions;
+  onOptsChange: (o: OptimizeOptions) => void;
+  onRun: () => void;
+  busy: boolean;
+  result: OptimizeResult | null;
+  currentT: Float64Array;
+}) {
+  const updateProbe = (id: string, patch: Partial<Probe>) =>
+    onProbesChange(probes.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+  const removeProbe = (id: string) => onProbesChange(probes.filter((p) => p.id !== id));
+
+  const finalLoss = result?.history.length
+    ? result.history[result.history.length - 1].loss
+    : null;
+  const initialLoss = result?.history.length ? result.history[0].loss : null;
+
+  return (
+    <div className="rounded-md border border-primary/40 bg-primary/5 p-3 space-y-3">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <div className="text-[11px] uppercase tracking-wide text-primary">Inverse design — Optimize κ</div>
+          <div className="text-[11px] text-muted-foreground">
+            Adjoint gradient on log(κ) minimizes ½·Σwᵢ·(Tᵢ−T*ᵢ)² at probe vertices.
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant={pickArmed ? "default" : "outline"} onClick={onTogglePick}>
+            {pickArmed ? "Cancel pick" : "+ Pick probe on mesh"}
+          </Button>
+          <Button size="sm" onClick={onRun} disabled={busy || probes.length === 0}>
+            {busy ? "Optimizing…" : `Run optimization (${opts.steps} steps)`}
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+        <NumField label="steps" value={opts.steps} step={5}
+          onChange={(v) => onOptsChange({ ...opts, steps: Math.max(1, Math.round(v)) })} />
+        <NumField label="learning rate" value={opts.learningRate} step={0.01}
+          onChange={(v) => onOptsChange({ ...opts, learningRate: Math.max(1e-4, v) })} />
+        <NumField label="κ min" value={opts.kappaMin} step={0.05}
+          onChange={(v) => onOptsChange({ ...opts, kappaMin: Math.max(1e-6, v) })} />
+        <NumField label="κ max" value={opts.kappaMax} step={10}
+          onChange={(v) => onOptsChange({ ...opts, kappaMax: Math.max(opts.kappaMin * 2, v) })} />
+        <NumField label="reg (log κ)" value={opts.regularization} step={0.01}
+          onChange={(v) => onOptsChange({ ...opts, regularization: Math.max(0, v) })} />
+      </div>
+
+      {probes.length === 0 ? (
+        <div className="text-xs italic text-muted-foreground">
+          No probes yet. Click <span className="font-mono">+ Pick probe on mesh</span>, then click a vertex on the viewport above.
+        </div>
+      ) : (
+        <div className="space-y-1">
+          {probes.map((p) => {
+            const cur = currentT[p.index] ?? NaN;
+            const err = cur - p.target;
+            return (
+              <div key={p.id} className="grid grid-cols-[80px_1fr_1fr_120px_auto] gap-2 items-end text-xs font-mono">
+                <div className="text-foreground">#{p.index}</div>
+                <NumField label="target T (K)" value={p.target} step={5}
+                  onChange={(v) => updateProbe(p.id, { target: v })} />
+                <NumField label="weight" value={p.weight} step={0.1}
+                  onChange={(v) => updateProbe(p.id, { weight: Math.max(0, v) })} />
+                <div className={`px-2 py-1 rounded border border-border/60 bg-background/40 ${Math.abs(err) < 1 ? "text-emerald-400" : "text-amber-400"}`}>
+                  cur {cur.toFixed(1)} · Δ{err >= 0 ? "+" : ""}{err.toFixed(1)}
+                </div>
+                <Button size="sm" variant="ghost" onClick={() => removeProbe(p.id)}>Remove</Button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {result && (
+        <div className="space-y-2">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+            <Stat label="initial loss" value={initialLoss?.toExponential(3) ?? "—"} />
+            <Stat label="final loss" value={finalLoss?.toExponential(3) ?? "—"} />
+            <Stat label="κ range" value={`${result.kappaMin.toFixed(2)} – ${result.kappaMax.toFixed(2)}`} />
+            <Stat label="elapsed" value={`${result.elapsedMs.toFixed(0)} ms`} />
+          </div>
+          <LossChart history={result.history} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LossChart({ history }: { history: Array<{ step: number; loss: number; gradNorm: number }> }) {
+  if (history.length < 2) {
+    return <div className="text-xs text-muted-foreground italic">Need ≥2 steps to chart loss.</div>;
+  }
+  const W = 600, H = 140, pad = 28;
+  const losses = history.map((h) => Math.max(h.loss, 1e-30));
+  const lMin = Math.min(...losses);
+  const lMax = Math.max(...losses);
+  const useLog = lMax / Math.max(lMin, 1e-30) > 50;
+  const toY = (v: number) => {
+    const a = useLog ? Math.log10(v) : v;
+    const a0 = useLog ? Math.log10(lMin) : lMin;
+    const a1 = useLog ? Math.log10(lMax) : lMax;
+    const span = Math.max(a1 - a0, 1e-12);
+    return H - pad - ((a - a0) / span) * (H - 2 * pad);
+  };
+  const toX = (i: number) => pad + (i / (history.length - 1)) * (W - 2 * pad);
+  const path = history.map((h, i) => `${i === 0 ? "M" : "L"}${toX(i).toFixed(1)},${toY(losses[i]).toFixed(1)}`).join(" ");
+  return (
+    <div className="rounded-md border border-border bg-background/40 p-2">
+      <div className="flex items-center justify-between text-[11px] text-muted-foreground mb-1">
+        <span>Loss vs step {useLog ? "(log scale)" : ""}</span>
+        <span className="font-mono">{lMin.toExponential(2)} → {lMax.toExponential(2)}</span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-[140px]">
+        <rect x={pad} y={pad} width={W - 2 * pad} height={H - 2 * pad}
+          fill="none" stroke="hsl(var(--border))" strokeDasharray="2 3" />
+        <path d={path} fill="none" stroke="hsl(var(--primary))" strokeWidth={2} />
+        {history.map((h, i) => (
+          <circle key={i} cx={toX(i)} cy={toY(losses[i])} r={2} fill="hsl(var(--primary))" />
+        ))}
+        <text x={pad} y={H - 8} fontSize="10" fill="currentColor" className="text-muted-foreground">step 0</text>
+        <text x={W - pad - 24} y={H - 8} fontSize="10" fill="currentColor" className="text-muted-foreground">step {history.length - 1}</text>
+      </svg>
     </div>
   );
 }
