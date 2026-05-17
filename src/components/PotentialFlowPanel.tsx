@@ -793,6 +793,18 @@ export function PotentialFlowPanel() {
               title="RK4 step size as multiple of bbox·0.015 (smaller = more accurate, slower)"
             />
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!showStreamlines || customSeeds.length === 0}
+            onClick={() => setCustomSeeds([])}
+            title="Remove all click-placed seeds"
+          >
+            Clear seeds {customSeeds.length > 0 ? `(${customSeeds.length})` : ""}
+          </Button>
+        </div>
+        <div className="text-[11px] text-muted-foreground">
+          Tip: click the inlet face (left side, x = min) in the viewer to place a new RK4 streamline seed.
         </div>
 
         {err && (
