@@ -364,7 +364,7 @@ function FlowViewer({
 
   // RK4 streamlines through the mesh-backed velocity sampler.
   const streamlines = useMemo(() => {
-    if (!showStreamlines) return [] as Array<{ pts: Float64Array; speed: Float32Array }>;
+    if (!showStreamlines) return [] as Array<{ pts: Float64Array; speed: Float32Array; seedIdx: number }>;
     const meshIn = { vertices: out.mesh.mesh.vertices, tets: out.mesh.mesh.tets };
     const sampleV = makeVelocitySampler(meshIn, out.result.velocityPerTet);
     // Normalize sampled velocity → unit direction so stepSize stays in world units.
