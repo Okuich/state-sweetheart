@@ -785,6 +785,36 @@ export function PotentialFlowPanel() {
               <SelectItem value="pressure">Bernoulli pressure p</SelectItem>
             </SelectContent>
           </Select>
+          <Select value={pressureNorm} onValueChange={(v) => setPressureNorm(v as PressureNorm)}>
+            <SelectTrigger className="w-[170px] h-9" disabled={mode !== "pressure"}
+              title="How to normalize Bernoulli pressure for the color ramp">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="minmax">p · min/max</SelectItem>
+              <SelectItem value="p0">p / p₀</SelectItem>
+              <SelectItem value="ref">p / p_ref</SelectItem>
+            </SelectContent>
+          </Select>
+          {pressureNorm === "ref" && (
+            <div className="flex items-center gap-1.5">
+              <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                p_ref (Pa)
+              </Label>
+              <Input
+                type="number"
+                className="h-9 w-[110px]"
+                value={refPressure}
+                step={100}
+                disabled={mode !== "pressure"}
+                onChange={(e) => {
+                  const v = parseFloat(e.target.value);
+                  if (Number.isFinite(v)) setRefPressure(v);
+                }}
+                title="User-defined reference pressure for p / p_ref normalization"
+              />
+            </div>
+          )}
           <Button variant={showVectors ? "default" : "outline"} size="sm" onClick={() => setShowVectors((s) => !s)}>
             v arrows {showVectors ? "on" : "off"}
           </Button>
