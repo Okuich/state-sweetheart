@@ -7,9 +7,12 @@
  * temperatures on the ±X end-caps, calls `solveThermal`, and renders
  * vertex colors (viridis ramp) plus optional flux arrows.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { generateMesh, type MeshingResult } from "@/lib/meshing";
-import { solveThermal, type ThermalSolution } from "@/lib/pde";
+import {
+  solveThermal, type ThermalSolution,
+  inverseDesignKappa,
+} from "@/lib/pde";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
