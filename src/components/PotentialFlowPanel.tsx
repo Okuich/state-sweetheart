@@ -48,8 +48,6 @@ interface Params {
   pinGauge: boolean;
 }
 
-const FACE_KEYS: FaceKey[] = ["-x", "+x", "-y", "+y", "-z", "+z"];
-
 const DEFAULTS: Params = {
   length: 2, width: 0.5, height: 0.5,
   density: 1.225, p0: 101325,
