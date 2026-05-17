@@ -12,6 +12,8 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
+    "typecheck:watch": "tsc --noEmit --watch --preserveWatchOutput",
+    "check": "tsc --noEmit && eslint .",
     "clean": "rm -rf dist .vite .tanstack node_modules/.vite node_modules/.cache .tsbuildinfo",
     "typecheck:clean": "bun run clean && tsc --noEmit",
     "build:clean": "bun run clean && vite build",
