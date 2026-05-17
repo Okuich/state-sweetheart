@@ -1178,6 +1178,29 @@ function OptimizePanel({
         </div>
       )}
 
+      {gradDiag && (
+        <div className="rounded-md border border-border bg-background/40 p-3 space-y-2">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              Adjoint diagnostics (current state)
+            </div>
+            <div className="text-[11px] text-muted-foreground">
+              one forward + one adjoint solve
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+            <Stat label="L (current)" value={gradDiag.loss.toExponential(3)} />
+            <Stat label="‖∂L/∂κ‖₂" value={gradDiag.gradNormKappa.toExponential(3)} />
+            <Stat label="‖∂L/∂log κ‖₂" value={gradDiag.gradNormLogKappa.toExponential(3)} />
+            <Stat label="∂L/∂κ range" value={`${gradDiag.minTet.toExponential(1)} … ${gradDiag.maxTet.toExponential(1)}`} />
+            <Stat label="‖∂L/∂f‖₂ (source)" value={gradDiag.gradNormSource.toExponential(3)} />
+            <Stat label="‖∂L/∂g‖₂ (loads)" value={gradDiag.gradNormLoads.toExponential(3)} />
+            <Stat label="overlay range" value={`${gradDiag.minVtx.toExponential(1)} … ${gradDiag.maxVtx.toExponential(1)}`} />
+            <Stat label="overlay" value={showGradOverlay ? "on (viewport)" : "off"} />
+          </div>
+        </div>
+      )}
+
       {result && (
         <div className="space-y-2">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
@@ -1187,6 +1210,8 @@ function OptimizePanel({
             <Stat label="elapsed" value={`${result.elapsedMs.toFixed(0)} ms`} />
           </div>
           <LossChart history={result.history} />
+          <GradNormChart history={result.history} />
+          <IterationTable history={result.history} />
         </div>
       )}
     </div>
