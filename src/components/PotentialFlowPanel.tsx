@@ -665,7 +665,7 @@ function FlowViewer({
     const hiW = ctx.measureText(hi).width;
     ctx.fillText(hi, lx + lw - hiW, ly - 4 * devicePixelRatio);
     ctx.fillText(unit, lx, ly + lh + 12 * devicePixelRatio);
-  }, [out, geo, yaw, pitch, zoom, mode, showVectors, showStreamlines, streamlines, pressureNorm, refPressure]);
+  }, [out, geo, yaw, pitch, zoom, mode, showVectors, showStreamlines, streamlines, pressureNorm, refPressure, showContours, contourCount, contourOpacity]);
 
   // Click → place a new RK4 seed on the inlet face. We project a fine grid of
   // candidate points on x = bb.min[0] and pick the one closest to the click in
