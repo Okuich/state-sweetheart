@@ -1073,6 +1073,60 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
+function PressureForceGrid({
+  forces,
+}: { forces: Record<FaceKey, [number, number, number]> }) {
+  // Inlet/outlet drive the headline force; the four side faces are reported
+  // compactly so net axial force is easy to read off.
+  const fmt = (v: number) => (Math.abs(v) < 1e-3 && v !== 0
+    ? v.toExponential(2)
+    : v.toFixed(3));
+  const mag = (v: [number, number, number]) =>
+    Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+  const net: [number, number, number] = [0, 0, 0];
+  for (const f of FACE_KEYS) {
+    net[0] += forces[f][0]; net[1] += forces[f][1]; net[2] += forces[f][2];
+  }
+  const Row = ({ face, label }: { face: FaceKey; label: string }) => {
+    const F = forces[face];
+    return (
+      <div className="rounded-md border border-border bg-muted/30 px-3 py-2">
+        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+          {label} <span className="opacity-60">({face})</span>
+        </div>
+        <div className="font-mono text-sm text-foreground">
+          F = ({fmt(F[0])}, {fmt(F[1])}, {fmt(F[2])}) N
+        </div>
+        <div className="font-mono text-[11px] text-muted-foreground">
+          |F| = {mag(F).toExponential(3)} N
+        </div>
+      </div>
+    );
+  };
+  return (
+    <div className="space-y-1">
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+        Pressure force  F = ∫ p · n_out dA
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+        <Row face="-x" label="Inlet" />
+        <Row face="+x" label="Outlet" />
+        <div className="rounded-md border border-border bg-muted/30 px-3 py-2">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            Net (all faces)
+          </div>
+          <div className="font-mono text-sm text-foreground">
+            F = ({fmt(net[0])}, {fmt(net[1])}, {fmt(net[2])}) N
+          </div>
+          <div className="font-mono text-[11px] text-muted-foreground">
+            |F| = {mag(net).toExponential(3)} N
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const MODE_LABEL: Record<FaceMode, string> = {
   dirichlet: "Dirichlet φ",
   neumann:   "Neumann v·n",
