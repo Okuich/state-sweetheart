@@ -161,7 +161,7 @@ export function initThermalAdjointGPU(force = false): Promise<ThermalAdjointBack
       layout: "auto",
       compute: { module: device.createShaderModule({ code: WGSL_FLUX_KAPPA }), entryPoint: "main" },
     });
-    return { mode: "gpu", ctx: { device, pipelineOpKappa, pipelineFluxKappa } };
+    return { mode: "gpu", ctx: { device, pipelineOpKappa, pipelineFluxKappa, cache: emptyCache() } };
   })();
   return cached;
 }
