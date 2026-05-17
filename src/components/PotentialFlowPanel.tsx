@@ -331,7 +331,7 @@ function FlowViewer({
   const [yaw, setYaw] = useState(0.7);
   const [pitch, setPitch] = useState(-0.35);
   const [zoom, setZoom] = useState(1);
-  const drag = useRef<{ x: number; y: number; yaw: number; pitch: number } | null>(null);
+  const drag = useRef<{ x: number; y: number; yaw: number; pitch: number; moved: boolean } | null>(null);
 
   const geo = useMemo(() => {
     const verts = out.mesh.mesh.vertices;
