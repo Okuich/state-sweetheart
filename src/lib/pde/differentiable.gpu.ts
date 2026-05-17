@@ -379,23 +379,21 @@ export async function computeKappaGradGPU(
   ctx: ThermalAdjointGPUContext,
   inputs: KappaGradGPUInputs,
 ): Promise<Float32Array> {
-  const { device, pipelineOpKappa, pipelineFluxKappa } = ctx;
+  const { device, pipelineOpKappa, pipelineFluxKappa, cache } = ctx;
   const nTets = inputs.tetVols.length;
   const STORAGE = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST;
+  const UNIFORM = GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST;
 
-  const uBuf = makeStorage(device, toF32(inputs.u), STORAGE);
-  const lBuf = makeStorage(device, toF32(inputs.lambda), STORAGE);
-  const tBuf = makeStorage(device, inputs.tets, STORAGE);
-  const gBuf = makeStorage(device, toF32(inputs.tetGrads), STORAGE);
-  const vBuf = makeStorage(device, toF32(inputs.tetVols), STORAGE);
-  const outBuf = device.createBuffer({
-    size: Math.max(16, nTets * 4),
-    usage: STORAGE,
-  });
-  const infoBuf = device.createBuffer({
-    size: 16,
-    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-  });
+  // --- Upload / re-use storage buffers from the per-context cache.
+  // Topology buffers (tets/tetGrads/tetVols) are stable across an inverse-design
+  // loop and the fingerprint check skips the writeBuffer entirely on hits.
+  const uBuf = uploadSlot(device, cache, "u",        toF32(inputs.u),       STORAGE);
+  const lBuf = uploadSlot(device, cache, "lambda",   toF32(inputs.lambda),  STORAGE);
+  const tBuf = uploadSlot(device, cache, "tets",     inputs.tets,           STORAGE);
+  const gBuf = uploadSlot(device, cache, "tetGrads", toF32(inputs.tetGrads), STORAGE);
+  const vBuf = uploadSlot(device, cache, "tetVols",  toF32(inputs.tetVols), STORAGE);
+  const outBuf = ensureSlot(device, cache, "out", nTets * 4, STORAGE);
+  const infoBuf = ensureSlot(device, cache, "info", 16, UNIFORM);
   device.queue.writeBuffer(infoBuf, 0, new Uint32Array([nTets, 0, 0, 0]));
 
   // --- Operator term
@@ -422,14 +420,9 @@ export async function computeKappaGradGPU(
   }
 
   // --- Optional flux term
-  let dqBuf: GPUBuffer | null = null;
-  let infoFluxBuf: GPUBuffer | null = null;
   if (inputs.dLdq) {
-    dqBuf = makeStorage(device, toF32(inputs.dLdq), STORAGE);
-    infoFluxBuf = device.createBuffer({
-      size: 16,
-      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    });
+    const dqBuf = uploadSlot(device, cache, "dLdq", toF32(inputs.dLdq), STORAGE);
+    const infoFluxBuf = ensureSlot(device, cache, "infoFlux", 16, UNIFORM);
     device.queue.writeBuffer(infoFluxBuf, 0, new Uint32Array([nTets, 0, 0, 0]));
     const bgFlux = device.createBindGroup({
       layout: pipelineFluxKappa.getBindGroupLayout(0),
@@ -451,24 +444,32 @@ export async function computeKappaGradGPU(
 
   device.queue.submit([enc.finish()]);
 
-  // --- Download
-  const staging = device.createBuffer({
-    size: Math.max(16, nTets * 4),
-    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
-  });
+  // --- Download (staging buffer is also pooled).
+  const staging = ensureSlot(
+    device, cache, "staging", nTets * 4,
+    GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+  );
   const enc2 = device.createCommandEncoder();
   enc2.copyBufferToBuffer(outBuf, 0, staging, 0, nTets * 4);
   device.queue.submit([enc2.finish()]);
   await staging.mapAsync(GPUMapMode.READ);
   const out = new Float32Array(staging.getMappedRange().slice(0, nTets * 4));
   staging.unmap();
-
-  // Release transient buffers (output is downloaded; we don't expose GPU-resident grads here)
-  for (const b of [uBuf, lBuf, tBuf, gBuf, vBuf, outBuf, infoBuf, staging]) b.destroy();
-  if (dqBuf) dqBuf.destroy();
-  if (infoFluxBuf) infoFluxBuf.destroy();
-
   return out;
+}
+
+/**
+ * Release every GPU buffer held by the cache (call when the inverse-design
+ * loop exits, or before tearing down the device). Safe to call on a fresh
+ * context — it just walks empty slots.
+ */
+export function releaseThermalAdjointGPUCache(ctx: ThermalAdjointGPUContext): void {
+  const c = ctx.cache;
+  (Object.keys(c) as Array<keyof KappaGradBufferCache>).forEach((k) => {
+    const entry = c[k];
+    if (entry) entry.buf.destroy();
+    c[k] = null;
+  });
 }
 
 // ─── Public tensor adjoint ───────────────────────────────────────────────────
