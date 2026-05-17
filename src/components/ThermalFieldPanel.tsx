@@ -254,19 +254,33 @@ function runSolve(params: Params, kappaOverride?: Float64Array): SolveOutput {
   };
 }
 
+interface Probe {
+  id: string;
+  index: number;
+  target: number;
+  weight: number;
+}
+
 interface ViewerProps {
   out: SolveOutput;
   mode: FieldMode;
   showFlux: boolean;
   height?: number;
+  probes?: Probe[];
+  pickArmed?: boolean;
+  onPick?: (vertexIndex: number) => void;
 }
 
-function ThermalViewer({ out, mode, showFlux, height = 360 }: ViewerProps) {
+function ThermalViewer({
+  out, mode, showFlux, height = 360,
+  probes = [], pickArmed = false, onPick,
+}: ViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [yaw, setYaw] = useState(0.7);
   const [pitch, setPitch] = useState(-0.35);
   const [zoom, setZoom] = useState(1);
-  const drag = useRef<{ x: number; y: number; yaw: number; pitch: number } | null>(null);
+  const drag = useRef<{ x: number; y: number; yaw: number; pitch: number; moved: boolean } | null>(null);
+  const projectedRef = useRef<{ px: Float32Array; py: Float32Array; pz: Float32Array } | null>(null);
 
   const geo = useMemo(() => {
     const verts = out.mesh.mesh.vertices;
