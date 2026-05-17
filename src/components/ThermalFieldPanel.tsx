@@ -450,27 +450,85 @@ function ThermalViewer({
     const hiW = ctx.measureText(hi).width;
     ctx.fillText(hi, lx + lw - hiW, ly - 4 * devicePixelRatio);
     ctx.fillText(mode === "temperature" ? "T" : "hotspot", lx, ly + lh + 12 * devicePixelRatio);
-  }, [out, geo, yaw, pitch, zoom, mode, showFlux]);
+    // Probe markers (drawn on top).
+    if (probes.length > 0) {
+      const T = out.thermal.T;
+      for (const p of probes) {
+        if (p.index < 0 || p.index >= geo.nV) continue;
+        const x = px[p.index], y = py[p.index];
+        const cur = T[p.index];
+        const err = cur - p.target;
+        const ok = Math.abs(err) < 0.5;
+        ctx.beginPath();
+        ctx.arc(x, y, 6 * devicePixelRatio, 0, Math.PI * 2);
+        ctx.fillStyle = ok ? "rgba(34,197,94,0.95)" : "rgba(239,68,68,0.95)";
+        ctx.fill();
+        ctx.lineWidth = 1.5 * devicePixelRatio;
+        ctx.strokeStyle = "rgba(255,255,255,0.95)";
+        ctx.stroke();
+        ctx.fillStyle = "rgba(255,255,255,0.95)";
+        ctx.font = `${10 * devicePixelRatio}px ui-monospace, monospace`;
+        ctx.fillText(
+          `#${p.index} → ${p.target.toFixed(0)}K (${cur.toFixed(0)})`,
+          x + 9 * devicePixelRatio, y - 6 * devicePixelRatio,
+        );
+      }
+    }
+  }, [out, geo, yaw, pitch, zoom, mode, showFlux, probes]);
+
+  const handleClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!pickArmed || !onPick) return;
+    const proj = projectedRef.current;
+    const c = canvasRef.current;
+    if (!proj || !c) return;
+    const rect = c.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) * devicePixelRatio;
+    const my = (e.clientY - rect.top) * devicePixelRatio;
+    let best = -1, bestD = Infinity;
+    for (let i = 0; i < geo.nV; i++) {
+      const dx = proj.px[i] - mx, dy = proj.py[i] - my;
+      const d = dx * dx + dy * dy;
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    if (best >= 0 && bestD < (24 * devicePixelRatio) * (24 * devicePixelRatio)) {
+      onPick(best);
+    }
+  }, [pickArmed, onPick, geo]);
 
   return (
     <div
       className="relative w-full overflow-hidden rounded-md border border-border bg-black"
       style={{ height }}
-      onMouseDown={(e) => { drag.current = { x: e.clientX, y: e.clientY, yaw, pitch }; }}
+      onMouseDown={(e) => {
+        drag.current = { x: e.clientX, y: e.clientY, yaw, pitch, moved: false };
+      }}
       onMouseMove={(e) => {
         if (!drag.current) return;
         const dx = e.clientX - drag.current.x;
         const dy = e.clientY - drag.current.y;
+        if (Math.abs(dx) + Math.abs(dy) > 3) drag.current.moved = true;
         setYaw(drag.current.yaw + dx * 0.01);
         setPitch(drag.current.pitch + dy * 0.01);
       }}
-      onMouseUp={() => { drag.current = null; }}
+      onMouseUp={(e) => {
+        const wasDrag = drag.current?.moved;
+        drag.current = null;
+        if (!wasDrag) handleClick(e);
+      }}
       onMouseLeave={() => { drag.current = null; }}
       onWheel={(e) => {
         setZoom((z) => Math.max(0.3, Math.min(4, z * (e.deltaY < 0 ? 1.1 : 0.9))));
       }}
     >
-      <canvas ref={canvasRef} className="h-full w-full cursor-grab active:cursor-grabbing" />
+      <canvas
+        ref={canvasRef}
+        className={`h-full w-full ${pickArmed ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing"}`}
+      />
+      {pickArmed && (
+        <div className="absolute top-2 left-2 rounded bg-primary/90 text-primary-foreground text-[11px] px-2 py-1 font-mono">
+          Click a vertex to add probe
+        </div>
+      )}
     </div>
   );
 }
