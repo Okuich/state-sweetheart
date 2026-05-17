@@ -363,7 +363,7 @@ function FlowViewer({
 
   // RK4 streamlines through the mesh-backed velocity sampler.
   const streamlines = useMemo(() => {
-    if (!showStreamlines) return [] as Float64Array[];
+    if (!showStreamlines) return [] as Array<{ pts: Float64Array; speed: Float32Array }>;
     const meshIn = { vertices: out.mesh.mesh.vertices, tets: out.mesh.mesh.tets };
     const sampleV = makeVelocitySampler(meshIn, out.result.velocityPerTet);
     // Normalize sampled velocity → unit direction so stepSize stays in world units.
@@ -391,12 +391,18 @@ function FlowViewer({
         ]);
       }
     }
-    const lines: Float64Array[] = [];
+    const lines: Array<{ pts: Float64Array; speed: Float32Array }> = [];
     for (const s of seeds) {
       const pts = traceFieldLine(s, sample, {
         stepSize: step, maxSteps: rk4Steps, direction: 1,
       });
-      lines.push(pts);
+      const nPts = pts.length / 3;
+      const speed = new Float32Array(nPts);
+      for (let i = 0; i < nPts; i++) {
+        const v = sampleV(pts[i * 3], pts[i * 3 + 1], pts[i * 3 + 2]);
+        speed[i] = v ? Math.hypot(v[0], v[1], v[2]) : 0;
+      }
+      lines.push({ pts, speed });
     }
     return lines;
   }, [out, showStreamlines, seedsPerSide, rk4Steps]);
