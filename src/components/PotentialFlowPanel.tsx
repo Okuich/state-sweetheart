@@ -688,7 +688,9 @@ export function PotentialFlowPanel() {
               <Stat label="p min" value={`${out.pMin.toExponential(3)} Pa`} />
               <Stat label="p max" value={`${out.pMax.toExponential(3)} Pa`} />
               <Stat label="Δp = ½ρ|v|²max" value={`${(0.5 * out.density * out.speedMax * out.speedMax).toExponential(2)} Pa`} />
+              <Stat label="Σ Neumann flux" value={`${out.netFlux.toExponential(2)} m³/s`} />
             </div>
+            <FaceSummaryGrid summary={out.faceSummary} />
           </>
         )}
       </CardContent>
