@@ -327,13 +327,18 @@ interface ViewerProps {
   onAddSeed: (seed: [number, number, number]) => void;
   pressureNorm: PressureNorm;
   refPressure: number;
+  showContours: boolean;
+  contourCount: number;
+  contourOpacity: number;
   height?: number;
 }
 
 function FlowViewer({
   out, mode, showVectors, showStreamlines, direction, stepScale,
   seedsPerSide, rk4Steps, customSeeds, onAddSeed,
-  pressureNorm, refPressure, height = 380,
+  pressureNorm, refPressure,
+  showContours, contourCount, contourOpacity,
+  height = 380,
 }: ViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [yaw, setYaw] = useState(0.7);
@@ -525,6 +530,51 @@ function FlowViewer({
       ctx.stroke();
     }
 
+    // Iso-pressure contour overlay (marching triangles over the surface mesh).
+    // Iso-levels are spaced uniformly between pMin and pMax in raw Pa, so they
+    // remain meaningful regardless of the chosen color normalization.
+    if (mode === "pressure" && showContours && contourCount > 0 && out.pMax > out.pMin) {
+      const N = Math.max(1, Math.min(40, Math.floor(contourCount)));
+      const alpha = Math.max(0, Math.min(1, contourOpacity));
+      ctx.lineWidth = 0.9;
+      for (let k = 1; k <= N; k++) {
+        const t = k / (N + 1);
+        const iso = out.pMin + t * (out.pMax - out.pMin);
+        // Contour color = ramp at this normalized level (matches the heatmap),
+        // outlined darker for legibility.
+        const [r, g, bl] = ramp(t);
+        ctx.strokeStyle = `rgba(${r},${g},${bl},${alpha})`;
+        ctx.beginPath();
+        for (const tri of tris) {
+          const { a, b, c } = tri;
+          // Back-face cull (same winding test used for the fill).
+          const ux = px[b] - px[a], uy = py[b] - py[a];
+          const vx = px[c] - px[a], vy = py[c] - py[a];
+          if (ux * vy - uy * vx <= 0) continue;
+          const pa = prs[a], pb = prs[b], pc = prs[c];
+          const sa = pa >= iso ? 1 : 0, sb = pb >= iso ? 1 : 0, sc = pc >= iso ? 1 : 0;
+          const code = sa + sb + sc;
+          if (code === 0 || code === 3) continue;
+          // Pick the two edges that straddle the iso-value.
+          const pts: Array<[number, number]> = [];
+          const edge = (i: number, j: number, vi: number, vj: number) => {
+            const denom = vj - vi;
+            if (denom === 0) return;
+            const tt = (iso - vi) / denom;
+            pts.push([px[i] + (px[j] - px[i]) * tt, py[i] + (py[j] - py[i]) * tt]);
+          };
+          if (sa !== sb) edge(a, b, pa, pb);
+          if (sb !== sc) edge(b, c, pb, pc);
+          if (sc !== sa) edge(c, a, pc, pa);
+          if (pts.length === 2) {
+            ctx.moveTo(pts[0][0], pts[0][1]);
+            ctx.lineTo(pts[1][0], pts[1][1]);
+          }
+        }
+        ctx.stroke();
+      }
+    }
+
     if (showVectors && out.speedMax > 0) {
       const V = out.result.velocityPerTet;
       const Sp = out.result.speedTet;
@@ -615,7 +665,7 @@ function FlowViewer({
     const hiW = ctx.measureText(hi).width;
     ctx.fillText(hi, lx + lw - hiW, ly - 4 * devicePixelRatio);
     ctx.fillText(unit, lx, ly + lh + 12 * devicePixelRatio);
-  }, [out, geo, yaw, pitch, zoom, mode, showVectors, showStreamlines, streamlines, pressureNorm, refPressure]);
+  }, [out, geo, yaw, pitch, zoom, mode, showVectors, showStreamlines, streamlines, pressureNorm, refPressure, showContours, contourCount, contourOpacity]);
 
   // Click → place a new RK4 seed on the inlet face. We project a fine grid of
   // candidate points on x = bb.min[0] and pick the one closest to the click in
@@ -707,6 +757,9 @@ export function PotentialFlowPanel() {
   const [stepScale, setStepScale] = useState(1);
   const [pressureNorm, setPressureNorm] = useState<PressureNorm>("minmax");
   const [refPressure, setRefPressure] = useState(101325);
+  const [showContours, setShowContours] = useState(false);
+  const [contourCount, setContourCount] = useState(10);
+  const [contourOpacity, setContourOpacity] = useState(0.85);
   const [customSeeds, setCustomSeeds] = useState<Array<[number, number, number]>>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -815,6 +868,55 @@ export function PotentialFlowPanel() {
               />
             </div>
           )}
+          <Button
+            variant={showContours ? "default" : "outline"}
+            size="sm"
+            disabled={mode !== "pressure"}
+            onClick={() => setShowContours((s) => !s)}
+            title="Overlay iso-pressure contour lines on the Bernoulli heatmap"
+          >
+            Contours {showContours ? "on" : "off"}
+          </Button>
+          {mode === "pressure" && showContours && (
+            <>
+              <div className="flex items-center gap-1.5">
+                <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                  levels
+                </Label>
+                <Input
+                  type="number"
+                  className="h-9 w-[70px]"
+                  value={contourCount}
+                  step={1}
+                  min={1}
+                  max={40}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10);
+                    if (Number.isFinite(v)) setContourCount(Math.max(1, Math.min(40, v)));
+                  }}
+                  title="Number of iso-pressure contour lines (1–40)"
+                />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                  opacity
+                </Label>
+                <Input
+                  type="number"
+                  className="h-9 w-[70px]"
+                  value={contourOpacity}
+                  step={0.05}
+                  min={0}
+                  max={1}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    if (Number.isFinite(v)) setContourOpacity(Math.max(0, Math.min(1, v)));
+                  }}
+                  title="Contour line opacity (0–1)"
+                />
+              </div>
+            </>
+          )}
           <Button variant={showVectors ? "default" : "outline"} size="sm" onClick={() => setShowVectors((s) => !s)}>
             v arrows {showVectors ? "on" : "off"}
           </Button>
@@ -883,6 +985,9 @@ export function PotentialFlowPanel() {
               onAddSeed={(s) => setCustomSeeds((prev) => [...prev, s])}
               pressureNorm={pressureNorm}
               refPressure={refPressure}
+              showContours={showContours}
+              contourCount={contourCount}
+              contourOpacity={contourOpacity}
             />
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
               <Stat label="φ min" value={out.phiMin.toFixed(3)} />
