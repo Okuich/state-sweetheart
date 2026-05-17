@@ -339,3 +339,230 @@ export function inverseDesignKappa(
   const finalSolution = lastSolution ?? solveThermal({ ...toThermalProblem(problem), kappa });
   return { kappa, history, finalSolution };
 }
+
+// ─── Joint inverse design over (κ, source, loads) ────────────────────────────
+
+export interface InverseDesignTargets {
+  /** Optimize per-tet log(κ). Bounds: [kappaMin, kappaMax]. Default false. */
+  kappa?: boolean;
+  /** Optimize per-vertex source density f. Default false. */
+  source?: boolean;
+  /** Optimize per-vertex Neumann load g. Dirichlet nodes are skipped. Default false. */
+  loads?: boolean;
+}
+
+export interface InverseDesignAllOptions {
+  steps?: number;
+  /** Per-channel learning rates. Defaults: κ=0.05, source=0.05, loads=0.05. */
+  learningRate?: { kappa?: number; source?: number; loads?: number };
+  kappaMin?: number;       // default 1e-3
+  kappaMax?: number;       // default 1e3
+  sourceMin?: number;      // default -Infinity
+  sourceMax?: number;      // default +Infinity
+  loadsMin?: number;       // default -Infinity
+  loadsMax?: number;       // default +Infinity
+  /**
+   * Tikhonov regularization vs the initial value, per channel.
+   *   κ:      ½·reg.kappa  · Σ (log κ_t  − log κ_t^0)²
+   *   source: ½·reg.source · Σ (f_i      − f_i^0)²
+   *   loads:  ½·reg.loads  · Σ (g_i      − g_i^0)²
+   */
+  regularization?: { kappa?: number; source?: number; loads?: number };
+  onStep?: (
+    step: number,
+    loss: number,
+    state: { kappa: Float64Array; source: Float64Array; loads: Float64Array },
+  ) => void;
+}
+
+export interface InverseDesignAllResult {
+  kappa: Float64Array;
+  source: Float64Array;
+  loads: Float64Array;
+  history: Array<{ step: number; loss: number; gradNorm: number }>;
+  finalSolution: ThermalSolution;
+}
+
+/**
+ * Projected gradient descent that can jointly optimize any subset of
+ * (per-tet κ, per-vertex source f, per-vertex Neumann load g) against a
+ * temperature-target loss at probe vertices.
+ *
+ * κ is updated in log-space (multiplicative, positivity preserved); source
+ * and loads are updated in linear space with optional box constraints.
+ * Dirichlet nodes are left untouched for loads (their adjoint is zero, so
+ * the gradient is already zero — we additionally pin the value to its
+ * initial scalar so projection is a no-op there).
+ *
+ * One outer step = one forward solve + one adjoint solve, then a single
+ * vectorized update per active channel. No line search.
+ */
+export function inverseDesignThermal(
+  problem: DifferentiableThermalProblem,
+  probes: ReadonlyArray<{ index: number; target: number; weight?: number }>,
+  targets: InverseDesignTargets,
+  options: InverseDesignAllOptions = {},
+): InverseDesignAllResult {
+  const steps = options.steps ?? 20;
+  const lrK = options.learningRate?.kappa  ?? 0.05;
+  const lrF = options.learningRate?.source ?? 0.05;
+  const lrG = options.learningRate?.loads  ?? 0.05;
+  const kMin = options.kappaMin ?? 1e-3;
+  const kMax = options.kappaMax ?? 1e3;
+  const fMin = options.sourceMin ?? -Infinity;
+  const fMax = options.sourceMax ?? +Infinity;
+  const gMin = options.loadsMin  ?? -Infinity;
+  const gMax = options.loadsMax  ?? +Infinity;
+  const regK = options.regularization?.kappa  ?? 0;
+  const regF = options.regularization?.source ?? 0;
+  const regG = options.regularization?.loads  ?? 0;
+
+  const nV = problem.mesh.vertices.length / 3;
+  const nT = problem.kappa.length;
+
+  // Live design state (cloned from problem so caller's buffers are untouched).
+  const kappa  = new Float64Array(problem.kappa);
+  const source = problem.source
+    ? new Float64Array(problem.source)
+    : new Float64Array(nV);
+  const loads  = problem.neumannLoads
+    ? new Float64Array(problem.neumannLoads)
+    : new Float64Array(nV);
+
+  // Initial references for regularization.
+  const logK0 = new Float64Array(nT);
+  for (let t = 0; t < nT; t++) logK0[t] = Math.log(kappa[t]);
+  const f0 = new Float64Array(source);
+  const g0 = new Float64Array(loads);
+
+  // Mask of Dirichlet vertex ids (no update on loads / source there).
+  const dirichletMask = new Uint8Array(nV);
+  if (problem.dirichlet) {
+    for (const bc of problem.dirichlet) dirichletMask[bc.index] = 1;
+  }
+
+  const history: InverseDesignAllResult["history"] = [];
+  let lastSolution: ThermalSolution | undefined;
+
+  for (let step = 0; step < steps; step++) {
+    // ── Forward solve with current design.
+    const fwd = solveThermal({
+      mesh: problem.mesh,
+      kappa,
+      source,
+      neumannLoads: loads,
+      dirichlet: problem.dirichlet,
+      cg: problem.cg,
+    });
+    lastSolution = fwd;
+
+    const { loss: dataLoss, dLdT } = targetTemperatureLoss(fwd.T, probes);
+
+    // Regularizers (closed-form, also contribute to displayed loss).
+    let regLoss = 0;
+    const dRegLogK = new Float64Array(nT);
+    if (regK > 0 && targets.kappa) {
+      for (let t = 0; t < nT; t++) {
+        const d = Math.log(kappa[t]) - logK0[t];
+        regLoss += 0.5 * regK * d * d;
+        dRegLogK[t] = regK * d;
+      }
+    }
+    const dRegF = new Float64Array(nV);
+    if (regF > 0 && targets.source) {
+      for (let i = 0; i < nV; i++) {
+        const d = source[i] - f0[i];
+        regLoss += 0.5 * regF * d * d;
+        dRegF[i] = regF * d;
+      }
+    }
+    const dRegG = new Float64Array(nV);
+    if (regG > 0 && targets.loads) {
+      for (let i = 0; i < nV; i++) {
+        if (dirichletMask[i]) continue;
+        const d = loads[i] - g0[i];
+        regLoss += 0.5 * regG * d * d;
+        dRegG[i] = regG * d;
+      }
+    }
+
+    // ── Adjoint solve via differentiateThermal (one extra linear solve).
+    const grads = differentiateThermal(
+      { ...problem, kappa, source, neumannLoads: loads },
+      { dLdT },
+      fwd,
+    );
+
+    let gNorm2 = 0;
+
+    // ── κ step (log-space).
+    if (targets.kappa) {
+      for (let t = 0; t < nT; t++) {
+        const dLogK = grads.dLdKappa[t] * kappa[t] + dRegLogK[t];
+        gNorm2 += dLogK * dLogK;
+        let lk = Math.log(kappa[t]) - lrK * dLogK;
+        if (lk < Math.log(kMin)) lk = Math.log(kMin);
+        if (lk > Math.log(kMax)) lk = Math.log(kMax);
+        kappa[t] = Math.exp(lk);
+      }
+    }
+
+    // ── source step (linear, box constraints).
+    if (targets.source) {
+      for (let i = 0; i < nV; i++) {
+        const d = grads.dLdSource[i] + dRegF[i];
+        gNorm2 += d * d;
+        let v = source[i] - lrF * d;
+        if (v < fMin) v = fMin;
+        if (v > fMax) v = fMax;
+        source[i] = v;
+      }
+    }
+
+    // ── loads step (linear, box constraints, skip Dirichlet).
+    if (targets.loads) {
+      for (let i = 0; i < nV; i++) {
+        if (dirichletMask[i]) continue;
+        const d = grads.dLdLoads[i] + dRegG[i];
+        gNorm2 += d * d;
+        let v = loads[i] - lrG * d;
+        if (v < gMin) v = gMin;
+        if (v > gMax) v = gMax;
+        loads[i] = v;
+      }
+    }
+
+    const totalLoss = dataLoss + regLoss;
+    history.push({ step, loss: totalLoss, gradNorm: Math.sqrt(gNorm2) });
+    options.onStep?.(step, totalLoss, { kappa, source, loads });
+  }
+
+  const finalSolution = lastSolution ?? solveThermal({
+    mesh: problem.mesh, kappa, source, neumannLoads: loads,
+    dirichlet: problem.dirichlet, cg: problem.cg,
+  });
+  return { kappa, source, loads, history, finalSolution };
+}
+
+/**
+ * Convenience wrapper: optimize only per-vertex source f against probe targets.
+ */
+export function inverseDesignSource(
+  problem: DifferentiableThermalProblem,
+  probes: ReadonlyArray<{ index: number; target: number; weight?: number }>,
+  options: InverseDesignAllOptions = {},
+): InverseDesignAllResult {
+  return inverseDesignThermal(problem, probes, { source: true }, options);
+}
+
+/**
+ * Convenience wrapper: optimize only per-vertex Neumann load g against probe
+ * targets. Dirichlet nodes are pinned (their gradient is zero).
+ */
+export function inverseDesignLoads(
+  problem: DifferentiableThermalProblem,
+  probes: ReadonlyArray<{ index: number; target: number; weight?: number }>,
+  options: InverseDesignAllOptions = {},
+): InverseDesignAllResult {
+  return inverseDesignThermal(problem, probes, { loads: true }, options);
+}
