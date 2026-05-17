@@ -52,6 +52,23 @@ export {
   type InverseDesignAllResult,
 } from "./differentiable";
 export {
+  differentiateThermalTensor,
+  initThermalAdjointGPU,
+  computeKappaGradGPU,
+  inverseDesignKappaGPU,
+  isGPUTensor,
+  toFloat32,
+  toFloat64,
+  type ThermalTensor,
+  type GPUTensor,
+  type DifferentiableThermalProblemTensor,
+  type ThermalGradientTensors,
+  type ThermalAdjointBackend,
+  type ThermalAdjointGPUContext,
+  type InverseDesignKappaGPUOptions,
+  type InverseDesignKappaGPUResult,
+} from "./differentiable.gpu";
+export {
   solvePotentialFlow, makeVelocitySampler,
   type PotentialFlowProblem, type PotentialFlowSolution,
 } from "./potentialFlow";
