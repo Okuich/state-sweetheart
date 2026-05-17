@@ -439,7 +439,7 @@ function FlowViewer({
       lines.push({ pts, speed, seedIdx });
     }
     return lines;
-  }, [out, showStreamlines, direction, stepScale, seedsPerSide, rk4Steps]);
+  }, [out, showStreamlines, direction, stepScale, seedsPerSide, rk4Steps, customSeeds]);
 
   useEffect(() => {
     const c = canvasRef.current;
