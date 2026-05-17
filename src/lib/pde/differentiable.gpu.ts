@@ -413,7 +413,9 @@ export async function differentiateThermalTensor(
   const f32grad = await computeKappaGradGPU(backend.ctx, {
     u: cpu.forward.T,
     lambda: cpu.adjoint,
-    tets: problem.mesh.tets,
+    tets: problem.mesh.tets instanceof Uint32Array
+      ? problem.mesh.tets
+      : new Uint32Array(problem.mesh.tets),
     tetGrads: asm.tetGradients,
     tetVols: asm.tetVolumes,
     dLdq: sens.dLdFluxPerTet,
