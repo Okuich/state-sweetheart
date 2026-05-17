@@ -392,21 +392,45 @@ function FlowViewer({
         ]);
       }
     }
-    const lines: Array<{ pts: Float64Array; speed: Float32Array }> = [];
+    const lines: Array<{ pts: Float64Array; speed: Float32Array; seedIdx: number }> = [];
     for (const s of seeds) {
-      const pts = traceFieldLine(s, sample, {
+      const fwd = traceFieldLine(s, sample, {
         stepSize: step, maxSteps: rk4Steps, direction: 1,
       });
+      let pts: Float64Array;
+      let seedIdx: number;
+      if (bidirectional) {
+        const bwd = traceFieldLine(s, sample, {
+          stepSize: step, maxSteps: rk4Steps, direction: -1,
+        });
+        // bwd[0] == fwd[0] (the seed). Reverse bwd (skip its first point) and
+        // prepend so the combined path goes upstream → seed → downstream.
+        const nBwd = bwd.length / 3;
+        const nFwd = fwd.length / 3;
+        const total = (nBwd - 1) + nFwd;
+        pts = new Float64Array(total * 3);
+        for (let i = nBwd - 1; i >= 1; i--) {
+          const dst = (nBwd - 1 - i) * 3;
+          pts[dst]     = bwd[i * 3];
+          pts[dst + 1] = bwd[i * 3 + 1];
+          pts[dst + 2] = bwd[i * 3 + 2];
+        }
+        pts.set(fwd, (nBwd - 1) * 3);
+        seedIdx = nBwd - 1;
+      } else {
+        pts = fwd;
+        seedIdx = 0;
+      }
       const nPts = pts.length / 3;
       const speed = new Float32Array(nPts);
       for (let i = 0; i < nPts; i++) {
         const v = sampleV(pts[i * 3], pts[i * 3 + 1], pts[i * 3 + 2]);
         speed[i] = v ? Math.hypot(v[0], v[1], v[2]) : 0;
       }
-      lines.push({ pts, speed });
+      lines.push({ pts, speed, seedIdx });
     }
     return lines;
-  }, [out, showStreamlines, seedsPerSide, rk4Steps]);
+  }, [out, showStreamlines, bidirectional, seedsPerSide, rk4Steps]);
 
   useEffect(() => {
     const c = canvasRef.current;
