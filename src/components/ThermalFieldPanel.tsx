@@ -578,6 +578,22 @@ function ThermalViewer({
 
 type PanelMode = "forward" | "optimize";
 
+interface GradDiag {
+  /** Per-vertex |∂L/∂κ| spread from incident tets (for surface heatmap). */
+  perVertex: Float64Array;
+  /** Per-tet ∂L/∂κ. */
+  perTet: Float64Array;
+  /** Per-tet (∂L/∂κ)·κ — equivalent to log-space gradient. */
+  perTetLog: Float64Array;
+  minTet: number; maxTet: number;
+  minVtx: number; maxVtx: number;
+  loss: number;
+  gradNormKappa: number;
+  gradNormLogKappa: number;
+  gradNormSource: number;
+  gradNormLoads: number;
+}
+
 interface OptimizeOptions {
   steps: number;
   learningRate: number;
