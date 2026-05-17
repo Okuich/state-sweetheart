@@ -991,6 +991,36 @@ export function PotentialFlowPanel() {
           >
             Clear seeds {customSeeds.length > 0 ? `(${customSeeds.length})` : ""}
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!out}
+            onClick={() => {
+              if (!out) return;
+              const verts = out.mesh.mesh.vertices;
+              const p = out.pressure;
+              const n = p.length;
+              // Stream rows into chunks to avoid one giant string allocation.
+              const rows: string[] = ["index,x,y,z,pressure_Pa"];
+              for (let i = 0; i < n; i++) {
+                rows.push(
+                  `${i},${verts[i * 3]},${verts[i * 3 + 1]},${verts[i * 3 + 2]},${p[i]}`,
+                );
+              }
+              const blob = new Blob([rows.join("\n")], { type: "text/csv" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = `bernoulli-pressure-${n}v-${Date.now()}.csv`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+            }}
+            title="Download per-vertex Bernoulli pressure (Pa) as CSV"
+          >
+            Export pressure CSV
+          </Button>
         </div>
         <div className="text-[11px] text-muted-foreground">
           Tip: click the inlet face (left side, x = min) in the viewer to place a new RK4 streamline seed.
