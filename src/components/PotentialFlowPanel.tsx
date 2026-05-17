@@ -318,18 +318,20 @@ interface ViewerProps {
   stepScale: number;
   seedsPerSide: number;
   rk4Steps: number;
+  customSeeds: ReadonlyArray<[number, number, number]>;
+  onAddSeed: (seed: [number, number, number]) => void;
   height?: number;
 }
 
 function FlowViewer({
   out, mode, showVectors, showStreamlines, direction, stepScale,
-  seedsPerSide, rk4Steps, height = 380,
+  seedsPerSide, rk4Steps, customSeeds, onAddSeed, height = 380,
 }: ViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [yaw, setYaw] = useState(0.7);
   const [pitch, setPitch] = useState(-0.35);
   const [zoom, setZoom] = useState(1);
-  const drag = useRef<{ x: number; y: number; yaw: number; pitch: number } | null>(null);
+  const drag = useRef<{ x: number; y: number; yaw: number; pitch: number; moved: boolean } | null>(null);
 
   const geo = useMemo(() => {
     const verts = out.mesh.mesh.vertices;
@@ -396,6 +398,7 @@ function FlowViewer({
         ]);
       }
     }
+    for (const s of customSeeds) seeds.push([s[0], s[1], s[2]]);
     const traceDir = (s: [number, number, number], dir: 1 | -1) =>
       traceFieldLine(s, sample, { stepSize: step, maxSteps: rk4Steps, direction: dir });
 
@@ -436,7 +439,7 @@ function FlowViewer({
       lines.push({ pts, speed, seedIdx });
     }
     return lines;
-  }, [out, showStreamlines, direction, stepScale, seedsPerSide, rk4Steps]);
+  }, [out, showStreamlines, direction, stepScale, seedsPerSide, rk4Steps, customSeeds]);
 
   useEffect(() => {
     const c = canvasRef.current;
@@ -590,25 +593,82 @@ function FlowViewer({
     ctx.fillText(unit, lx, ly + lh + 12 * devicePixelRatio);
   }, [out, geo, yaw, pitch, zoom, mode, showVectors, showStreamlines, streamlines]);
 
+  // Click → place a new RK4 seed on the inlet face. We project a fine grid of
+  // candidate points on x = bb.min[0] and pick the one closest to the click in
+  // screen space — robust without needing to invert the perspective matrix.
+  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const c = canvasRef.current;
+    if (!c) return;
+    const rect = c.getBoundingClientRect();
+    const sx = (e.clientX - rect.left) * devicePixelRatio;
+    const sy = (e.clientY - rect.top)  * devicePixelRatio;
+    const W = c.width, H = c.height;
+    const cy0 = Math.cos(yaw), sy0 = Math.sin(yaw);
+    const cp0 = Math.cos(pitch), sp0 = Math.sin(pitch);
+    const proj = (x: number, y: number, z: number): [number, number] => {
+      const xr = x * cy0 - z * sy0;
+      const zr = x * sy0 + z * cy0;
+      const yr = y * cp0 - zr * sp0;
+      const zr2 = y * sp0 + zr * cp0;
+      const f = (W * 0.45 * zoom) / (2.5 + zr2);
+      return [W / 2 + xr * f, H / 2 - yr * f];
+    };
+    const bb = out.mesh.mesh.bbox;
+    const ext = Math.max(
+      bb.max[0] - bb.min[0], bb.max[1] - bb.min[1], bb.max[2] - bb.min[2],
+    );
+    const cx = (bb.max[0] + bb.min[0]) / 2;
+    const cyW = (bb.max[1] + bb.min[1]) / 2;
+    const czW = (bb.max[2] + bb.min[2]) / 2;
+    const inletX = bb.min[0] + ext * 1e-3;
+    const xn = (inletX - cx) / ext;
+    const N = 64;
+    let best = Infinity;
+    let bestY = bb.min[1], bestZ = bb.min[2];
+    for (let j = 0; j <= N; j++) {
+      const yw = bb.min[1] + (j / N) * (bb.max[1] - bb.min[1]);
+      const yn = (yw - cyW) / ext;
+      for (let k = 0; k <= N; k++) {
+        const zw = bb.min[2] + (k / N) * (bb.max[2] - bb.min[2]);
+        const zn = (zw - czW) / ext;
+        const [px, py] = proj(xn, yn, zn);
+        const dx = px - sx, dy = py - sy;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < best) { best = d2; bestY = yw; bestZ = zw; }
+      }
+    }
+    // Reject clicks that aren't near the inlet face (>20px in device space).
+    const tol = 20 * devicePixelRatio;
+    if (best > tol * tol) return;
+    onAddSeed([inletX, bestY, bestZ]);
+  };
+
   return (
     <div
       className="relative w-full overflow-hidden rounded-md border border-border bg-black"
       style={{ height }}
-      onMouseDown={(e) => { drag.current = { x: e.clientX, y: e.clientY, yaw, pitch }; }}
+      onMouseDown={(e) => {
+        drag.current = { x: e.clientX, y: e.clientY, yaw, pitch, moved: false };
+      }}
       onMouseMove={(e) => {
         if (!drag.current) return;
         const dx = e.clientX - drag.current.x;
         const dy = e.clientY - drag.current.y;
+        if (Math.hypot(dx, dy) > 3) drag.current.moved = true;
         setYaw(drag.current.yaw + dx * 0.01);
         setPitch(drag.current.pitch + dy * 0.01);
       }}
-      onMouseUp={() => { drag.current = null; }}
+      onMouseUp={(e) => {
+        const moved = drag.current?.moved ?? false;
+        drag.current = null;
+        if (!moved) handleClick(e);
+      }}
       onMouseLeave={() => { drag.current = null; }}
       onWheel={(e) => {
         setZoom((z) => Math.max(0.3, Math.min(4, z * (e.deltaY < 0 ? 1.1 : 0.9))));
       }}
     >
-      <canvas ref={canvasRef} className="h-full w-full cursor-grab active:cursor-grabbing" />
+      <canvas ref={canvasRef} className="h-full w-full cursor-crosshair active:cursor-grabbing" />
     </div>
   );
 }
@@ -621,6 +681,7 @@ export function PotentialFlowPanel() {
   const [showStreamlines, setShowStreamlines] = useState(true);
   const [direction, setDirection] = useState<StreamDirection>("forward");
   const [stepScale, setStepScale] = useState(1);
+  const [customSeeds, setCustomSeeds] = useState<Array<[number, number, number]>>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -732,6 +793,18 @@ export function PotentialFlowPanel() {
               title="RK4 step size as multiple of bbox·0.015 (smaller = more accurate, slower)"
             />
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!showStreamlines || customSeeds.length === 0}
+            onClick={() => setCustomSeeds([])}
+            title="Remove all click-placed seeds"
+          >
+            Clear seeds {customSeeds.length > 0 ? `(${customSeeds.length})` : ""}
+          </Button>
+        </div>
+        <div className="text-[11px] text-muted-foreground">
+          Tip: click the inlet face (left side, x = min) in the viewer to place a new RK4 streamline seed.
         </div>
 
         {err && (
@@ -750,6 +823,8 @@ export function PotentialFlowPanel() {
               stepScale={stepScale}
               seedsPerSide={params.seedsPerSide}
               rk4Steps={params.rk4Steps}
+              customSeeds={customSeeds}
+              onAddSeed={(s) => setCustomSeeds((prev) => [...prev, s])}
             />
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
               <Stat label="φ min" value={out.phiMin.toFixed(3)} />
