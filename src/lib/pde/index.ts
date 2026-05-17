@@ -72,3 +72,7 @@ export {
   solvePotentialFlow, makeVelocitySampler,
   type PotentialFlowProblem, type PotentialFlowSolution,
 } from "./potentialFlow";
+export {
+  buildPODBasis, buildReducedModel, solveReduced, projectToReduced, liftToFull,
+  type PODBasis, type PODOptions, type ReducedModel,
+} from "./rom";
