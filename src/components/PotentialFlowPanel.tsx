@@ -849,11 +849,11 @@ export function PotentialFlowPanel() {
         <BoundaryEditor
           faces={params.faces}
           pinGauge={params.pinGauge}
-          onFaceChange={(face, patch) => setParams((p) => ({
+          onFaceChange={(face: FaceKey, patch: Partial<FaceBC>) => setParams((p) => ({
             ...p,
             faces: { ...p.faces, [face]: { ...p.faces[face], ...patch } },
           }))}
-          onPinChange={(v) => set("pinGauge", v)}
+          onPinChange={(v: boolean) => set("pinGauge", v)}
         />
 
         <div className="flex items-center gap-2 flex-wrap">
