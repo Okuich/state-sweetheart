@@ -920,3 +920,138 @@ function NeumannEditor({
     </div>
   );
 }
+
+function OptimizePanel({
+  probes, onProbesChange, pickArmed, onTogglePick,
+  opts, onOptsChange, onRun, busy, result, currentT,
+}: {
+  probes: Probe[];
+  onProbesChange: (p: Probe[]) => void;
+  pickArmed: boolean;
+  onTogglePick: () => void;
+  opts: OptimizeOptions;
+  onOptsChange: (o: OptimizeOptions) => void;
+  onRun: () => void;
+  busy: boolean;
+  result: OptimizeResult | null;
+  currentT: Float64Array;
+}) {
+  const updateProbe = (id: string, patch: Partial<Probe>) =>
+    onProbesChange(probes.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+  const removeProbe = (id: string) => onProbesChange(probes.filter((p) => p.id !== id));
+
+  const finalLoss = result?.history.length
+    ? result.history[result.history.length - 1].loss
+    : null;
+  const initialLoss = result?.history.length ? result.history[0].loss : null;
+
+  return (
+    <div className="rounded-md border border-primary/40 bg-primary/5 p-3 space-y-3">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <div className="text-[11px] uppercase tracking-wide text-primary">Inverse design — Optimize κ</div>
+          <div className="text-[11px] text-muted-foreground">
+            Adjoint gradient on log(κ) minimizes ½·Σwᵢ·(Tᵢ−T*ᵢ)² at probe vertices.
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant={pickArmed ? "default" : "outline"} onClick={onTogglePick}>
+            {pickArmed ? "Cancel pick" : "+ Pick probe on mesh"}
+          </Button>
+          <Button size="sm" onClick={onRun} disabled={busy || probes.length === 0}>
+            {busy ? "Optimizing…" : `Run optimization (${opts.steps} steps)`}
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+        <NumField label="steps" value={opts.steps} step={5}
+          onChange={(v) => onOptsChange({ ...opts, steps: Math.max(1, Math.round(v)) })} />
+        <NumField label="learning rate" value={opts.learningRate} step={0.01}
+          onChange={(v) => onOptsChange({ ...opts, learningRate: Math.max(1e-4, v) })} />
+        <NumField label="κ min" value={opts.kappaMin} step={0.05}
+          onChange={(v) => onOptsChange({ ...opts, kappaMin: Math.max(1e-6, v) })} />
+        <NumField label="κ max" value={opts.kappaMax} step={10}
+          onChange={(v) => onOptsChange({ ...opts, kappaMax: Math.max(opts.kappaMin * 2, v) })} />
+        <NumField label="reg (log κ)" value={opts.regularization} step={0.01}
+          onChange={(v) => onOptsChange({ ...opts, regularization: Math.max(0, v) })} />
+      </div>
+
+      {probes.length === 0 ? (
+        <div className="text-xs italic text-muted-foreground">
+          No probes yet. Click <span className="font-mono">+ Pick probe on mesh</span>, then click a vertex on the viewport above.
+        </div>
+      ) : (
+        <div className="space-y-1">
+          {probes.map((p) => {
+            const cur = currentT[p.index] ?? NaN;
+            const err = cur - p.target;
+            return (
+              <div key={p.id} className="grid grid-cols-[80px_1fr_1fr_120px_auto] gap-2 items-end text-xs font-mono">
+                <div className="text-foreground">#{p.index}</div>
+                <NumField label="target T (K)" value={p.target} step={5}
+                  onChange={(v) => updateProbe(p.id, { target: v })} />
+                <NumField label="weight" value={p.weight} step={0.1}
+                  onChange={(v) => updateProbe(p.id, { weight: Math.max(0, v) })} />
+                <div className={`px-2 py-1 rounded border border-border/60 bg-background/40 ${Math.abs(err) < 1 ? "text-emerald-400" : "text-amber-400"}`}>
+                  cur {cur.toFixed(1)} · Δ{err >= 0 ? "+" : ""}{err.toFixed(1)}
+                </div>
+                <Button size="sm" variant="ghost" onClick={() => removeProbe(p.id)}>Remove</Button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {result && (
+        <div className="space-y-2">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+            <Stat label="initial loss" value={initialLoss?.toExponential(3) ?? "—"} />
+            <Stat label="final loss" value={finalLoss?.toExponential(3) ?? "—"} />
+            <Stat label="κ range" value={`${result.kappaMin.toFixed(2)} – ${result.kappaMax.toFixed(2)}`} />
+            <Stat label="elapsed" value={`${result.elapsedMs.toFixed(0)} ms`} />
+          </div>
+          <LossChart history={result.history} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LossChart({ history }: { history: Array<{ step: number; loss: number; gradNorm: number }> }) {
+  if (history.length < 2) {
+    return <div className="text-xs text-muted-foreground italic">Need ≥2 steps to chart loss.</div>;
+  }
+  const W = 600, H = 140, pad = 28;
+  const losses = history.map((h) => Math.max(h.loss, 1e-30));
+  const lMin = Math.min(...losses);
+  const lMax = Math.max(...losses);
+  const useLog = lMax / Math.max(lMin, 1e-30) > 50;
+  const toY = (v: number) => {
+    const a = useLog ? Math.log10(v) : v;
+    const a0 = useLog ? Math.log10(lMin) : lMin;
+    const a1 = useLog ? Math.log10(lMax) : lMax;
+    const span = Math.max(a1 - a0, 1e-12);
+    return H - pad - ((a - a0) / span) * (H - 2 * pad);
+  };
+  const toX = (i: number) => pad + (i / (history.length - 1)) * (W - 2 * pad);
+  const path = history.map((h, i) => `${i === 0 ? "M" : "L"}${toX(i).toFixed(1)},${toY(losses[i]).toFixed(1)}`).join(" ");
+  return (
+    <div className="rounded-md border border-border bg-background/40 p-2">
+      <div className="flex items-center justify-between text-[11px] text-muted-foreground mb-1">
+        <span>Loss vs step {useLog ? "(log scale)" : ""}</span>
+        <span className="font-mono">{lMin.toExponential(2)} → {lMax.toExponential(2)}</span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-[140px]">
+        <rect x={pad} y={pad} width={W - 2 * pad} height={H - 2 * pad}
+          fill="none" stroke="hsl(var(--border))" strokeDasharray="2 3" />
+        <path d={path} fill="none" stroke="hsl(var(--primary))" strokeWidth={2} />
+        {history.map((h, i) => (
+          <circle key={i} cx={toX(i)} cy={toY(losses[i])} r={2} fill="hsl(var(--primary))" />
+        ))}
+        <text x={pad} y={H - 8} fontSize="10" fill="currentColor" className="text-muted-foreground">step 0</text>
+        <text x={W - pad - 24} y={H - 8} fontSize="10" fill="currentColor" className="text-muted-foreground">step {history.length - 1}</text>
+      </svg>
+    </div>
+  );
+}
