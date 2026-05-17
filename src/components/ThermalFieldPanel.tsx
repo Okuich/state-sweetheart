@@ -271,11 +271,22 @@ interface ViewerProps {
   probes?: Probe[];
   pickArmed?: boolean;
   onPick?: (vertexIndex: number) => void;
+  overrideField?: {
+    values: Float64Array;
+    min: number;
+    max: number;
+    label: string;
+    /** Optional unit string for the legend numbers. */
+    unit?: string;
+    /** If true, normalize per-vertex by the symmetric max |v| (signed → diverging mapping). */
+    diverging?: boolean;
+  } | null;
 }
 
 function ThermalViewer({
   out, mode, showFlux, height = 360,
   probes = [], pickArmed = false, onPick,
+  overrideField = null,
 }: ViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [yaw, setYaw] = useState(0.7);
