@@ -533,6 +533,32 @@ function ThermalViewer({
   );
 }
 
+type PanelMode = "forward" | "optimize";
+
+interface OptimizeOptions {
+  steps: number;
+  learningRate: number;
+  kappaMin: number;
+  kappaMax: number;
+  regularization: number;
+}
+
+const OPT_DEFAULTS: OptimizeOptions = {
+  steps: 25,
+  learningRate: 0.08,
+  kappaMin: 0.1,
+  kappaMax: 500,
+  regularization: 0.0,
+};
+
+interface OptimizeResult {
+  history: Array<{ step: number; loss: number; gradNorm: number }>;
+  kappa: Float64Array;
+  elapsedMs: number;
+  kappaMin: number;
+  kappaMax: number;
+}
+
 export function ThermalFieldPanel() {
   const [params, setParams] = useState<Params>(DEFAULTS);
   const [out, setOut] = useState<SolveOutput | null>(null);
@@ -541,12 +567,18 @@ export function ThermalFieldPanel() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const run = () => {
+  const [panelMode, setPanelMode] = useState<PanelMode>("forward");
+  const [probes, setProbes] = useState<Probe[]>([]);
+  const [pickArmed, setPickArmed] = useState(false);
+  const [optOpts, setOptOpts] = useState<OptimizeOptions>(OPT_DEFAULTS);
+  const [optResult, setOptResult] = useState<OptimizeResult | null>(null);
+  const [kappaField, setKappaField] = useState<Float64Array | null>(null);
+
+  const run = (kappaOverride?: Float64Array) => {
     setBusy(true); setErr(null);
-    // Defer to next tick so the busy state paints.
     setTimeout(() => {
       try {
-        setOut(runSolve(params));
+        setOut(runSolve(params, kappaOverride));
       } catch (e) {
         setErr(e instanceof Error ? e.message : String(e));
       } finally {
@@ -558,8 +590,90 @@ export function ThermalFieldPanel() {
   useEffect(() => { run(); /* initial */ // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Reset probes/optimization when geometry changes (probe vertex indices
+  // are mesh-dependent and become invalid on remesh).
+  useEffect(() => {
+    setProbes([]);
+    setOptResult(null);
+    setKappaField(null);
+    setPickArmed(false);
+  }, [params.length, params.width, params.height, params.minDepth, params.maxDepth]);
+
   const set = <K extends keyof Params>(k: K, v: Params[K]) =>
     setParams((p) => ({ ...p, [k]: v }));
+
+  const addProbe = useCallback((vertexIndex: number) => {
+    setProbes((prev) => {
+      if (prev.some((p) => p.index === vertexIndex)) return prev;
+      const currentT = out?.thermal.T[vertexIndex] ?? params.coldT;
+      return [...prev, {
+        id: `pr_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+        index: vertexIndex,
+        target: Math.round(currentT),
+        weight: 1,
+      }];
+    });
+    setPickArmed(false);
+  }, [out, params.coldT]);
+
+  const runOptimize = () => {
+    if (!out) { setErr("Run forward solver first."); return; }
+    if (probes.length === 0) { setErr("Add at least one probe target."); return; }
+    setBusy(true); setErr(null);
+    setTimeout(() => {
+      try {
+        const t0 = performance.now();
+        const dirichletArr = Array.from(out.dirichletSet).map((index) => ({
+          index,
+          value: out.thermal.T[index],
+        }));
+        const history: OptimizeResult["history"] = [];
+        const k0 = kappaField ?? out.kappa;
+        const result = inverseDesignKappa(
+          {
+            mesh: { vertices: out.mesh.mesh.vertices, tets: out.mesh.mesh.tets },
+            kappa: new Float64Array(k0),
+            neumannLoads: out.loads,
+            dirichlet: dirichletArr,
+          },
+          probes.map((p) => ({ index: p.index, target: p.target, weight: p.weight })),
+          {
+            steps: optOpts.steps,
+            learningRate: optOpts.learningRate,
+            kappaMin: optOpts.kappaMin,
+            kappaMax: optOpts.kappaMax,
+            regularization: optOpts.regularization,
+            onStep: (step, loss, _kappa) => {
+              history.push({ step, loss, gradNorm: 0 });
+            },
+          },
+        );
+        // Replace gradNorm placeholders with the precise history from the solver.
+        const final: OptimizeResult = {
+          history: result.history.length ? result.history : history,
+          kappa: result.kappa,
+          elapsedMs: performance.now() - t0,
+          kappaMin: Math.min(...Array.from(result.kappa)),
+          kappaMax: Math.max(...Array.from(result.kappa)),
+        };
+        setOptResult(final);
+        setKappaField(result.kappa);
+        // Re-run forward visualization with optimized κ.
+        setOut(runSolve(params, result.kappa));
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : String(e));
+      } finally {
+        setBusy(false);
+      }
+    }, 0);
+  };
+
+  const resetKappa = () => {
+    setKappaField(null);
+    setOptResult(null);
+    run();
+  };
+
 
   return (
     <Card>
