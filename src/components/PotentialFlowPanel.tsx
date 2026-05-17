@@ -527,7 +527,7 @@ function FlowViewer({
     if (showStreamlines) {
       ctx.lineWidth = 1.6;
       const spMax = Math.max(1e-12, out.speedMax);
-      for (const { pts, speed } of streamlines) {
+      for (const { pts, speed, seedIdx } of streamlines) {
         const nPts = pts.length / 3;
         // Per-segment coloring by local speed magnitude.
         for (let i = 1; i < nPts; i++) {
@@ -541,12 +541,12 @@ function FlowViewer({
           ctx.beginPath();
           ctx.moveTo(sx0, sy0); ctx.lineTo(sx1, sy1);
           ctx.stroke();
-          // Suppress unused warnings on z components from projection helper.
           void pz0; void pz1;
         }
-        // Seed dot.
+        // Seed dot — at the actual seed location, even when bidirectional.
         if (pts.length >= 3) {
-          const [nx, ny, nz] = geo.toNorm(pts[0], pts[1], pts[2]);
+          const s3 = seedIdx * 3;
+          const [nx, ny, nz] = geo.toNorm(pts[s3], pts[s3 + 1], pts[s3 + 2]);
           const [sx, sy2] = project(nx, ny, nz);
           ctx.fillStyle = "rgba(125, 211, 252, 1)";
           ctx.beginPath();
