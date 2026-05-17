@@ -480,10 +480,19 @@ function FlowViewer({
     const spSpan = Math.max(1e-12, out.speedMax - out.speedMin);
     const cpSpan = Math.max(1e-12, out.cpMax - out.cpMin);
     const pSpan = Math.max(1e-12, out.pMax - out.pMin);
+    const pRef = pressureNorm === "p0" ? out.p0
+               : pressureNorm === "ref" ? refPressure
+               : 0;
+    const pRefSafe = Math.abs(pRef) < 1e-12 ? 1 : pRef;
+    const pressureT = (i: number) => {
+      if (pressureNorm === "minmax") return (prs[i] - out.pMin) / pSpan;
+      // Dimensionless ratio p / p_ref, clamped into the [0,1] ramp.
+      return prs[i] / pRefSafe;
+    };
     const fieldNorm = (i: number) => {
       if (mode === "potential") return (phi[i] - out.phiMin) / phiSpan;
       if (mode === "speed")     return (sp2[i] - out.speedMin) / spSpan;
-      if (mode === "pressure")  return (prs[i] - out.pMin) / pSpan;
+      if (mode === "pressure")  return pressureT(i);
       return (cpv[i] - out.cpMin) / cpSpan;
     };
 
