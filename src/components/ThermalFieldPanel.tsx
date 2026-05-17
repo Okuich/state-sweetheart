@@ -244,12 +244,13 @@ function runSolve(params: Params, kappaOverride?: Float64Array): SolveOutput {
     if (thermal.fluxMagnitude[i] > fluxMax) fluxMax = thermal.fluxMagnitude[i];
   }
   return {
-    mesh, thermal,
+    mesh, thermal, kappa,
     dirichletCount: { hot: hotCount, cold: coldCount },
     neumannSummary: summary,
     totalNeumannPower,
     elapsedMs: performance.now() - t0,
     Tmin, Tmax, fluxMax,
+    dirichletSet, loads,
   };
 }
 
