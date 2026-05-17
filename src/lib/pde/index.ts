@@ -39,11 +39,17 @@ export {
   targetTemperatureLoss,
   fluxMagnitudeLoss,
   inverseDesignKappa,
+  inverseDesignThermal,
+  inverseDesignSource,
+  inverseDesignLoads,
   type DifferentiableThermalProblem,
   type ThermalSensitivities,
   type ThermalGradients,
   type InverseDesignOptions,
   type InverseDesignResult,
+  type InverseDesignTargets,
+  type InverseDesignAllOptions,
+  type InverseDesignAllResult,
 } from "./differentiable";
 export {
   solvePotentialFlow, makeVelocitySampler,
