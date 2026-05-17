@@ -327,13 +327,18 @@ interface ViewerProps {
   onAddSeed: (seed: [number, number, number]) => void;
   pressureNorm: PressureNorm;
   refPressure: number;
+  showContours: boolean;
+  contourCount: number;
+  contourOpacity: number;
   height?: number;
 }
 
 function FlowViewer({
   out, mode, showVectors, showStreamlines, direction, stepScale,
   seedsPerSide, rk4Steps, customSeeds, onAddSeed,
-  pressureNorm, refPressure, height = 380,
+  pressureNorm, refPressure,
+  showContours, contourCount, contourOpacity,
+  height = 380,
 }: ViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [yaw, setYaw] = useState(0.7);
