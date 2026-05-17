@@ -704,15 +704,34 @@ export function PotentialFlowPanel() {
           <Button variant={showStreamlines ? "default" : "outline"} size="sm" onClick={() => setShowStreamlines((s) => !s)}>
             Streamlines {showStreamlines ? "on" : "off"}
           </Button>
-          <Button
-            variant={bidirectional ? "default" : "outline"}
-            size="sm"
-            disabled={!showStreamlines}
-            onClick={() => setBidirectional((b) => !b)}
-            title="Trace each seed both upstream and downstream"
-          >
-            Bidirectional {bidirectional ? "on" : "off"}
-          </Button>
+          <Select value={direction} onValueChange={(v) => setDirection(v as StreamDirection)}>
+            <SelectTrigger className="w-[160px] h-9" disabled={!showStreamlines}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="forward">Downstream →</SelectItem>
+              <SelectItem value="backward">Upstream ←</SelectItem>
+              <SelectItem value="bidirectional">Bidirectional ↔</SelectItem>
+            </SelectContent>
+          </Select>
+          <div className="flex items-center gap-1.5">
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              step ×
+            </Label>
+            <Input
+              type="number"
+              className="h-9 w-[80px]"
+              value={stepScale}
+              step={0.1}
+              min={0.05}
+              disabled={!showStreamlines}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                if (Number.isFinite(v)) setStepScale(Math.max(0.05, Math.min(10, v)));
+              }}
+              title="RK4 step size as multiple of bbox·0.015 (smaller = more accurate, slower)"
+            />
+          </div>
         </div>
 
         {err && (
