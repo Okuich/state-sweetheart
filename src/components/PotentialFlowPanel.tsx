@@ -868,6 +868,55 @@ export function PotentialFlowPanel() {
               />
             </div>
           )}
+          <Button
+            variant={showContours ? "default" : "outline"}
+            size="sm"
+            disabled={mode !== "pressure"}
+            onClick={() => setShowContours((s) => !s)}
+            title="Overlay iso-pressure contour lines on the Bernoulli heatmap"
+          >
+            Contours {showContours ? "on" : "off"}
+          </Button>
+          {mode === "pressure" && showContours && (
+            <>
+              <div className="flex items-center gap-1.5">
+                <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                  levels
+                </Label>
+                <Input
+                  type="number"
+                  className="h-9 w-[70px]"
+                  value={contourCount}
+                  step={1}
+                  min={1}
+                  max={40}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10);
+                    if (Number.isFinite(v)) setContourCount(Math.max(1, Math.min(40, v)));
+                  }}
+                  title="Number of iso-pressure contour lines (1–40)"
+                />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                  opacity
+                </Label>
+                <Input
+                  type="number"
+                  className="h-9 w-[70px]"
+                  value={contourOpacity}
+                  step={0.05}
+                  min={0}
+                  max={1}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    if (Number.isFinite(v)) setContourOpacity(Math.max(0, Math.min(1, v)));
+                  }}
+                  title="Contour line opacity (0–1)"
+                />
+              </div>
+            </>
+          )}
           <Button variant={showVectors ? "default" : "outline"} size="sm" onClick={() => setShowVectors((s) => !s)}>
             v arrows {showVectors ? "on" : "off"}
           </Button>
