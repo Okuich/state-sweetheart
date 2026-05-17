@@ -726,3 +726,113 @@ function Stat({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+
+const MODE_LABEL: Record<FaceMode, string> = {
+  dirichlet: "Dirichlet φ",
+  neumann:   "Neumann v·n",
+  wall:      "Wall (no-penetration)",
+};
+
+function BoundaryEditor({
+  faces, pinGauge, onFaceChange, onPinChange,
+}: {
+  faces: Record<FaceKey, FaceBC>;
+  pinGauge: boolean;
+  onFaceChange: (face: FaceKey, patch: Partial<FaceBC>) => void;
+  onPinChange: (v: boolean) => void;
+}) {
+  const anyDirichlet = FACE_KEYS.some((f) => faces[f].mode === "dirichlet");
+  return (
+    <div className="rounded-md border border-border bg-muted/20 p-3 space-y-3">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+            Boundary conditions per bbox face
+          </div>
+          <div className="text-[11px] text-muted-foreground">
+            Dirichlet pins φ. Neumann prescribes v·n_out (m/s): positive = outflow, negative = inflow. Wall = ∂φ/∂n = 0.
+          </div>
+        </div>
+        {!anyDirichlet && (
+          <label className="flex items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={pinGauge}
+              onChange={(e) => onPinChange(e.target.checked)}
+            />
+            Auto-pin gauge (vertex 0 → φ=0)
+          </label>
+        )}
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+        {FACE_KEYS.map((f) => {
+          const bc = faces[f];
+          return (
+            <div key={f} className="rounded border border-border/60 bg-background/40 p-2 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-sm text-foreground">face {f}</span>
+                <Select
+                  value={bc.mode}
+                  onValueChange={(v) => onFaceChange(f, { mode: v as FaceMode })}
+                >
+                  <SelectTrigger className="h-8 w-[180px] text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="dirichlet">{MODE_LABEL.dirichlet}</SelectItem>
+                    <SelectItem value="neumann">{MODE_LABEL.neumann}</SelectItem>
+                    <SelectItem value="wall">{MODE_LABEL.wall}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {bc.mode === "dirichlet" && (
+                <NumField
+                  label="φ (m²/s)" value={bc.phi} step={0.1}
+                  onChange={(v) => onFaceChange(f, { phi: v })}
+                />
+              )}
+              {bc.mode === "neumann" && (
+                <NumField
+                  label="v·n_out (m/s) — inflow < 0" value={bc.vN} step={0.1}
+                  onChange={(v) => onFaceChange(f, { vN: v })}
+                />
+              )}
+              {bc.mode === "wall" && (
+                <div className="text-[11px] text-muted-foreground italic">
+                  No-penetration wall (insulated). Streamlines tangent to face.
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function FaceSummaryGrid({ summary }: { summary: FaceSummary[] }) {
+  return (
+    <div className="rounded-md border border-border bg-muted/20 p-3">
+      <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2">
+        Boundary patches (integrated)
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs font-mono">
+        {summary.map((s) => (
+          <div key={s.face} className="flex items-center justify-between gap-2 rounded border border-border/60 bg-background/40 px-2 py-1">
+            <span>face <span className="text-foreground">{s.face}</span></span>
+            <span className="uppercase text-muted-foreground text-[10px]">{s.mode}</span>
+            <span>A={s.area.toFixed(3)} m²</span>
+            <span>{s.nodes} nodes</span>
+            {s.mode === "dirichlet" && <span>φ={s.phi?.toFixed(2)}</span>}
+            {s.mode === "neumann" && (
+              <>
+                <span>v·n={s.vN?.toFixed(2)} m/s</span>
+                <span className={(s.flow ?? 0) >= 0 ? "text-emerald-400" : "text-amber-400"}>
+                  Q={(s.flow ?? 0).toExponential(2)} m³/s
+                </span>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
