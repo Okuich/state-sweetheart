@@ -613,6 +613,7 @@ export function PotentialFlowPanel() {
   const [mode, setMode] = useState<FieldMode>("speed");
   const [showVectors, setShowVectors] = useState(false);
   const [showStreamlines, setShowStreamlines] = useState(true);
+  const [bidirectional, setBidirectional] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
