@@ -21,6 +21,11 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { BoundaryEditor } from "@/components/potential-flow/BoundaryEditor";
+import {
+  FACE_KEYS,
+  type FaceBC, type FaceKey, type FaceMode,
+} from "@/components/potential-flow/boundary-types";
 
 type FieldMode = "potential" | "speed" | "cp" | "pressure";
 /** How to map Bernoulli pressure p (Pa) into the [0,1] color ramp.
@@ -28,17 +33,6 @@ type FieldMode = "potential" | "speed" | "cp" | "pressure";
  *  - "p0":     dimensionless ratio p / p₀; ramp covers [0,1] of stagnation.
  *  - "ref":    dimensionless ratio p / p_ref using a user-supplied reference. */
 type PressureNorm = "minmax" | "p0" | "ref";
-type FaceKey = "+x" | "-x" | "+y" | "-y" | "+z" | "-z";
-type FaceMode = "dirichlet" | "neumann" | "wall";
-
-interface FaceBC {
-  mode: FaceMode;
-  /** φ value (m²/s) when mode = "dirichlet". */
-  phi: number;
-  /** Normal velocity v·n_out (m/s) when mode = "neumann". Positive = outflow. */
-  vN: number;
-}
-
 interface Params {
   length: number;
   width: number;
@@ -53,8 +47,6 @@ interface Params {
   /** Auto-pin a gauge node when no Dirichlet face is selected. */
   pinGauge: boolean;
 }
-
-const FACE_KEYS: FaceKey[] = ["-x", "+x", "-y", "+y", "-z", "+z"];
 
 const DEFAULTS: Params = {
   length: 2, width: 0.5, height: 0.5,
@@ -1152,87 +1144,6 @@ function PressureForceGrid({
             |F| = {mag(net).toExponential(3)} N
           </div>
         </div>
-      </div>
-    </div>
-  );
-}
-
-const MODE_LABEL: Record<FaceMode, string> = {
-  dirichlet: "Dirichlet φ",
-  neumann:   "Neumann v·n",
-  wall:      "Wall (no-penetration)",
-};
-
-function BoundaryEditor({
-  faces, pinGauge, onFaceChange, onPinChange,
-}: {
-  faces: Record<FaceKey, FaceBC>;
-  pinGauge: boolean;
-  onFaceChange: (face: FaceKey, patch: Partial<FaceBC>) => void;
-  onPinChange: (v: boolean) => void;
-}) {
-  const anyDirichlet = FACE_KEYS.some((f) => faces[f].mode === "dirichlet");
-  return (
-    <div className="rounded-md border border-border bg-muted/20 p-3 space-y-3">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-            Boundary conditions per bbox face
-          </div>
-          <div className="text-[11px] text-muted-foreground">
-            Dirichlet pins φ. Neumann prescribes v·n_out (m/s): positive = outflow, negative = inflow. Wall = ∂φ/∂n = 0.
-          </div>
-        </div>
-        {!anyDirichlet && (
-          <label className="flex items-center gap-2 text-xs">
-            <input
-              type="checkbox"
-              checked={pinGauge}
-              onChange={(e) => onPinChange(e.target.checked)}
-            />
-            Auto-pin gauge (vertex 0 → φ=0)
-          </label>
-        )}
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-        {FACE_KEYS.map((f) => {
-          const bc = faces[f];
-          return (
-            <div key={f} className="rounded border border-border/60 bg-background/40 p-2 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-sm text-foreground">face {f}</span>
-                <Select
-                  value={bc.mode}
-                  onValueChange={(v) => onFaceChange(f, { mode: v as FaceMode })}
-                >
-                  <SelectTrigger className="h-8 w-[180px] text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="dirichlet">{MODE_LABEL.dirichlet}</SelectItem>
-                    <SelectItem value="neumann">{MODE_LABEL.neumann}</SelectItem>
-                    <SelectItem value="wall">{MODE_LABEL.wall}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              {bc.mode === "dirichlet" && (
-                <NumField
-                  label="φ (m²/s)" value={bc.phi} step={0.1}
-                  onChange={(v) => onFaceChange(f, { phi: v })}
-                />
-              )}
-              {bc.mode === "neumann" && (
-                <NumField
-                  label="v·n_out (m/s) — inflow < 0" value={bc.vN} step={0.1}
-                  onChange={(v) => onFaceChange(f, { vN: v })}
-                />
-              )}
-              {bc.mode === "wall" && (
-                <div className="text-[11px] text-muted-foreground italic">
-                  No-penetration wall (insulated). Streamlines tangent to face.
-                </div>
-              )}
-            </div>
-          );
-        })}
       </div>
     </div>
   );
