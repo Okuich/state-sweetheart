@@ -398,6 +398,7 @@ function FlowViewer({
         ]);
       }
     }
+    for (const s of customSeeds) seeds.push([s[0], s[1], s[2]]);
     const traceDir = (s: [number, number, number], dir: 1 | -1) =>
       traceFieldLine(s, sample, { stepSize: step, maxSteps: rk4Steps, direction: dir });
 
