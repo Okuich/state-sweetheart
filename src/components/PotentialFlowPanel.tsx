@@ -125,7 +125,15 @@ interface SolveOutput {
   faceSummary: FaceSummary[];
   netFlux: number;
   volumetricFlow: number;
+  /** Net pressure force F = ∫ p · n_out dA on each boundary face (N). */
+  pressureForce: Record<FaceKey, [number, number, number]>;
 }
+
+const FACE_NORMAL: Record<FaceKey, [number, number, number]> = {
+  "-x": [-1, 0, 0], "+x": [1, 0, 0],
+  "-y": [0, -1, 0], "+y": [0, 1, 0],
+  "-z": [0, 0, -1], "+z": [0, 0, 1],
+};
 
 function extractSurfaceTriangles(tets: Uint32Array): Array<[number, number, number]> {
   const map = new Map<string, { tri: [number, number, number]; count: number }>();
