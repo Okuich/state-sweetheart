@@ -23,6 +23,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
 type FieldMode = "potential" | "speed" | "cp" | "pressure";
+/** How to map Bernoulli pressure p (Pa) into the [0,1] color ramp.
+ *  - "minmax": rescale across observed [pMin, pMax] (default, max contrast).
+ *  - "p0":     dimensionless ratio p / p₀; ramp covers [0,1] of stagnation.
+ *  - "ref":    dimensionless ratio p / p_ref using a user-supplied reference. */
+type PressureNorm = "minmax" | "p0" | "ref";
 type FaceKey = "+x" | "-x" | "+y" | "-y" | "+z" | "-z";
 type FaceMode = "dirichlet" | "neumann" | "wall";
 
@@ -320,12 +325,15 @@ interface ViewerProps {
   rk4Steps: number;
   customSeeds: ReadonlyArray<[number, number, number]>;
   onAddSeed: (seed: [number, number, number]) => void;
+  pressureNorm: PressureNorm;
+  refPressure: number;
   height?: number;
 }
 
 function FlowViewer({
   out, mode, showVectors, showStreamlines, direction, stepScale,
-  seedsPerSide, rk4Steps, customSeeds, onAddSeed, height = 380,
+  seedsPerSide, rk4Steps, customSeeds, onAddSeed,
+  pressureNorm, refPressure, height = 380,
 }: ViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [yaw, setYaw] = useState(0.7);
@@ -472,10 +480,19 @@ function FlowViewer({
     const spSpan = Math.max(1e-12, out.speedMax - out.speedMin);
     const cpSpan = Math.max(1e-12, out.cpMax - out.cpMin);
     const pSpan = Math.max(1e-12, out.pMax - out.pMin);
+    const pRef = pressureNorm === "p0" ? out.p0
+               : pressureNorm === "ref" ? refPressure
+               : 0;
+    const pRefSafe = Math.abs(pRef) < 1e-12 ? 1 : pRef;
+    const pressureT = (i: number) => {
+      if (pressureNorm === "minmax") return (prs[i] - out.pMin) / pSpan;
+      // Dimensionless ratio p / p_ref, clamped into the [0,1] ramp.
+      return prs[i] / pRefSafe;
+    };
     const fieldNorm = (i: number) => {
       if (mode === "potential") return (phi[i] - out.phiMin) / phiSpan;
       if (mode === "speed")     return (sp2[i] - out.speedMin) / spSpan;
-      if (mode === "pressure")  return (prs[i] - out.pMin) / pSpan;
+      if (mode === "pressure")  return pressureT(i);
       return (cpv[i] - out.cpMin) / cpSpan;
     };
 
@@ -583,7 +600,14 @@ function FlowViewer({
     } else if (mode === "speed") {
       lo = out.speedMin.toFixed(3); hi = out.speedMax.toFixed(3); unit = "|v| (m/s)";
     } else if (mode === "pressure") {
-      lo = out.pMin.toExponential(2); hi = out.pMax.toExponential(2); unit = "p (Pa)";
+      if (pressureNorm === "minmax") {
+        lo = out.pMin.toExponential(2); hi = out.pMax.toExponential(2); unit = "p (Pa)";
+      } else {
+        const label = pressureNorm === "p0" ? "p / p₀" : "p / p_ref";
+        lo = (out.pMin / pRefSafe).toFixed(3);
+        hi = (out.pMax / pRefSafe).toFixed(3);
+        unit = `${label}  (ref = ${pRefSafe.toExponential(2)} Pa)`;
+      }
     } else {
       lo = out.cpMin.toFixed(3); hi = out.cpMax.toFixed(3); unit = "Cp";
     }
@@ -591,7 +615,7 @@ function FlowViewer({
     const hiW = ctx.measureText(hi).width;
     ctx.fillText(hi, lx + lw - hiW, ly - 4 * devicePixelRatio);
     ctx.fillText(unit, lx, ly + lh + 12 * devicePixelRatio);
-  }, [out, geo, yaw, pitch, zoom, mode, showVectors, showStreamlines, streamlines]);
+  }, [out, geo, yaw, pitch, zoom, mode, showVectors, showStreamlines, streamlines, pressureNorm, refPressure]);
 
   // Click → place a new RK4 seed on the inlet face. We project a fine grid of
   // candidate points on x = bb.min[0] and pick the one closest to the click in
@@ -681,6 +705,8 @@ export function PotentialFlowPanel() {
   const [showStreamlines, setShowStreamlines] = useState(true);
   const [direction, setDirection] = useState<StreamDirection>("forward");
   const [stepScale, setStepScale] = useState(1);
+  const [pressureNorm, setPressureNorm] = useState<PressureNorm>("minmax");
+  const [refPressure, setRefPressure] = useState(101325);
   const [customSeeds, setCustomSeeds] = useState<Array<[number, number, number]>>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -759,6 +785,36 @@ export function PotentialFlowPanel() {
               <SelectItem value="pressure">Bernoulli pressure p</SelectItem>
             </SelectContent>
           </Select>
+          <Select value={pressureNorm} onValueChange={(v) => setPressureNorm(v as PressureNorm)}>
+            <SelectTrigger className="w-[170px] h-9" disabled={mode !== "pressure"}
+              title="How to normalize Bernoulli pressure for the color ramp">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="minmax">p · min/max</SelectItem>
+              <SelectItem value="p0">p / p₀</SelectItem>
+              <SelectItem value="ref">p / p_ref</SelectItem>
+            </SelectContent>
+          </Select>
+          {pressureNorm === "ref" && (
+            <div className="flex items-center gap-1.5">
+              <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                p_ref (Pa)
+              </Label>
+              <Input
+                type="number"
+                className="h-9 w-[110px]"
+                value={refPressure}
+                step={100}
+                disabled={mode !== "pressure"}
+                onChange={(e) => {
+                  const v = parseFloat(e.target.value);
+                  if (Number.isFinite(v)) setRefPressure(v);
+                }}
+                title="User-defined reference pressure for p / p_ref normalization"
+              />
+            </div>
+          )}
           <Button variant={showVectors ? "default" : "outline"} size="sm" onClick={() => setShowVectors((s) => !s)}>
             v arrows {showVectors ? "on" : "off"}
           </Button>
@@ -825,6 +881,8 @@ export function PotentialFlowPanel() {
               rk4Steps={params.rk4Steps}
               customSeeds={customSeeds}
               onAddSeed={(s) => setCustomSeeds((prev) => [...prev, s])}
+              pressureNorm={pressureNorm}
+              refPressure={refPressure}
             />
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
               <Stat label="φ min" value={out.phiMin.toFixed(3)} />
