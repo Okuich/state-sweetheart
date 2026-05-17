@@ -325,12 +325,15 @@ interface ViewerProps {
   rk4Steps: number;
   customSeeds: ReadonlyArray<[number, number, number]>;
   onAddSeed: (seed: [number, number, number]) => void;
+  pressureNorm: PressureNorm;
+  refPressure: number;
   height?: number;
 }
 
 function FlowViewer({
   out, mode, showVectors, showStreamlines, direction, stepScale,
-  seedsPerSide, rk4Steps, customSeeds, onAddSeed, height = 380,
+  seedsPerSide, rk4Steps, customSeeds, onAddSeed,
+  pressureNorm, refPressure, height = 380,
 }: ViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [yaw, setYaw] = useState(0.7);
