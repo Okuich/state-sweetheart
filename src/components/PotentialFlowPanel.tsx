@@ -681,6 +681,7 @@ export function PotentialFlowPanel() {
   const [showStreamlines, setShowStreamlines] = useState(true);
   const [direction, setDirection] = useState<StreamDirection>("forward");
   const [stepScale, setStepScale] = useState(1);
+  const [customSeeds, setCustomSeeds] = useState<Array<[number, number, number]>>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
