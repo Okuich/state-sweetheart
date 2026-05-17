@@ -217,7 +217,11 @@ function runSolve(params: Params, kappaOverride?: Float64Array): SolveOutput {
   const totalNeumannPower = summary.reduce((s, x) => s + x.power, 0);
 
   const kappa = new Float64Array(nTets);
-  for (let t = 0; t < nTets; t++) kappa[t] = params.kappa;
+  if (kappaOverride && kappaOverride.length === nTets) {
+    kappa.set(kappaOverride);
+  } else {
+    for (let t = 0; t < nTets; t++) kappa[t] = params.kappa;
+  }
 
   const thermal = solveThermal({
     mesh: { vertices: verts, tets },
