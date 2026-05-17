@@ -383,7 +383,7 @@ function FlowViewer({
     const ext = Math.max(
       bb.max[0] - bb.min[0], bb.max[1] - bb.min[1], bb.max[2] - bb.min[2],
     );
-    const step = ext * 0.015;
+    const step = ext * 0.015 * Math.max(0.05, stepScale);
     const seeds: Array<[number, number, number]> = [];
     const inletX = bb.min[0] + ext * 1e-3;
     const n = Math.max(1, seedsPerSide);
@@ -396,17 +396,22 @@ function FlowViewer({
         ]);
       }
     }
+    const traceDir = (s: [number, number, number], dir: 1 | -1) =>
+      traceFieldLine(s, sample, { stepSize: step, maxSteps: rk4Steps, direction: dir });
+
     const lines: Array<{ pts: Float64Array; speed: Float32Array; seedIdx: number }> = [];
     for (const s of seeds) {
-      const fwd = traceFieldLine(s, sample, {
-        stepSize: step, maxSteps: rk4Steps, direction: 1,
-      });
       let pts: Float64Array;
       let seedIdx: number;
-      if (bidirectional) {
-        const bwd = traceFieldLine(s, sample, {
-          stepSize: step, maxSteps: rk4Steps, direction: -1,
-        });
+      if (direction === "forward") {
+        pts = traceDir(s, 1);
+        seedIdx = 0;
+      } else if (direction === "backward") {
+        pts = traceDir(s, -1);
+        seedIdx = 0;
+      } else {
+        const fwd = traceDir(s, 1);
+        const bwd = traceDir(s, -1);
         // bwd[0] == fwd[0] (the seed). Reverse bwd (skip its first point) and
         // prepend so the combined path goes upstream → seed → downstream.
         const nBwd = bwd.length / 3;
@@ -421,9 +426,6 @@ function FlowViewer({
         }
         pts.set(fwd, (nBwd - 1) * 3);
         seedIdx = nBwd - 1;
-      } else {
-        pts = fwd;
-        seedIdx = 0;
       }
       const nPts = pts.length / 3;
       const speed = new Float32Array(nPts);
@@ -434,7 +436,7 @@ function FlowViewer({
       lines.push({ pts, speed, seedIdx });
     }
     return lines;
-  }, [out, showStreamlines, bidirectional, seedsPerSide, rk4Steps]);
+  }, [out, showStreamlines, direction, stepScale, seedsPerSide, rk4Steps]);
 
   useEffect(() => {
     const c = canvasRef.current;
