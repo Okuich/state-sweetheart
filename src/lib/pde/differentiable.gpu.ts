@@ -287,16 +287,14 @@ function uploadSlot(
     cache[slot] = entry;
   }
   if (entry.fingerprint !== fp) {
-    // Pad odd byte counts up to a multiple of 4 — writeBuffer requires it.
-    const bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-    const padded = (bytes.byteLength % 4 === 0)
-      ? bytes
-      : (() => {
-          const p = new Uint8Array(Math.ceil(bytes.byteLength / 4) * 4);
-          p.set(bytes);
-          return p;
-        })();
-    device.queue.writeBuffer(entry.buf, 0, padded);
+    // writeBuffer requires multiple-of-4 byte length; pad if needed by copying
+    // into a freshly-allocated ArrayBuffer (also dodges typed-array generic
+    // narrowing in @webgpu/types).
+    const src = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    const padLen = Math.ceil(src.byteLength / 4) * 4;
+    const ab = new ArrayBuffer(padLen);
+    new Uint8Array(ab).set(src);
+    device.queue.writeBuffer(entry.buf, 0, ab);
     entry.fingerprint = fp;
   }
   return entry.buf;
