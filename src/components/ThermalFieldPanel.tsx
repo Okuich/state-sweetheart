@@ -12,6 +12,8 @@ import { generateMesh, type MeshingResult } from "@/lib/meshing";
 import {
   solveThermal, type ThermalSolution,
   inverseDesignKappa,
+  differentiateThermal,
+  targetTemperatureLoss,
 } from "@/lib/pde";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -269,11 +271,22 @@ interface ViewerProps {
   probes?: Probe[];
   pickArmed?: boolean;
   onPick?: (vertexIndex: number) => void;
+  overrideField?: {
+    values: Float64Array;
+    min: number;
+    max: number;
+    label: string;
+    /** Optional unit string for the legend numbers. */
+    unit?: string;
+    /** If true, normalize per-vertex by the symmetric max |v| (signed → diverging mapping). */
+    diverging?: boolean;
+  } | null;
 }
 
 function ThermalViewer({
   out, mode, showFlux, height = 360,
   probes = [], pickArmed = false, onPick,
+  overrideField = null,
 }: ViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [yaw, setYaw] = useState(0.7);
@@ -360,11 +373,23 @@ function ThermalViewer({
 
     const T = out.thermal.T;
     const hot = out.thermal.hotspot;
-    const field = mode === "temperature" ? T : hot;
     const Tspan = Math.max(1e-12, out.Tmax - out.Tmin);
-    const fieldNorm = (i: number) => mode === "temperature"
-      ? (T[i] - out.Tmin) / Tspan
-      : hot[i];
+    let fieldNorm: (i: number) => number;
+    if (overrideField) {
+      const { values, min, max, diverging } = overrideField;
+      if (diverging) {
+        const mAbs = Math.max(Math.abs(min), Math.abs(max), 1e-30);
+        fieldNorm = (i) => 0.5 + 0.5 * Math.max(-1, Math.min(1, values[i] / mAbs));
+      } else {
+        const span = Math.max(1e-30, max - min);
+        fieldNorm = (i) => (values[i] - min) / span;
+      }
+    } else if (mode === "temperature") {
+      fieldNorm = (i) => (T[i] - out.Tmin) / Tspan;
+    } else {
+      fieldNorm = (i) => hot[i];
+    }
+    void hot;
 
     // Project all verts.
     const px = new Float32Array(geo.nV);
@@ -444,12 +469,30 @@ function ThermalViewer({
     ctx.fillRect(lx, ly, lw, lh);
     ctx.fillStyle = "rgba(229,231,235,0.9)";
     ctx.font = `${10 * devicePixelRatio}px ui-sans-serif, system-ui`;
-    const lo = mode === "temperature" ? `${out.Tmin.toFixed(1)} K` : "0";
-    const hi = mode === "temperature" ? `${out.Tmax.toFixed(1)} K` : "1";
+    let lo: string, hi: string, midLabel: string;
+    if (overrideField) {
+      const { min, max, label, unit, diverging } = overrideField;
+      const u = unit ? ` ${unit}` : "";
+      if (diverging) {
+        const mAbs = Math.max(Math.abs(min), Math.abs(max));
+        lo = `${(-mAbs).toExponential(1)}${u}`;
+        hi = `${(+mAbs).toExponential(1)}${u}`;
+      } else {
+        lo = `${min.toExponential(1)}${u}`;
+        hi = `${max.toExponential(1)}${u}`;
+      }
+      midLabel = label;
+    } else if (mode === "temperature") {
+      lo = `${out.Tmin.toFixed(1)} K`;
+      hi = `${out.Tmax.toFixed(1)} K`;
+      midLabel = "T";
+    } else {
+      lo = "0"; hi = "1"; midLabel = "hotspot";
+    }
     ctx.fillText(lo, lx, ly - 4 * devicePixelRatio);
     const hiW = ctx.measureText(hi).width;
     ctx.fillText(hi, lx + lw - hiW, ly - 4 * devicePixelRatio);
-    ctx.fillText(mode === "temperature" ? "T" : "hotspot", lx, ly + lh + 12 * devicePixelRatio);
+    ctx.fillText(midLabel, lx, ly + lh + 12 * devicePixelRatio);
     // Probe markers (drawn on top).
     if (probes.length > 0) {
       const T = out.thermal.T;
@@ -474,7 +517,7 @@ function ThermalViewer({
         );
       }
     }
-  }, [out, geo, yaw, pitch, zoom, mode, showFlux, probes]);
+  }, [out, geo, yaw, pitch, zoom, mode, showFlux, probes, overrideField]);
 
   const handleClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!pickArmed || !onPick) return;
@@ -535,6 +578,22 @@ function ThermalViewer({
 
 type PanelMode = "forward" | "optimize";
 
+interface GradDiag {
+  /** Per-vertex |∂L/∂κ| spread from incident tets (for surface heatmap). */
+  perVertex: Float64Array;
+  /** Per-tet ∂L/∂κ. */
+  perTet: Float64Array;
+  /** Per-tet (∂L/∂κ)·κ — equivalent to log-space gradient. */
+  perTetLog: Float64Array;
+  minTet: number; maxTet: number;
+  minVtx: number; maxVtx: number;
+  loss: number;
+  gradNormKappa: number;
+  gradNormLogKappa: number;
+  gradNormSource: number;
+  gradNormLoads: number;
+}
+
 interface OptimizeOptions {
   steps: number;
   learningRate: number;
@@ -574,6 +633,9 @@ export function ThermalFieldPanel() {
   const [optResult, setOptResult] = useState<OptimizeResult | null>(null);
   const [kappaField, setKappaField] = useState<Float64Array | null>(null);
 
+  const [gradDiag, setGradDiag] = useState<GradDiag | null>(null);
+  const [showGradOverlay, setShowGradOverlay] = useState(false);
+
   const run = (kappaOverride?: Float64Array) => {
     setBusy(true); setErr(null);
     setTimeout(() => {
@@ -597,6 +659,8 @@ export function ThermalFieldPanel() {
     setOptResult(null);
     setKappaField(null);
     setPickArmed(false);
+    setGradDiag(null);
+    setShowGradOverlay(false);
   }, [params.length, params.width, params.height, params.minDepth, params.maxDepth]);
 
   const set = <K extends keyof Params>(k: K, v: Params[K]) =>
@@ -658,6 +722,7 @@ export function ThermalFieldPanel() {
         };
         setOptResult(final);
         setKappaField(result.kappa);
+        setGradDiag(null);
         // Re-run forward visualization with optimized κ.
         setOut(runSolve(params, result.kappa));
       } catch (e) {
@@ -671,7 +736,93 @@ export function ThermalFieldPanel() {
   const resetKappa = () => {
     setKappaField(null);
     setOptResult(null);
+    setGradDiag(null);
+    setShowGradOverlay(false);
     run();
+  };
+
+  const computeGradient = () => {
+    if (!out) { setErr("Run forward solver first."); return; }
+    if (probes.length === 0) { setErr("Add at least one probe to define a loss."); return; }
+    setBusy(true); setErr(null);
+    setTimeout(() => {
+      try {
+        const dirichletArr = Array.from(out.dirichletSet).map((index) => ({
+          index, value: out.thermal.T[index],
+        }));
+        const kappaForGrad = kappaField ?? out.kappa;
+        const { loss, dLdT } = targetTemperatureLoss(
+          out.thermal.T,
+          probes.map((p) => ({ index: p.index, target: p.target, weight: p.weight })),
+        );
+        const grads = differentiateThermal(
+          {
+            mesh: { vertices: out.mesh.mesh.vertices, tets: out.mesh.mesh.tets },
+            kappa: new Float64Array(kappaForGrad),
+            neumannLoads: out.loads,
+            dirichlet: dirichletArr,
+          },
+          { dLdT },
+          out.thermal,
+        );
+
+        const tets = out.mesh.mesh.tets;
+        const nV = out.thermal.T.length;
+        const nT = grads.dLdKappa.length;
+        const perTetLog = new Float64Array(nT);
+        let minTet = Infinity, maxTet = -Infinity;
+        let gNorm2 = 0, gNorm2Log = 0;
+        for (let t = 0; t < nT; t++) {
+          const g = grads.dLdKappa[t];
+          const gLog = g * kappaForGrad[t];
+          perTetLog[t] = gLog;
+          if (g < minTet) minTet = g;
+          if (g > maxTet) maxTet = g;
+          gNorm2 += g * g;
+          gNorm2Log += gLog * gLog;
+        }
+
+        // Spread |dL/dκ| to vertices by averaging |g_t| over incident tets
+        // → produces a surface heatmap proxy of where the gradient lives.
+        const accum = new Float64Array(nV);
+        const count = new Uint32Array(nV);
+        for (let t = 0; t < nT; t++) {
+          const a = Math.abs(grads.dLdKappa[t]);
+          for (let k = 0; k < 4; k++) {
+            const vid = tets[t * 4 + k];
+            accum[vid] += a;
+            count[vid] += 1;
+          }
+        }
+        let minVtx = Infinity, maxVtx = -Infinity;
+        const perVertex = new Float64Array(nV);
+        for (let i = 0; i < nV; i++) {
+          const v = count[i] > 0 ? accum[i] / count[i] : 0;
+          perVertex[i] = v;
+          if (v < minVtx) minVtx = v;
+          if (v > maxVtx) maxVtx = v;
+        }
+
+        let gNormSrc2 = 0, gNormLd2 = 0;
+        for (let i = 0; i < nV; i++) gNormSrc2 += grads.dLdSource[i] * grads.dLdSource[i];
+        for (let i = 0; i < nV; i++) gNormLd2  += grads.dLdLoads[i]  * grads.dLdLoads[i];
+
+        setGradDiag({
+          perVertex, perTet: grads.dLdKappa, perTetLog,
+          minTet, maxTet, minVtx, maxVtx,
+          loss,
+          gradNormKappa:    Math.sqrt(gNorm2),
+          gradNormLogKappa: Math.sqrt(gNorm2Log),
+          gradNormSource:   Math.sqrt(gNormSrc2),
+          gradNormLoads:    Math.sqrt(gNormLd2),
+        });
+        setShowGradOverlay(true);
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : String(e));
+      } finally {
+        setBusy(false);
+      }
+    }, 0);
   };
 
 
@@ -783,10 +934,17 @@ export function ThermalFieldPanel() {
             <ThermalViewer
               out={out}
               mode={mode}
-              showFlux={showFlux}
+              showFlux={showFlux && !(showGradOverlay && gradDiag)}
               probes={probes}
               pickArmed={panelMode === "optimize" && pickArmed}
               onPick={addProbe}
+              overrideField={showGradOverlay && gradDiag ? {
+                values: gradDiag.perVertex,
+                min: gradDiag.minVtx,
+                max: gradDiag.maxVtx,
+                label: "|∂L/∂κ| (vtx-avg)",
+                unit: "",
+              } : null}
             />
             {panelMode === "optimize" && (
               <OptimizePanel
@@ -800,6 +958,10 @@ export function ThermalFieldPanel() {
                 busy={busy}
                 result={optResult}
                 currentT={out.thermal.T}
+                onComputeGradient={computeGradient}
+                gradDiag={gradDiag}
+                showGradOverlay={showGradOverlay}
+                onToggleGradOverlay={() => setShowGradOverlay((s) => !s)}
               />
             )}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
@@ -924,6 +1086,7 @@ function NeumannEditor({
 function OptimizePanel({
   probes, onProbesChange, pickArmed, onTogglePick,
   opts, onOptsChange, onRun, busy, result, currentT,
+  onComputeGradient, gradDiag, showGradOverlay, onToggleGradOverlay,
 }: {
   probes: Probe[];
   onProbesChange: (p: Probe[]) => void;
@@ -935,6 +1098,10 @@ function OptimizePanel({
   busy: boolean;
   result: OptimizeResult | null;
   currentT: Float64Array;
+  onComputeGradient: () => void;
+  gradDiag: GradDiag | null;
+  showGradOverlay: boolean;
+  onToggleGradOverlay: () => void;
 }) {
   const updateProbe = (id: string, patch: Partial<Probe>) =>
     onProbesChange(probes.map((p) => (p.id === id ? { ...p, ...patch } : p)));
@@ -954,10 +1121,18 @@ function OptimizePanel({
             Adjoint gradient on log(κ) minimizes ½·Σwᵢ·(Tᵢ−T*ᵢ)² at probe vertices.
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button size="sm" variant={pickArmed ? "default" : "outline"} onClick={onTogglePick}>
             {pickArmed ? "Cancel pick" : "+ Pick probe on mesh"}
           </Button>
+          <Button size="sm" variant="outline" onClick={onComputeGradient} disabled={busy || probes.length === 0}>
+            Compute ∂L/∂κ
+          </Button>
+          {gradDiag && (
+            <Button size="sm" variant={showGradOverlay ? "default" : "outline"} onClick={onToggleGradOverlay}>
+              Overlay {showGradOverlay ? "on" : "off"}
+            </Button>
+          )}
           <Button size="sm" onClick={onRun} disabled={busy || probes.length === 0}>
             {busy ? "Optimizing…" : `Run optimization (${opts.steps} steps)`}
           </Button>
@@ -1003,6 +1178,29 @@ function OptimizePanel({
         </div>
       )}
 
+      {gradDiag && (
+        <div className="rounded-md border border-border bg-background/40 p-3 space-y-2">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              Adjoint diagnostics (current state)
+            </div>
+            <div className="text-[11px] text-muted-foreground">
+              one forward + one adjoint solve
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+            <Stat label="L (current)" value={gradDiag.loss.toExponential(3)} />
+            <Stat label="‖∂L/∂κ‖₂" value={gradDiag.gradNormKappa.toExponential(3)} />
+            <Stat label="‖∂L/∂log κ‖₂" value={gradDiag.gradNormLogKappa.toExponential(3)} />
+            <Stat label="∂L/∂κ range" value={`${gradDiag.minTet.toExponential(1)} … ${gradDiag.maxTet.toExponential(1)}`} />
+            <Stat label="‖∂L/∂f‖₂ (source)" value={gradDiag.gradNormSource.toExponential(3)} />
+            <Stat label="‖∂L/∂g‖₂ (loads)" value={gradDiag.gradNormLoads.toExponential(3)} />
+            <Stat label="overlay range" value={`${gradDiag.minVtx.toExponential(1)} … ${gradDiag.maxVtx.toExponential(1)}`} />
+            <Stat label="overlay" value={showGradOverlay ? "on (viewport)" : "off"} />
+          </div>
+        </div>
+      )}
+
       {result && (
         <div className="space-y-2">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
@@ -1012,6 +1210,8 @@ function OptimizePanel({
             <Stat label="elapsed" value={`${result.elapsedMs.toFixed(0)} ms`} />
           </div>
           <LossChart history={result.history} />
+          <GradNormChart history={result.history} />
+          <IterationTable history={result.history} />
         </div>
       )}
     </div>
@@ -1052,6 +1252,81 @@ function LossChart({ history }: { history: Array<{ step: number; loss: number; g
         <text x={pad} y={H - 8} fontSize="10" fill="currentColor" className="text-muted-foreground">step 0</text>
         <text x={W - pad - 24} y={H - 8} fontSize="10" fill="currentColor" className="text-muted-foreground">step {history.length - 1}</text>
       </svg>
+    </div>
+  );
+}
+
+function GradNormChart({ history }: { history: Array<{ step: number; loss: number; gradNorm: number }> }) {
+  if (history.length < 2) return null;
+  const vals = history.map((h) => Math.max(h.gradNorm, 1e-30));
+  if (vals.every((v) => v <= 1e-30)) {
+    return <div className="text-[11px] text-muted-foreground italic">Gradient norm not recorded.</div>;
+  }
+  const W = 600, H = 110, pad = 26;
+  const lMin = Math.min(...vals);
+  const lMax = Math.max(...vals);
+  const useLog = lMax / Math.max(lMin, 1e-30) > 50;
+  const toY = (v: number) => {
+    const a = useLog ? Math.log10(v) : v;
+    const a0 = useLog ? Math.log10(lMin) : lMin;
+    const a1 = useLog ? Math.log10(lMax) : lMax;
+    const span = Math.max(a1 - a0, 1e-12);
+    return H - pad - ((a - a0) / span) * (H - 2 * pad);
+  };
+  const toX = (i: number) => pad + (i / (history.length - 1)) * (W - 2 * pad);
+  const path = history.map((h, i) => `${i === 0 ? "M" : "L"}${toX(i).toFixed(1)},${toY(vals[i]).toFixed(1)}`).join(" ");
+  return (
+    <div className="rounded-md border border-border bg-background/40 p-2">
+      <div className="flex items-center justify-between text-[11px] text-muted-foreground mb-1">
+        <span>‖∇L‖₂ vs step {useLog ? "(log scale)" : ""}</span>
+        <span className="font-mono">{lMin.toExponential(2)} → {lMax.toExponential(2)}</span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-[110px]">
+        <rect x={pad} y={pad} width={W - 2 * pad} height={H - 2 * pad}
+          fill="none" stroke="hsl(var(--border))" strokeDasharray="2 3" />
+        <path d={path} fill="none" stroke="hsl(var(--destructive))" strokeWidth={2} />
+        {history.map((h, i) => (
+          <circle key={i} cx={toX(i)} cy={toY(vals[i])} r={1.8} fill="hsl(var(--destructive))" />
+        ))}
+      </svg>
+    </div>
+  );
+}
+
+function IterationTable({ history }: { history: Array<{ step: number; loss: number; gradNorm: number }> }) {
+  if (history.length === 0) return null;
+  // Show first 3, last 3, and best step.
+  const best = history.reduce((b, h) => (h.loss < b.loss ? h : b), history[0]);
+  const head = history.slice(0, 3);
+  const tail = history.slice(-3);
+  const seen = new Set<number>();
+  const rows: typeof history = [];
+  const push = (h: typeof history[number]) => {
+    if (!seen.has(h.step)) { seen.add(h.step); rows.push(h); }
+  };
+  head.forEach(push);
+  push(best);
+  tail.forEach(push);
+  rows.sort((a, b) => a.step - b.step);
+  return (
+    <div className="rounded-md border border-border bg-background/40 p-2">
+      <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">
+        Per-iteration summary
+      </div>
+      <div className="grid grid-cols-[60px_1fr_1fr_60px] gap-2 text-[11px] font-mono">
+        <div className="text-muted-foreground">step</div>
+        <div className="text-muted-foreground">loss</div>
+        <div className="text-muted-foreground">‖∇L‖₂</div>
+        <div className="text-muted-foreground text-right">flag</div>
+        {rows.map((h) => (
+          <>
+            <div>{h.step}</div>
+            <div>{h.loss.toExponential(3)}</div>
+            <div>{h.gradNorm.toExponential(3)}</div>
+            <div className="text-right">{h === best ? "★ best" : ""}</div>
+          </>
+        ))}
+      </div>
     </div>
   );
 }
