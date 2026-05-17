@@ -310,13 +310,36 @@ function runSolve(params: Params): SolveOutput {
   });
   const netFlux = faceSummary.reduce((s, x) => s + (x.flow ?? 0), 0);
 
+  // Pressure force per boundary face: F = ∫ p · n_out dA, integrated over
+  // surface triangles whose 3 vertices all lie on the face (mean-pressure
+  // approximation per triangle, exact for P1 fields on flat axis-aligned faces).
+  const pressureForce: Record<FaceKey, [number, number, number]> = {
+    "-x": [0, 0, 0], "+x": [0, 0, 0], "-y": [0, 0, 0],
+    "+y": [0, 0, 0], "-z": [0, 0, 0], "+z": [0, 0, 0],
+  };
+  for (const f of FACE_KEYS) {
+    if (params.faces[f].mode === "wall" && faceArea[f] === 0) continue;
+    const test = faceTest(f, bb, tol);
+    const [nx, ny, nz] = FACE_NORMAL[f];
+    let Fmag = 0;
+    for (const [a, b, c] of surface) {
+      const pass = (i: number) =>
+        test(verts[i * 3], verts[i * 3 + 1], verts[i * 3 + 2]);
+      if (!(pass(a) && pass(b) && pass(c))) continue;
+      const A = triArea(verts as Float32Array, a, b, c);
+      const pAvg = (pressure[a] + pressure[b] + pressure[c]) / 3;
+      Fmag += pAvg * A;
+    }
+    pressureForce[f] = [Fmag * nx, Fmag * ny, Fmag * nz];
+  }
+
   return {
     mesh, result,
     elapsedMs: performance.now() - t0,
     phiMin, phiMax, speedMin, speedMax, cpMin, cpMax,
     pressure, pMin, pMax, density: params.density, p0: params.p0,
     dirichletCount: dirichlet.length,
-    faceSummary, netFlux, volumetricFlow,
+    faceSummary, netFlux, volumetricFlow, pressureForce,
   };
 }
 
