@@ -21,6 +21,11 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { BoundaryEditor } from "@/components/potential-flow/BoundaryEditor";
+import {
+  FACE_KEYS,
+  type FaceBC, type FaceKey, type FaceMode,
+} from "@/components/potential-flow/boundary-types";
 
 type FieldMode = "potential" | "speed" | "cp" | "pressure";
 /** How to map Bernoulli pressure p (Pa) into the [0,1] color ramp.
