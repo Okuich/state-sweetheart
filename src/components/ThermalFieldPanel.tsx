@@ -517,7 +517,7 @@ function ThermalViewer({
         );
       }
     }
-  }, [out, geo, yaw, pitch, zoom, mode, showFlux, probes]);
+  }, [out, geo, yaw, pitch, zoom, mode, showFlux, probes, overrideField]);
 
   const handleClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!pickArmed || !onPick) return;
