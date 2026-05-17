@@ -1035,6 +1035,7 @@ export function PotentialFlowPanel() {
               <Stat label="Δp = ½ρ|v|²max" value={`${(0.5 * out.density * out.speedMax * out.speedMax).toExponential(2)} Pa`} />
               <Stat label="Σ Neumann flux" value={`${out.netFlux.toExponential(2)} m³/s`} />
             </div>
+            <PressureForceGrid forces={out.pressureForce} />
             <FaceSummaryGrid summary={out.faceSummary} />
           </>
         )}
