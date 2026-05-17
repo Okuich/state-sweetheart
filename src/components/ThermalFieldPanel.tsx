@@ -141,7 +141,7 @@ function triArea(
   return 0.5 * Math.sqrt(nx * nx + ny * ny + nz * nz);
 }
 
-function runSolve(params: Params): SolveOutput {
+function runSolve(params: Params, kappaOverride?: Float64Array): SolveOutput {
   const t0 = performance.now();
   const { length, width, height } = params;
   const mesh = generateMesh({
