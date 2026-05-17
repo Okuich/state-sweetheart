@@ -1086,6 +1086,7 @@ function NeumannEditor({
 function OptimizePanel({
   probes, onProbesChange, pickArmed, onTogglePick,
   opts, onOptsChange, onRun, busy, result, currentT,
+  onComputeGradient, gradDiag, showGradOverlay, onToggleGradOverlay,
 }: {
   probes: Probe[];
   onProbesChange: (p: Probe[]) => void;
@@ -1097,6 +1098,10 @@ function OptimizePanel({
   busy: boolean;
   result: OptimizeResult | null;
   currentT: Float64Array;
+  onComputeGradient: () => void;
+  gradDiag: GradDiag | null;
+  showGradOverlay: boolean;
+  onToggleGradOverlay: () => void;
 }) {
   const updateProbe = (id: string, patch: Partial<Probe>) =>
     onProbesChange(probes.map((p) => (p.id === id ? { ...p, ...patch } : p)));
