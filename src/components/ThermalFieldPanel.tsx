@@ -376,6 +376,7 @@ function ThermalViewer({
       );
       px[i] = x; py[i] = y; pz[i] = z;
     }
+    projectedRef.current = { px, py, pz };
 
     // Sort surface triangles back-to-front by avg depth.
     const tris = geo.surface.map((tri) => {
