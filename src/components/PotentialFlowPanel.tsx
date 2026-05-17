@@ -629,6 +629,16 @@ export function PotentialFlowPanel() {
           <NumField label="RK4 steps" value={params.rk4Steps} step={20} onChange={(v) => set("rk4Steps", Math.max(20, Math.round(v)))} />
         </div>
 
+        <BoundaryEditor
+          faces={params.faces}
+          pinGauge={params.pinGauge}
+          onFaceChange={(face, patch) => setParams((p) => ({
+            ...p,
+            faces: { ...p.faces, [face]: { ...p.faces[face], ...patch } },
+          }))}
+          onPinChange={(v) => set("pinGauge", v)}
+        />
+
         <div className="flex items-center gap-2 flex-wrap">
           <Button onClick={run} disabled={busy} size="sm">
             {busy ? "Solving…" : "Run solver"}
