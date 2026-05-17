@@ -600,7 +600,14 @@ function FlowViewer({
     } else if (mode === "speed") {
       lo = out.speedMin.toFixed(3); hi = out.speedMax.toFixed(3); unit = "|v| (m/s)";
     } else if (mode === "pressure") {
-      lo = out.pMin.toExponential(2); hi = out.pMax.toExponential(2); unit = "p (Pa)";
+      if (pressureNorm === "minmax") {
+        lo = out.pMin.toExponential(2); hi = out.pMax.toExponential(2); unit = "p (Pa)";
+      } else {
+        const label = pressureNorm === "p0" ? "p / p₀" : "p / p_ref";
+        lo = (out.pMin / pRefSafe).toFixed(3);
+        hi = (out.pMax / pRefSafe).toFixed(3);
+        unit = `${label}  (ref = ${pRefSafe.toExponential(2)} Pa)`;
+      }
     } else {
       lo = out.cpMin.toFixed(3); hi = out.cpMax.toFixed(3); unit = "Cp";
     }
