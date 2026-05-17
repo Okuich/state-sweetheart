@@ -12,6 +12,8 @@ import { generateMesh, type MeshingResult } from "@/lib/meshing";
 import {
   solveThermal, type ThermalSolution,
   inverseDesignKappa,
+  differentiateThermal,
+  targetTemperatureLoss,
 } from "@/lib/pde";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
