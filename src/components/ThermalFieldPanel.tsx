@@ -721,6 +721,7 @@ export function ThermalFieldPanel() {
         };
         setOptResult(final);
         setKappaField(result.kappa);
+        setGradDiag(null);
         // Re-run forward visualization with optimized κ.
         setOut(runSolve(params, result.kappa));
       } catch (e) {
@@ -734,7 +735,93 @@ export function ThermalFieldPanel() {
   const resetKappa = () => {
     setKappaField(null);
     setOptResult(null);
+    setGradDiag(null);
+    setShowGradOverlay(false);
     run();
+  };
+
+  const computeGradient = () => {
+    if (!out) { setErr("Run forward solver first."); return; }
+    if (probes.length === 0) { setErr("Add at least one probe to define a loss."); return; }
+    setBusy(true); setErr(null);
+    setTimeout(() => {
+      try {
+        const dirichletArr = Array.from(out.dirichletSet).map((index) => ({
+          index, value: out.thermal.T[index],
+        }));
+        const kappaForGrad = kappaField ?? out.kappa;
+        const { loss, dLdT } = targetTemperatureLoss(
+          out.thermal.T,
+          probes.map((p) => ({ index: p.index, target: p.target, weight: p.weight })),
+        );
+        const grads = differentiateThermal(
+          {
+            mesh: { vertices: out.mesh.mesh.vertices, tets: out.mesh.mesh.tets },
+            kappa: new Float64Array(kappaForGrad),
+            neumannLoads: out.loads,
+            dirichlet: dirichletArr,
+          },
+          { dLdT },
+          out.thermal,
+        );
+
+        const tets = out.mesh.mesh.tets;
+        const nV = out.thermal.T.length;
+        const nT = grads.dLdKappa.length;
+        const perTetLog = new Float64Array(nT);
+        let minTet = Infinity, maxTet = -Infinity;
+        let gNorm2 = 0, gNorm2Log = 0;
+        for (let t = 0; t < nT; t++) {
+          const g = grads.dLdKappa[t];
+          const gLog = g * kappaForGrad[t];
+          perTetLog[t] = gLog;
+          if (g < minTet) minTet = g;
+          if (g > maxTet) maxTet = g;
+          gNorm2 += g * g;
+          gNorm2Log += gLog * gLog;
+        }
+
+        // Spread |dL/dκ| to vertices by averaging |g_t| over incident tets
+        // → produces a surface heatmap proxy of where the gradient lives.
+        const accum = new Float64Array(nV);
+        const count = new Uint32Array(nV);
+        for (let t = 0; t < nT; t++) {
+          const a = Math.abs(grads.dLdKappa[t]);
+          for (let k = 0; k < 4; k++) {
+            const vid = tets[t * 4 + k];
+            accum[vid] += a;
+            count[vid] += 1;
+          }
+        }
+        let minVtx = Infinity, maxVtx = -Infinity;
+        const perVertex = new Float64Array(nV);
+        for (let i = 0; i < nV; i++) {
+          const v = count[i] > 0 ? accum[i] / count[i] : 0;
+          perVertex[i] = v;
+          if (v < minVtx) minVtx = v;
+          if (v > maxVtx) maxVtx = v;
+        }
+
+        let gNormSrc2 = 0, gNormLd2 = 0;
+        for (let i = 0; i < nV; i++) gNormSrc2 += grads.dLdSource[i] * grads.dLdSource[i];
+        for (let i = 0; i < nV; i++) gNormLd2  += grads.dLdLoads[i]  * grads.dLdLoads[i];
+
+        setGradDiag({
+          perVertex, perTet: grads.dLdKappa, perTetLog,
+          minTet, maxTet, minVtx, maxVtx,
+          loss,
+          gradNormKappa:    Math.sqrt(gNorm2),
+          gradNormLogKappa: Math.sqrt(gNorm2Log),
+          gradNormSource:   Math.sqrt(gNormSrc2),
+          gradNormLoads:    Math.sqrt(gNormLd2),
+        });
+        setShowGradOverlay(true);
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : String(e));
+      } finally {
+        setBusy(false);
+      }
+    }, 0);
   };
 
 
