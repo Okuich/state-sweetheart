@@ -87,6 +87,41 @@ export interface ThermalAdjointGPUContext {
   device: GPUDevice;
   pipelineOpKappa: GPUComputePipeline;
   pipelineFluxKappa: GPUComputePipeline;
+  /** Re-usable buffer pool keyed on slot name; reallocated only on size change. */
+  cache: KappaGradBufferCache;
+}
+
+/**
+ * Cache of GPU buffers re-used across repeated `computeKappaGradGPU` calls.
+ * Topology buffers (`tets`, `tetGrads`, `tetVols`) are typically stable across
+ * iterations of an inverse-design loop, so we additionally remember the
+ * `Uint8Array` checksum proxy (byteLength + first/last word) and skip the
+ * upload when the same data is re-submitted.
+ */
+interface CachedBuffer {
+  buf: GPUBuffer;
+  byteLength: number;
+  /** Cheap fingerprint to detect "same upload" without re-hashing the payload. */
+  fingerprint: number;
+}
+interface KappaGradBufferCache {
+  u: CachedBuffer | null;
+  lambda: CachedBuffer | null;
+  tets: CachedBuffer | null;
+  tetGrads: CachedBuffer | null;
+  tetVols: CachedBuffer | null;
+  out: CachedBuffer | null;
+  info: CachedBuffer | null;
+  infoFlux: CachedBuffer | null;
+  dLdq: CachedBuffer | null;
+  staging: CachedBuffer | null;
+}
+
+function emptyCache(): KappaGradBufferCache {
+  return {
+    u: null, lambda: null, tets: null, tetGrads: null, tetVols: null,
+    out: null, info: null, infoFlux: null, dLdq: null, staging: null,
+  };
 }
 
 export type ThermalAdjointBackend =
