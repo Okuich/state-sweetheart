@@ -23,28 +23,49 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
 type FieldMode = "potential" | "speed" | "cp" | "pressure";
+type FaceKey = "+x" | "-x" | "+y" | "-y" | "+z" | "-z";
+type FaceMode = "dirichlet" | "neumann" | "wall";
+
+interface FaceBC {
+  mode: FaceMode;
+  /** φ value (m²/s) when mode = "dirichlet". */
+  phi: number;
+  /** Normal velocity v·n_out (m/s) when mode = "neumann". Positive = outflow. */
+  vN: number;
+}
 
 interface Params {
   length: number;
   width: number;
   height: number;
-  phiInlet: number;
-  phiOutlet: number;
   density: number;        // ρ (kg/m³) — Bernoulli
   p0: number;             // stagnation / reference pressure (Pa)
   minDepth: number;
   maxDepth: number;
   seedsPerSide: number;
   rk4Steps: number;
+  faces: Record<FaceKey, FaceBC>;
+  /** Auto-pin a gauge node when no Dirichlet face is selected. */
+  pinGauge: boolean;
 }
+
+const FACE_KEYS: FaceKey[] = ["-x", "+x", "-y", "+y", "-z", "+z"];
 
 const DEFAULTS: Params = {
   length: 2, width: 0.5, height: 0.5,
-  phiInlet: 0, phiOutlet: 2,
   density: 1.225, p0: 101325,
   minDepth: 2, maxDepth: 3,
   seedsPerSide: 4,
   rk4Steps: 240,
+  faces: {
+    "-x": { mode: "dirichlet", phi: 0, vN: -1 },   // inlet (gauge)
+    "+x": { mode: "dirichlet", phi: 2, vN:  1 },   // outlet
+    "-y": { mode: "wall",      phi: 0, vN:  0 },
+    "+y": { mode: "wall",      phi: 0, vN:  0 },
+    "-z": { mode: "wall",      phi: 0, vN:  0 },
+    "+z": { mode: "wall",      phi: 0, vN:  0 },
+  },
+  pinGauge: true,
 };
 
 // Viridis-like ramp (distinct from thermal's inferno and electro's plasma).
@@ -71,6 +92,19 @@ function ramp(t: number): [number, number, number] {
   return RAMP[RAMP.length - 1][1];
 }
 
+interface FaceSummary {
+  face: FaceKey;
+  mode: FaceMode;
+  area: number;
+  nodes: number;
+  /** Dirichlet: φ value applied. */
+  phi?: number;
+  /** Neumann: prescribed v_N (m/s). */
+  vN?: number;
+  /** Neumann: integrated volumetric flow ∫ v_N dA (m³/s). */
+  flow?: number;
+}
+
 interface SolveOutput {
   mesh: MeshingResult;
   result: PotentialFlowSolution;
@@ -82,7 +116,9 @@ interface SolveOutput {
   pressure: Float64Array;
   pMin: number; pMax: number;
   density: number; p0: number;
-  inletCount: number; outletCount: number;
+  dirichletCount: number;
+  faceSummary: FaceSummary[];
+  netFlux: number;
   volumetricFlow: number;
 }
 
@@ -105,6 +141,31 @@ function extractSurfaceTriangles(tets: Uint32Array): Array<[number, number, numb
   return out;
 }
 
+function triArea(
+  v: Float32Array | Float64Array, a: number, b: number, c: number,
+): number {
+  const ax = v[a * 3], ay = v[a * 3 + 1], az = v[a * 3 + 2];
+  const bx = v[b * 3] - ax, by = v[b * 3 + 1] - ay, bz = v[b * 3 + 2] - az;
+  const cx = v[c * 3] - ax, cy = v[c * 3 + 1] - ay, cz = v[c * 3 + 2] - az;
+  const nx = by * cz - bz * cy;
+  const ny = bz * cx - bx * cz;
+  const nz = bx * cy - by * cx;
+  return 0.5 * Math.sqrt(nx * nx + ny * ny + nz * nz);
+}
+
+function faceTest(
+  face: FaceKey, bb: { min: ReadonlyArray<number>; max: ReadonlyArray<number> }, tol: number,
+): (x: number, y: number, z: number) => boolean {
+  switch (face) {
+    case "-x": return (x) => x <= bb.min[0] + tol;
+    case "+x": return (x) => x >= bb.max[0] - tol;
+    case "-y": return (_x, y) => y <= bb.min[1] + tol;
+    case "+y": return (_x, y) => y >= bb.max[1] - tol;
+    case "-z": return (_x, _y, z) => z <= bb.min[2] + tol;
+    case "+z": return (_x, _y, z) => z >= bb.max[2] - tol;
+  }
+}
+
 function runSolve(params: Params): SolveOutput {
   const t0 = performance.now();
   const { length, width, height } = params;
@@ -117,19 +178,62 @@ function runSolve(params: Params): SolveOutput {
   const verts = mesh.mesh.vertices;
   const tets = mesh.mesh.tets;
   const nV = verts.length / 3;
-  const tol = length * 1e-4;
+  const bb = mesh.mesh.bbox;
+  const ext = Math.max(
+    bb.max[0] - bb.min[0], bb.max[1] - bb.min[1], bb.max[2] - bb.min[2],
+  );
+  const tol = ext * 1e-4;
 
-  const dirichlet: { index: number; value: number }[] = [];
-  let inletCount = 0, outletCount = 0;
-  for (let i = 0; i < nV; i++) {
-    const x = verts[i * 3];
-    if (x <= tol) { dirichlet.push({ index: i, value: params.phiInlet }); inletCount++; }
-    else if (x >= length - tol) { dirichlet.push({ index: i, value: params.phiOutlet }); outletCount++; }
+  // Classify each vertex by which face(s) it touches.
+  const faceVerts: Record<FaceKey, number[]> = {
+    "-x": [], "+x": [], "-y": [], "+y": [], "-z": [], "+z": [],
+  };
+  for (const f of FACE_KEYS) {
+    const test = faceTest(f, bb, tol);
+    for (let i = 0; i < nV; i++) {
+      if (test(verts[i * 3], verts[i * 3 + 1], verts[i * 3 + 2])) faceVerts[f].push(i);
+    }
+  }
+
+  // Dirichlet — collect from face config; later face overrides earlier on shared edge nodes.
+  const dirichletMap = new Map<number, number>();
+  for (const f of FACE_KEYS) {
+    if (params.faces[f].mode !== "dirichlet") continue;
+    const v = params.faces[f].phi;
+    for (const i of faceVerts[f]) dirichletMap.set(i, v);
+  }
+  const dirichlet = Array.from(dirichletMap, ([index, value]) => ({ index, value }));
+
+  // Neumann — integrate v_N × area over surface triangles whose 3 verts
+  // all lie on a Neumann face. Distribute (v_N · A) equally to 3 nodes.
+  const surface = extractSurfaceTriangles(tets);
+  const loads = new Float64Array(nV);
+  const faceArea: Record<FaceKey, number> = {
+    "-x": 0, "+x": 0, "-y": 0, "+y": 0, "-z": 0, "+z": 0,
+  };
+  let anyNeumann = false;
+  for (const f of FACE_KEYS) {
+    if (params.faces[f].mode !== "neumann") continue;
+    anyNeumann = true;
+    const test = faceTest(f, bb, tol);
+    const vN = params.faces[f].vN;
+    for (const [a, b, c] of surface) {
+      const pass = (i: number) =>
+        test(verts[i * 3], verts[i * 3 + 1], verts[i * 3 + 2]);
+      if (pass(a) && pass(b) && pass(c)) {
+        const A = triArea(verts as Float32Array, a, b, c);
+        faceArea[f] += A;
+        const share = (vN * A) / 3;
+        loads[a] += share; loads[b] += share; loads[c] += share;
+      }
+    }
   }
 
   const result = solvePotentialFlow({
     mesh: { vertices: verts, tets },
-    dirichlet,
+    dirichlet: dirichlet.length > 0 ? dirichlet : undefined,
+    neumannLoads: anyNeumann ? loads : undefined,
+    pinGauge: dirichlet.length === 0 && params.pinGauge,
   });
 
   let phiMin = Infinity, phiMax = -Infinity;
@@ -149,7 +253,7 @@ function runSolve(params: Params): SolveOutput {
     if (result.cp[i] > cpMax) cpMax = result.cp[i];
   }
 
-  // Mean axial velocity × inlet area (sanity check for incompressibility).
+  // Domain-mean axial velocity × cross-section (simple incompressibility check).
   let uxSum = 0, uxN = 0;
   for (let t = 0; t < result.velocityPerTet.length / 3; t++) {
     uxSum += result.velocityPerTet[t * 3]; uxN++;
@@ -169,12 +273,37 @@ function runSolve(params: Params): SolveOutput {
     if (p > pMax) pMax = p;
   }
 
+  // Per-face area for Dirichlet faces too (for summary).
+  for (const f of FACE_KEYS) {
+    if (faceArea[f] > 0 || params.faces[f].mode === "wall") continue;
+    const test = faceTest(f, bb, tol);
+    for (const [a, b, c] of surface) {
+      const pass = (i: number) =>
+        test(verts[i * 3], verts[i * 3 + 1], verts[i * 3 + 2]);
+      if (pass(a) && pass(b) && pass(c)) {
+        faceArea[f] += triArea(verts as Float32Array, a, b, c);
+      }
+    }
+  }
+
+  const faceSummary: FaceSummary[] = FACE_KEYS.map((f) => {
+    const bc = params.faces[f];
+    const s: FaceSummary = {
+      face: f, mode: bc.mode, area: faceArea[f], nodes: faceVerts[f].length,
+    };
+    if (bc.mode === "dirichlet") s.phi = bc.phi;
+    if (bc.mode === "neumann") { s.vN = bc.vN; s.flow = bc.vN * faceArea[f]; }
+    return s;
+  });
+  const netFlux = faceSummary.reduce((s, x) => s + (x.flow ?? 0), 0);
+
   return {
     mesh, result,
     elapsedMs: performance.now() - t0,
     phiMin, phiMax, speedMin, speedMax, cpMin, cpMax,
     pressure, pMin, pMax, density: params.density, p0: params.p0,
-    inletCount, outletCount, volumetricFlow,
+    dirichletCount: dirichlet.length,
+    faceSummary, netFlux, volumetricFlow,
   };
 }
 
@@ -494,13 +623,21 @@ export function PotentialFlowPanel() {
           <NumField label="Width (m)" value={params.width} step={0.05} onChange={(v) => set("width", v)} />
           <NumField label="Height (m)" value={params.height} step={0.05} onChange={(v) => set("height", v)} />
           <NumField label="max depth" value={params.maxDepth} step={1} onChange={(v) => set("maxDepth", Math.max(params.minDepth, Math.round(v)))} />
-          <NumField label="φ inlet" value={params.phiInlet} step={0.1} onChange={(v) => set("phiInlet", v)} />
-          <NumField label="φ outlet" value={params.phiOutlet} step={0.1} onChange={(v) => set("phiOutlet", v)} />
           <NumField label="ρ (kg/m³)" value={params.density} step={0.1} onChange={(v) => set("density", Math.max(1e-9, v))} />
           <NumField label="p₀ (Pa)" value={params.p0} step={100} onChange={(v) => set("p0", v)} />
           <NumField label="seeds / side" value={params.seedsPerSide} step={1} onChange={(v) => set("seedsPerSide", Math.max(1, Math.min(8, Math.round(v))))} />
           <NumField label="RK4 steps" value={params.rk4Steps} step={20} onChange={(v) => set("rk4Steps", Math.max(20, Math.round(v)))} />
         </div>
+
+        <BoundaryEditor
+          faces={params.faces}
+          pinGauge={params.pinGauge}
+          onFaceChange={(face, patch) => setParams((p) => ({
+            ...p,
+            faces: { ...p.faces, [face]: { ...p.faces[face], ...patch } },
+          }))}
+          onPinChange={(v) => set("pinGauge", v)}
+        />
 
         <div className="flex items-center gap-2 flex-wrap">
           <Button onClick={run} disabled={busy} size="sm">
@@ -544,14 +681,16 @@ export function PotentialFlowPanel() {
               <Stat label="|v| max" value={`${out.speedMax.toFixed(3)} m/s`} />
               <Stat label="Cp range" value={`${out.cpMin.toFixed(2)} … ${out.cpMax.toFixed(2)}`} />
               <Stat label="V_ref" value={`${out.result.referenceSpeed.toFixed(3)} m/s`} />
-              <Stat label="inlet / outlet" value={`${out.inletCount} · ${out.outletCount}`} />
+              <Stat label="Dirichlet nodes" value={`${out.dirichletCount}`} />
               <Stat label="vertices" value={out.result.phi.length.toLocaleString()} />
               <Stat label="residual" value={out.result.solve.result.residual.toExponential(2)} />
               <Stat label="Q ≈ ūx·A" value={`${out.volumetricFlow.toExponential(2)} m³/s`} />
               <Stat label="p min" value={`${out.pMin.toExponential(3)} Pa`} />
               <Stat label="p max" value={`${out.pMax.toExponential(3)} Pa`} />
               <Stat label="Δp = ½ρ|v|²max" value={`${(0.5 * out.density * out.speedMax * out.speedMax).toExponential(2)} Pa`} />
+              <Stat label="Σ Neumann flux" value={`${out.netFlux.toExponential(2)} m³/s`} />
             </div>
+            <FaceSummaryGrid summary={out.faceSummary} />
           </>
         )}
       </CardContent>
@@ -584,6 +723,116 @@ function Stat({ label, value }: { label: string; value: string }) {
     <div className="rounded-md border border-border bg-muted/30 px-3 py-2">
       <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className="font-mono text-sm text-foreground">{value}</div>
+    </div>
+  );
+}
+
+const MODE_LABEL: Record<FaceMode, string> = {
+  dirichlet: "Dirichlet φ",
+  neumann:   "Neumann v·n",
+  wall:      "Wall (no-penetration)",
+};
+
+function BoundaryEditor({
+  faces, pinGauge, onFaceChange, onPinChange,
+}: {
+  faces: Record<FaceKey, FaceBC>;
+  pinGauge: boolean;
+  onFaceChange: (face: FaceKey, patch: Partial<FaceBC>) => void;
+  onPinChange: (v: boolean) => void;
+}) {
+  const anyDirichlet = FACE_KEYS.some((f) => faces[f].mode === "dirichlet");
+  return (
+    <div className="rounded-md border border-border bg-muted/20 p-3 space-y-3">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+            Boundary conditions per bbox face
+          </div>
+          <div className="text-[11px] text-muted-foreground">
+            Dirichlet pins φ. Neumann prescribes v·n_out (m/s): positive = outflow, negative = inflow. Wall = ∂φ/∂n = 0.
+          </div>
+        </div>
+        {!anyDirichlet && (
+          <label className="flex items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={pinGauge}
+              onChange={(e) => onPinChange(e.target.checked)}
+            />
+            Auto-pin gauge (vertex 0 → φ=0)
+          </label>
+        )}
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+        {FACE_KEYS.map((f) => {
+          const bc = faces[f];
+          return (
+            <div key={f} className="rounded border border-border/60 bg-background/40 p-2 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-sm text-foreground">face {f}</span>
+                <Select
+                  value={bc.mode}
+                  onValueChange={(v) => onFaceChange(f, { mode: v as FaceMode })}
+                >
+                  <SelectTrigger className="h-8 w-[180px] text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="dirichlet">{MODE_LABEL.dirichlet}</SelectItem>
+                    <SelectItem value="neumann">{MODE_LABEL.neumann}</SelectItem>
+                    <SelectItem value="wall">{MODE_LABEL.wall}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {bc.mode === "dirichlet" && (
+                <NumField
+                  label="φ (m²/s)" value={bc.phi} step={0.1}
+                  onChange={(v) => onFaceChange(f, { phi: v })}
+                />
+              )}
+              {bc.mode === "neumann" && (
+                <NumField
+                  label="v·n_out (m/s) — inflow < 0" value={bc.vN} step={0.1}
+                  onChange={(v) => onFaceChange(f, { vN: v })}
+                />
+              )}
+              {bc.mode === "wall" && (
+                <div className="text-[11px] text-muted-foreground italic">
+                  No-penetration wall (insulated). Streamlines tangent to face.
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function FaceSummaryGrid({ summary }: { summary: FaceSummary[] }) {
+  return (
+    <div className="rounded-md border border-border bg-muted/20 p-3">
+      <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2">
+        Boundary patches (integrated)
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs font-mono">
+        {summary.map((s) => (
+          <div key={s.face} className="flex items-center justify-between gap-2 rounded border border-border/60 bg-background/40 px-2 py-1">
+            <span>face <span className="text-foreground">{s.face}</span></span>
+            <span className="uppercase text-muted-foreground text-[10px]">{s.mode}</span>
+            <span>A={s.area.toFixed(3)} m²</span>
+            <span>{s.nodes} nodes</span>
+            {s.mode === "dirichlet" && <span>φ={s.phi?.toFixed(2)}</span>}
+            {s.mode === "neumann" && (
+              <>
+                <span>v·n={s.vN?.toFixed(2)} m/s</span>
+                <span className={(s.flow ?? 0) >= 0 ? "text-emerald-400" : "text-amber-400"}>
+                  Q={(s.flow ?? 0).toExponential(2)} m³/s
+                </span>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
