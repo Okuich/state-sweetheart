@@ -23,6 +23,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
 type FieldMode = "potential" | "speed" | "cp" | "pressure";
+/** How to map Bernoulli pressure p (Pa) into the [0,1] color ramp.
+ *  - "minmax": rescale across observed [pMin, pMax] (default, max contrast).
+ *  - "p0":     dimensionless ratio p / p₀; ramp covers [0,1] of stagnation.
+ *  - "ref":    dimensionless ratio p / p_ref using a user-supplied reference. */
+type PressureNorm = "minmax" | "p0" | "ref";
 type FaceKey = "+x" | "-x" | "+y" | "-y" | "+z" | "-z";
 type FaceMode = "dirichlet" | "neumann" | "wall";
 
