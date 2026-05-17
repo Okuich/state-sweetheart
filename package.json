@@ -12,6 +12,9 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .vite .tanstack node_modules/.vite node_modules/.cache .tsbuildinfo",
+    "typecheck:clean": "bun run clean && tsc --noEmit",
+    "build:clean": "bun run clean && vite build",
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install --with-deps chromium"
   },
