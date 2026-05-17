@@ -757,6 +757,9 @@ export function PotentialFlowPanel() {
   const [stepScale, setStepScale] = useState(1);
   const [pressureNorm, setPressureNorm] = useState<PressureNorm>("minmax");
   const [refPressure, setRefPressure] = useState(101325);
+  const [showContours, setShowContours] = useState(false);
+  const [contourCount, setContourCount] = useState(10);
+  const [contourOpacity, setContourOpacity] = useState(0.85);
   const [customSeeds, setCustomSeeds] = useState<Array<[number, number, number]>>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
