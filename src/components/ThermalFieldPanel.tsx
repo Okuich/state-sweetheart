@@ -1255,3 +1255,78 @@ function LossChart({ history }: { history: Array<{ step: number; loss: number; g
     </div>
   );
 }
+
+function GradNormChart({ history }: { history: Array<{ step: number; loss: number; gradNorm: number }> }) {
+  if (history.length < 2) return null;
+  const vals = history.map((h) => Math.max(h.gradNorm, 1e-30));
+  if (vals.every((v) => v <= 1e-30)) {
+    return <div className="text-[11px] text-muted-foreground italic">Gradient norm not recorded.</div>;
+  }
+  const W = 600, H = 110, pad = 26;
+  const lMin = Math.min(...vals);
+  const lMax = Math.max(...vals);
+  const useLog = lMax / Math.max(lMin, 1e-30) > 50;
+  const toY = (v: number) => {
+    const a = useLog ? Math.log10(v) : v;
+    const a0 = useLog ? Math.log10(lMin) : lMin;
+    const a1 = useLog ? Math.log10(lMax) : lMax;
+    const span = Math.max(a1 - a0, 1e-12);
+    return H - pad - ((a - a0) / span) * (H - 2 * pad);
+  };
+  const toX = (i: number) => pad + (i / (history.length - 1)) * (W - 2 * pad);
+  const path = history.map((h, i) => `${i === 0 ? "M" : "L"}${toX(i).toFixed(1)},${toY(vals[i]).toFixed(1)}`).join(" ");
+  return (
+    <div className="rounded-md border border-border bg-background/40 p-2">
+      <div className="flex items-center justify-between text-[11px] text-muted-foreground mb-1">
+        <span>‖∇L‖₂ vs step {useLog ? "(log scale)" : ""}</span>
+        <span className="font-mono">{lMin.toExponential(2)} → {lMax.toExponential(2)}</span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-[110px]">
+        <rect x={pad} y={pad} width={W - 2 * pad} height={H - 2 * pad}
+          fill="none" stroke="hsl(var(--border))" strokeDasharray="2 3" />
+        <path d={path} fill="none" stroke="hsl(var(--destructive))" strokeWidth={2} />
+        {history.map((h, i) => (
+          <circle key={i} cx={toX(i)} cy={toY(vals[i])} r={1.8} fill="hsl(var(--destructive))" />
+        ))}
+      </svg>
+    </div>
+  );
+}
+
+function IterationTable({ history }: { history: Array<{ step: number; loss: number; gradNorm: number }> }) {
+  if (history.length === 0) return null;
+  // Show first 3, last 3, and best step.
+  const best = history.reduce((b, h) => (h.loss < b.loss ? h : b), history[0]);
+  const head = history.slice(0, 3);
+  const tail = history.slice(-3);
+  const seen = new Set<number>();
+  const rows: typeof history = [];
+  const push = (h: typeof history[number]) => {
+    if (!seen.has(h.step)) { seen.add(h.step); rows.push(h); }
+  };
+  head.forEach(push);
+  push(best);
+  tail.forEach(push);
+  rows.sort((a, b) => a.step - b.step);
+  return (
+    <div className="rounded-md border border-border bg-background/40 p-2">
+      <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">
+        Per-iteration summary
+      </div>
+      <div className="grid grid-cols-[60px_1fr_1fr_60px] gap-2 text-[11px] font-mono">
+        <div className="text-muted-foreground">step</div>
+        <div className="text-muted-foreground">loss</div>
+        <div className="text-muted-foreground">‖∇L‖₂</div>
+        <div className="text-muted-foreground text-right">flag</div>
+        {rows.map((h) => (
+          <>
+            <div>{h.step}</div>
+            <div>{h.loss.toExponential(3)}</div>
+            <div>{h.gradNorm.toExponential(3)}</div>
+            <div className="text-right">{h === best ? "★ best" : ""}</div>
+          </>
+        ))}
+      </div>
+    </div>
+  );
+}
