@@ -359,28 +359,6 @@ async function downloadF32(t: GPUTensor): Promise<Float32Array> {
 function toF32(src: Float32Array | Float64Array): Float32Array {
   return src instanceof Float32Array ? src : Float32Array.from(src);
 }
-
-async function downloadF32(t: GPUTensor): Promise<Float32Array> {
-  const device = (t.buffer as unknown as { device: GPUDevice }).device;
-  const byteLen = t.length * 4;
-  const staging = device.createBuffer({
-    size: byteLen,
-    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
-  });
-  const enc = device.createCommandEncoder();
-  enc.copyBufferToBuffer(t.buffer, 0, staging, 0, byteLen);
-  device.queue.submit([enc.finish()]);
-  await staging.mapAsync(GPUMapMode.READ);
-  const out = new Float32Array(staging.getMappedRange().slice(0));
-  staging.unmap();
-  staging.destroy();
-  return out;
-}
-
-function toF32(src: Float32Array | Float64Array): Float32Array {
-  return src instanceof Float32Array ? src : Float32Array.from(src);
-}
-
 // ─── GPU κ-gradient kernel dispatch ──────────────────────────────────────────
 
 interface KappaGradGPUInputs {
