@@ -658,6 +658,8 @@ export function ThermalFieldPanel() {
     setOptResult(null);
     setKappaField(null);
     setPickArmed(false);
+    setGradDiag(null);
+    setShowGradOverlay(false);
   }, [params.length, params.width, params.height, params.minDepth, params.maxDepth]);
 
   const set = <K extends keyof Params>(k: K, v: Params[K]) =>
