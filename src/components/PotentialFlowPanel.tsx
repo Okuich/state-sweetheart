@@ -746,7 +746,8 @@ export function PotentialFlowPanel() {
               out={out} mode={mode}
               showVectors={showVectors}
               showStreamlines={showStreamlines}
-              bidirectional={bidirectional}
+              direction={direction}
+              stepScale={stepScale}
               seedsPerSide={params.seedsPerSide}
               rk4Steps={params.rk4Steps}
             />
