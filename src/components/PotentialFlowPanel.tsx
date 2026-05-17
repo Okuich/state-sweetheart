@@ -363,7 +363,7 @@ function FlowViewer({
 
   // RK4 streamlines through the mesh-backed velocity sampler.
   const streamlines = useMemo(() => {
-    if (!showStreamlines) return [] as Float64Array[];
+    if (!showStreamlines) return [] as Array<{ pts: Float64Array; speed: Float32Array }>;
     const meshIn = { vertices: out.mesh.mesh.vertices, tets: out.mesh.mesh.tets };
     const sampleV = makeVelocitySampler(meshIn, out.result.velocityPerTet);
     // Normalize sampled velocity → unit direction so stepSize stays in world units.
@@ -391,12 +391,18 @@ function FlowViewer({
         ]);
       }
     }
-    const lines: Float64Array[] = [];
+    const lines: Array<{ pts: Float64Array; speed: Float32Array }> = [];
     for (const s of seeds) {
       const pts = traceFieldLine(s, sample, {
         stepSize: step, maxSteps: rk4Steps, direction: 1,
       });
-      lines.push(pts);
+      const nPts = pts.length / 3;
+      const speed = new Float32Array(nPts);
+      for (let i = 0; i < nPts; i++) {
+        const v = sampleV(pts[i * 3], pts[i * 3 + 1], pts[i * 3 + 2]);
+        speed[i] = v ? Math.hypot(v[0], v[1], v[2]) : 0;
+      }
+      lines.push({ pts, speed });
     }
     return lines;
   }, [out, showStreamlines, seedsPerSide, rk4Steps]);
@@ -495,20 +501,27 @@ function FlowViewer({
 
     if (showStreamlines) {
       ctx.lineWidth = 1.6;
-      for (const line of streamlines) {
-        ctx.beginPath();
-        let started = false;
-        for (let i = 0; i < line.length; i += 3) {
-          const [nx, ny, nz] = geo.toNorm(line[i], line[i + 1], line[i + 2]);
-          const [sx, sy2] = project(nx, ny, nz);
-          if (!started) { ctx.moveTo(sx, sy2); started = true; }
-          else ctx.lineTo(sx, sy2);
+      const spMax = Math.max(1e-12, out.speedMax);
+      for (const { pts, speed } of streamlines) {
+        const nPts = pts.length / 3;
+        // Per-segment coloring by local speed magnitude.
+        for (let i = 1; i < nPts; i++) {
+          const [px0, py0, pz0] = geo.toNorm(pts[(i - 1) * 3], pts[(i - 1) * 3 + 1], pts[(i - 1) * 3 + 2]);
+          const [px1, py1, pz1] = geo.toNorm(pts[i * 3],       pts[i * 3 + 1],       pts[i * 3 + 2]);
+          const [sx0, sy0] = project(px0, py0, pz0);
+          const [sx1, sy1] = project(px1, py1, pz1);
+          const s = 0.5 * (speed[i - 1] + speed[i]) / spMax;
+          const [r, g, bl] = ramp(Math.max(0, Math.min(1, s)));
+          ctx.strokeStyle = `rgba(${r},${g},${bl},0.95)`;
+          ctx.beginPath();
+          ctx.moveTo(sx0, sy0); ctx.lineTo(sx1, sy1);
+          ctx.stroke();
+          // Suppress unused warnings on z components from projection helper.
+          void pz0; void pz1;
         }
-        ctx.strokeStyle = "rgba(165, 243, 252, 0.92)";
-        ctx.stroke();
         // Seed dot.
-        if (line.length >= 3) {
-          const [nx, ny, nz] = geo.toNorm(line[0], line[1], line[2]);
+        if (pts.length >= 3) {
+          const [nx, ny, nz] = geo.toNorm(pts[0], pts[1], pts[2]);
           const [sx, sy2] = project(nx, ny, nz);
           ctx.fillStyle = "rgba(125, 211, 252, 1)";
           ctx.beginPath();
