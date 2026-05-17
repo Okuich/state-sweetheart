@@ -307,19 +307,23 @@ function runSolve(params: Params): SolveOutput {
   };
 }
 
+type StreamDirection = "forward" | "backward" | "bidirectional";
+
 interface ViewerProps {
   out: SolveOutput;
   mode: FieldMode;
   showVectors: boolean;
   showStreamlines: boolean;
-  bidirectional: boolean;
+  direction: StreamDirection;
+  stepScale: number;
   seedsPerSide: number;
   rk4Steps: number;
   height?: number;
 }
 
 function FlowViewer({
-  out, mode, showVectors, showStreamlines, bidirectional, seedsPerSide, rk4Steps, height = 380,
+  out, mode, showVectors, showStreamlines, direction, stepScale,
+  seedsPerSide, rk4Steps, height = 380,
 }: ViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [yaw, setYaw] = useState(0.7);
