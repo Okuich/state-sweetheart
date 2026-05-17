@@ -1121,10 +1121,18 @@ function OptimizePanel({
             Adjoint gradient on log(κ) minimizes ½·Σwᵢ·(Tᵢ−T*ᵢ)² at probe vertices.
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button size="sm" variant={pickArmed ? "default" : "outline"} onClick={onTogglePick}>
             {pickArmed ? "Cancel pick" : "+ Pick probe on mesh"}
           </Button>
+          <Button size="sm" variant="outline" onClick={onComputeGradient} disabled={busy || probes.length === 0}>
+            Compute ∂L/∂κ
+          </Button>
+          {gradDiag && (
+            <Button size="sm" variant={showGradOverlay ? "default" : "outline"} onClick={onToggleGradOverlay}>
+              Overlay {showGradOverlay ? "on" : "off"}
+            </Button>
+          )}
           <Button size="sm" onClick={onRun} disabled={busy || probes.length === 0}>
             {busy ? "Optimizing…" : `Run optimization (${opts.steps} steps)`}
           </Button>
