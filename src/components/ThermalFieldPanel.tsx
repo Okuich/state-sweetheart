@@ -780,7 +780,28 @@ export function ThermalFieldPanel() {
 
         {out && (
           <>
-            <ThermalViewer out={out} mode={mode} showFlux={showFlux} />
+            <ThermalViewer
+              out={out}
+              mode={mode}
+              showFlux={showFlux}
+              probes={probes}
+              pickArmed={panelMode === "optimize" && pickArmed}
+              onPick={addProbe}
+            />
+            {panelMode === "optimize" && (
+              <OptimizePanel
+                probes={probes}
+                onProbesChange={setProbes}
+                pickArmed={pickArmed}
+                onTogglePick={() => setPickArmed((p) => !p)}
+                opts={optOpts}
+                onOptsChange={setOptOpts}
+                onRun={runOptimize}
+                busy={busy}
+                result={optResult}
+                currentT={out.thermal.T}
+              />
+            )}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
               <Stat label="T min" value={`${out.Tmin.toFixed(2)} K`} />
               <Stat label="T max" value={`${out.Tmax.toFixed(2)} K`} />
