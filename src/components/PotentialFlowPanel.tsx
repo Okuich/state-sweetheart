@@ -307,19 +307,23 @@ function runSolve(params: Params): SolveOutput {
   };
 }
 
+type StreamDirection = "forward" | "backward" | "bidirectional";
+
 interface ViewerProps {
   out: SolveOutput;
   mode: FieldMode;
   showVectors: boolean;
   showStreamlines: boolean;
-  bidirectional: boolean;
+  direction: StreamDirection;
+  stepScale: number;
   seedsPerSide: number;
   rk4Steps: number;
   height?: number;
 }
 
 function FlowViewer({
-  out, mode, showVectors, showStreamlines, bidirectional, seedsPerSide, rk4Steps, height = 380,
+  out, mode, showVectors, showStreamlines, direction, stepScale,
+  seedsPerSide, rk4Steps, height = 380,
 }: ViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [yaw, setYaw] = useState(0.7);
@@ -379,7 +383,7 @@ function FlowViewer({
     const ext = Math.max(
       bb.max[0] - bb.min[0], bb.max[1] - bb.min[1], bb.max[2] - bb.min[2],
     );
-    const step = ext * 0.015;
+    const step = ext * 0.015 * Math.max(0.05, stepScale);
     const seeds: Array<[number, number, number]> = [];
     const inletX = bb.min[0] + ext * 1e-3;
     const n = Math.max(1, seedsPerSide);
@@ -392,17 +396,22 @@ function FlowViewer({
         ]);
       }
     }
+    const traceDir = (s: [number, number, number], dir: 1 | -1) =>
+      traceFieldLine(s, sample, { stepSize: step, maxSteps: rk4Steps, direction: dir });
+
     const lines: Array<{ pts: Float64Array; speed: Float32Array; seedIdx: number }> = [];
     for (const s of seeds) {
-      const fwd = traceFieldLine(s, sample, {
-        stepSize: step, maxSteps: rk4Steps, direction: 1,
-      });
       let pts: Float64Array;
       let seedIdx: number;
-      if (bidirectional) {
-        const bwd = traceFieldLine(s, sample, {
-          stepSize: step, maxSteps: rk4Steps, direction: -1,
-        });
+      if (direction === "forward") {
+        pts = traceDir(s, 1);
+        seedIdx = 0;
+      } else if (direction === "backward") {
+        pts = traceDir(s, -1);
+        seedIdx = 0;
+      } else {
+        const fwd = traceDir(s, 1);
+        const bwd = traceDir(s, -1);
         // bwd[0] == fwd[0] (the seed). Reverse bwd (skip its first point) and
         // prepend so the combined path goes upstream → seed → downstream.
         const nBwd = bwd.length / 3;
@@ -417,9 +426,6 @@ function FlowViewer({
         }
         pts.set(fwd, (nBwd - 1) * 3);
         seedIdx = nBwd - 1;
-      } else {
-        pts = fwd;
-        seedIdx = 0;
       }
       const nPts = pts.length / 3;
       const speed = new Float32Array(nPts);
@@ -430,7 +436,7 @@ function FlowViewer({
       lines.push({ pts, speed, seedIdx });
     }
     return lines;
-  }, [out, showStreamlines, bidirectional, seedsPerSide, rk4Steps]);
+  }, [out, showStreamlines, direction, stepScale, seedsPerSide, rk4Steps]);
 
   useEffect(() => {
     const c = canvasRef.current;
@@ -613,7 +619,8 @@ export function PotentialFlowPanel() {
   const [mode, setMode] = useState<FieldMode>("speed");
   const [showVectors, setShowVectors] = useState(false);
   const [showStreamlines, setShowStreamlines] = useState(true);
-  const [bidirectional, setBidirectional] = useState(false);
+  const [direction, setDirection] = useState<StreamDirection>("forward");
+  const [stepScale, setStepScale] = useState(1);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -697,15 +704,34 @@ export function PotentialFlowPanel() {
           <Button variant={showStreamlines ? "default" : "outline"} size="sm" onClick={() => setShowStreamlines((s) => !s)}>
             Streamlines {showStreamlines ? "on" : "off"}
           </Button>
-          <Button
-            variant={bidirectional ? "default" : "outline"}
-            size="sm"
-            disabled={!showStreamlines}
-            onClick={() => setBidirectional((b) => !b)}
-            title="Trace each seed both upstream and downstream"
-          >
-            Bidirectional {bidirectional ? "on" : "off"}
-          </Button>
+          <Select value={direction} onValueChange={(v) => setDirection(v as StreamDirection)}>
+            <SelectTrigger className="w-[160px] h-9" disabled={!showStreamlines}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="forward">Downstream →</SelectItem>
+              <SelectItem value="backward">Upstream ←</SelectItem>
+              <SelectItem value="bidirectional">Bidirectional ↔</SelectItem>
+            </SelectContent>
+          </Select>
+          <div className="flex items-center gap-1.5">
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              step ×
+            </Label>
+            <Input
+              type="number"
+              className="h-9 w-[80px]"
+              value={stepScale}
+              step={0.1}
+              min={0.05}
+              disabled={!showStreamlines}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                if (Number.isFinite(v)) setStepScale(Math.max(0.05, Math.min(10, v)));
+              }}
+              title="RK4 step size as multiple of bbox·0.015 (smaller = more accurate, slower)"
+            />
+          </div>
         </div>
 
         {err && (
@@ -720,7 +746,8 @@ export function PotentialFlowPanel() {
               out={out} mode={mode}
               showVectors={showVectors}
               showStreamlines={showStreamlines}
-              bidirectional={bidirectional}
+              direction={direction}
+              stepScale={stepScale}
               seedsPerSide={params.seedsPerSide}
               rk4Steps={params.rk4Steps}
             />
