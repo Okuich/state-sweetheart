@@ -933,10 +933,17 @@ export function ThermalFieldPanel() {
             <ThermalViewer
               out={out}
               mode={mode}
-              showFlux={showFlux}
+              showFlux={showFlux && !(showGradOverlay && gradDiag)}
               probes={probes}
               pickArmed={panelMode === "optimize" && pickArmed}
               onPick={addProbe}
+              overrideField={showGradOverlay && gradDiag ? {
+                values: gradDiag.perVertex,
+                min: gradDiag.minVtx,
+                max: gradDiag.maxVtx,
+                label: "|∂L/∂κ| (vtx-avg)",
+                unit: "",
+              } : null}
             />
             {panelMode === "optimize" && (
               <OptimizePanel
@@ -950,6 +957,10 @@ export function ThermalFieldPanel() {
                 busy={busy}
                 result={optResult}
                 currentT={out.thermal.T}
+                onComputeGradient={computeGradient}
+                gradDiag={gradDiag}
+                showGradOverlay={showGradOverlay}
+                onToggleGradOverlay={() => setShowGradOverlay((s) => !s)}
               />
             )}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
