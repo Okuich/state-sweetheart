@@ -373,11 +373,23 @@ function ThermalViewer({
 
     const T = out.thermal.T;
     const hot = out.thermal.hotspot;
-    const field = mode === "temperature" ? T : hot;
     const Tspan = Math.max(1e-12, out.Tmax - out.Tmin);
-    const fieldNorm = (i: number) => mode === "temperature"
-      ? (T[i] - out.Tmin) / Tspan
-      : hot[i];
+    let fieldNorm: (i: number) => number;
+    if (overrideField) {
+      const { values, min, max, diverging } = overrideField;
+      if (diverging) {
+        const mAbs = Math.max(Math.abs(min), Math.abs(max), 1e-30);
+        fieldNorm = (i) => 0.5 + 0.5 * Math.max(-1, Math.min(1, values[i] / mAbs));
+      } else {
+        const span = Math.max(1e-30, max - min);
+        fieldNorm = (i) => (values[i] - min) / span;
+      }
+    } else if (mode === "temperature") {
+      fieldNorm = (i) => (T[i] - out.Tmin) / Tspan;
+    } else {
+      fieldNorm = (i) => hot[i];
+    }
+    void hot;
 
     // Project all verts.
     const px = new Float32Array(geo.nV);
