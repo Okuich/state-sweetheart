@@ -33,17 +33,6 @@ type FieldMode = "potential" | "speed" | "cp" | "pressure";
  *  - "p0":     dimensionless ratio p / p₀; ramp covers [0,1] of stagnation.
  *  - "ref":    dimensionless ratio p / p_ref using a user-supplied reference. */
 type PressureNorm = "minmax" | "p0" | "ref";
-type FaceKey = "+x" | "-x" | "+y" | "-y" | "+z" | "-z";
-type FaceMode = "dirichlet" | "neumann" | "wall";
-
-interface FaceBC {
-  mode: FaceMode;
-  /** φ value (m²/s) when mode = "dirichlet". */
-  phi: number;
-  /** Normal velocity v·n_out (m/s) when mode = "neumann". Positive = outflow. */
-  vN: number;
-}
-
 interface Params {
   length: number;
   width: number;
