@@ -617,21 +617,6 @@ export function ThermalFieldPanel() {
   const [optResult, setOptResult] = useState<OptimizeResult | null>(null);
   const [kappaField, setKappaField] = useState<Float64Array | null>(null);
 
-  interface GradDiag {
-    /** Per-vertex |dL/dκ| spread from incident tets (for surface heatmap). */
-    perVertex: Float64Array;
-    /** Per-tet ∂L/∂κ. */
-    perTet: Float64Array;
-    /** Per-tet |∂L/∂κ|·κ (log-space gradient). */
-    perTetLog: Float64Array;
-    minTet: number; maxTet: number;
-    minVtx: number; maxVtx: number;
-    loss: number;
-    gradNormKappa: number;
-    gradNormLogKappa: number;
-    gradNormSource: number;
-    gradNormLoads: number;
-  }
   const [gradDiag, setGradDiag] = useState<GradDiag | null>(null);
   const [showGradOverlay, setShowGradOverlay] = useState(false);
 
