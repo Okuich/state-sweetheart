@@ -312,13 +312,14 @@ interface ViewerProps {
   mode: FieldMode;
   showVectors: boolean;
   showStreamlines: boolean;
+  bidirectional: boolean;
   seedsPerSide: number;
   rk4Steps: number;
   height?: number;
 }
 
 function FlowViewer({
-  out, mode, showVectors, showStreamlines, seedsPerSide, rk4Steps, height = 380,
+  out, mode, showVectors, showStreamlines, bidirectional, seedsPerSide, rk4Steps, height = 380,
 }: ViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [yaw, setYaw] = useState(0.7);
@@ -363,7 +364,7 @@ function FlowViewer({
 
   // RK4 streamlines through the mesh-backed velocity sampler.
   const streamlines = useMemo(() => {
-    if (!showStreamlines) return [] as Array<{ pts: Float64Array; speed: Float32Array }>;
+    if (!showStreamlines) return [] as Array<{ pts: Float64Array; speed: Float32Array; seedIdx: number }>;
     const meshIn = { vertices: out.mesh.mesh.vertices, tets: out.mesh.mesh.tets };
     const sampleV = makeVelocitySampler(meshIn, out.result.velocityPerTet);
     // Normalize sampled velocity → unit direction so stepSize stays in world units.
@@ -391,21 +392,45 @@ function FlowViewer({
         ]);
       }
     }
-    const lines: Array<{ pts: Float64Array; speed: Float32Array }> = [];
+    const lines: Array<{ pts: Float64Array; speed: Float32Array; seedIdx: number }> = [];
     for (const s of seeds) {
-      const pts = traceFieldLine(s, sample, {
+      const fwd = traceFieldLine(s, sample, {
         stepSize: step, maxSteps: rk4Steps, direction: 1,
       });
+      let pts: Float64Array;
+      let seedIdx: number;
+      if (bidirectional) {
+        const bwd = traceFieldLine(s, sample, {
+          stepSize: step, maxSteps: rk4Steps, direction: -1,
+        });
+        // bwd[0] == fwd[0] (the seed). Reverse bwd (skip its first point) and
+        // prepend so the combined path goes upstream → seed → downstream.
+        const nBwd = bwd.length / 3;
+        const nFwd = fwd.length / 3;
+        const total = (nBwd - 1) + nFwd;
+        pts = new Float64Array(total * 3);
+        for (let i = nBwd - 1; i >= 1; i--) {
+          const dst = (nBwd - 1 - i) * 3;
+          pts[dst]     = bwd[i * 3];
+          pts[dst + 1] = bwd[i * 3 + 1];
+          pts[dst + 2] = bwd[i * 3 + 2];
+        }
+        pts.set(fwd, (nBwd - 1) * 3);
+        seedIdx = nBwd - 1;
+      } else {
+        pts = fwd;
+        seedIdx = 0;
+      }
       const nPts = pts.length / 3;
       const speed = new Float32Array(nPts);
       for (let i = 0; i < nPts; i++) {
         const v = sampleV(pts[i * 3], pts[i * 3 + 1], pts[i * 3 + 2]);
         speed[i] = v ? Math.hypot(v[0], v[1], v[2]) : 0;
       }
-      lines.push({ pts, speed });
+      lines.push({ pts, speed, seedIdx });
     }
     return lines;
-  }, [out, showStreamlines, seedsPerSide, rk4Steps]);
+  }, [out, showStreamlines, bidirectional, seedsPerSide, rk4Steps]);
 
   useEffect(() => {
     const c = canvasRef.current;
@@ -502,7 +527,7 @@ function FlowViewer({
     if (showStreamlines) {
       ctx.lineWidth = 1.6;
       const spMax = Math.max(1e-12, out.speedMax);
-      for (const { pts, speed } of streamlines) {
+      for (const { pts, speed, seedIdx } of streamlines) {
         const nPts = pts.length / 3;
         // Per-segment coloring by local speed magnitude.
         for (let i = 1; i < nPts; i++) {
@@ -516,12 +541,12 @@ function FlowViewer({
           ctx.beginPath();
           ctx.moveTo(sx0, sy0); ctx.lineTo(sx1, sy1);
           ctx.stroke();
-          // Suppress unused warnings on z components from projection helper.
           void pz0; void pz1;
         }
-        // Seed dot.
+        // Seed dot — at the actual seed location, even when bidirectional.
         if (pts.length >= 3) {
-          const [nx, ny, nz] = geo.toNorm(pts[0], pts[1], pts[2]);
+          const s3 = seedIdx * 3;
+          const [nx, ny, nz] = geo.toNorm(pts[s3], pts[s3 + 1], pts[s3 + 2]);
           const [sx, sy2] = project(nx, ny, nz);
           ctx.fillStyle = "rgba(125, 211, 252, 1)";
           ctx.beginPath();
@@ -588,6 +613,7 @@ export function PotentialFlowPanel() {
   const [mode, setMode] = useState<FieldMode>("speed");
   const [showVectors, setShowVectors] = useState(false);
   const [showStreamlines, setShowStreamlines] = useState(true);
+  const [bidirectional, setBidirectional] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -671,6 +697,15 @@ export function PotentialFlowPanel() {
           <Button variant={showStreamlines ? "default" : "outline"} size="sm" onClick={() => setShowStreamlines((s) => !s)}>
             Streamlines {showStreamlines ? "on" : "off"}
           </Button>
+          <Button
+            variant={bidirectional ? "default" : "outline"}
+            size="sm"
+            disabled={!showStreamlines}
+            onClick={() => setBidirectional((b) => !b)}
+            title="Trace each seed both upstream and downstream"
+          >
+            Bidirectional {bidirectional ? "on" : "off"}
+          </Button>
         </div>
 
         {err && (
@@ -685,6 +720,7 @@ export function PotentialFlowPanel() {
               out={out} mode={mode}
               showVectors={showVectors}
               showStreamlines={showStreamlines}
+              bidirectional={bidirectional}
               seedsPerSide={params.seedsPerSide}
               rk4Steps={params.rk4Steps}
             />
