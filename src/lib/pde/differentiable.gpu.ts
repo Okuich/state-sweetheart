@@ -262,6 +262,104 @@ function makeStorage(device: GPUDevice, data: ArrayBufferView, usage: number): G
   return buf;
 }
 
+/**
+ * Reusable upload — if `slot` already holds a buffer of the same byte size
+ * and identical fingerprint, skip the upload entirely. Otherwise overwrite
+ * (re-using the buffer if size matches, reallocating only on size change).
+ */
+function uploadSlot(
+  device: GPUDevice,
+  cache: KappaGradBufferCache,
+  slot: keyof KappaGradBufferCache,
+  data: ArrayBufferView,
+  usage: number,
+): GPUBuffer {
+  const byteLength = Math.max(16, data.byteLength);
+  const fp = fingerprint(data);
+  let entry = cache[slot];
+  if (!entry || entry.byteLength !== byteLength) {
+    if (entry) entry.buf.destroy();
+    entry = {
+      buf: device.createBuffer({ size: byteLength, usage }),
+      byteLength,
+      fingerprint: ~fp, // force the upload below
+    };
+    cache[slot] = entry;
+  }
+  if (entry.fingerprint !== fp) {
+    // Pad odd byte counts up to a multiple of 4 — writeBuffer requires it.
+    const bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    const padded = (bytes.byteLength % 4 === 0)
+      ? bytes
+      : (() => {
+          const p = new Uint8Array(Math.ceil(bytes.byteLength / 4) * 4);
+          p.set(bytes);
+          return p;
+        })();
+    device.queue.writeBuffer(entry.buf, 0, padded);
+    entry.fingerprint = fp;
+  }
+  return entry.buf;
+}
+
+/** Allocate (or re-use) an output / staging buffer of the given byte size. */
+function ensureSlot(
+  device: GPUDevice,
+  cache: KappaGradBufferCache,
+  slot: keyof KappaGradBufferCache,
+  byteLength: number,
+  usage: number,
+): GPUBuffer {
+  const size = Math.max(16, byteLength);
+  let entry = cache[slot];
+  if (!entry || entry.byteLength !== size) {
+    if (entry) entry.buf.destroy();
+    entry = {
+      buf: device.createBuffer({ size, usage }),
+      byteLength: size,
+      fingerprint: 0,
+    };
+    cache[slot] = entry;
+  }
+  return entry.buf;
+}
+
+/** Cheap content fingerprint — byteLength + a few sampled words. */
+function fingerprint(data: ArrayBufferView): number {
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const n = view.byteLength >>> 2;
+  if (n === 0) return data.byteLength | 0;
+  // Sample first, last, and three interior words. Cheap, but distinguishes
+  // edits in practice (consecutive iterations always change u/lambda payloads).
+  let h = data.byteLength | 0;
+  const indices = [0, n - 1, n >> 2, n >> 1, (n >> 1) + (n >> 2)];
+  for (const i of indices) {
+    h = (Math.imul(h, 16777619) ^ view.getUint32(i * 4, true)) >>> 0;
+  }
+  return h | 0;
+}
+
+async function downloadF32(t: GPUTensor): Promise<Float32Array> {
+  const device = (t.buffer as unknown as { device: GPUDevice }).device;
+  const byteLen = t.length * 4;
+  const staging = device.createBuffer({
+    size: byteLen,
+    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+  });
+  const enc = device.createCommandEncoder();
+  enc.copyBufferToBuffer(t.buffer, 0, staging, 0, byteLen);
+  device.queue.submit([enc.finish()]);
+  await staging.mapAsync(GPUMapMode.READ);
+  const out = new Float32Array(staging.getMappedRange().slice(0));
+  staging.unmap();
+  staging.destroy();
+  return out;
+}
+
+function toF32(src: Float32Array | Float64Array): Float32Array {
+  return src instanceof Float32Array ? src : Float32Array.from(src);
+}
+
 async function downloadF32(t: GPUTensor): Promise<Float32Array> {
   const device = (t.buffer as unknown as { device: GPUDevice }).device;
   const byteLen = t.length * 4;
