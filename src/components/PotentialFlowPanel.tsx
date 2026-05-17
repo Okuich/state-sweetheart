@@ -697,6 +697,15 @@ export function PotentialFlowPanel() {
           <Button variant={showStreamlines ? "default" : "outline"} size="sm" onClick={() => setShowStreamlines((s) => !s)}>
             Streamlines {showStreamlines ? "on" : "off"}
           </Button>
+          <Button
+            variant={bidirectional ? "default" : "outline"}
+            size="sm"
+            disabled={!showStreamlines}
+            onClick={() => setBidirectional((b) => !b)}
+            title="Trace each seed both upstream and downstream"
+          >
+            Bidirectional {bidirectional ? "on" : "off"}
+          </Button>
         </div>
 
         {err && (
@@ -711,6 +720,7 @@ export function PotentialFlowPanel() {
               out={out} mode={mode}
               showVectors={showVectors}
               showStreamlines={showStreamlines}
+              bidirectional={bidirectional}
               seedsPerSide={params.seedsPerSide}
               rk4Steps={params.rk4Steps}
             />
