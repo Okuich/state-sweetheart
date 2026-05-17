@@ -87,12 +87,15 @@ function ramp(t: number): [number, number, number] {
 interface SolveOutput {
   mesh: MeshingResult;
   thermal: ThermalSolution;
+  kappa: Float64Array;
   dirichletCount: { hot: number; cold: number };
   neumannSummary: Array<{ face: FaceKey; flux: number; area: number; nodes: number; power: number }>;
   totalNeumannPower: number;
   elapsedMs: number;
   Tmin: number; Tmax: number;
   fluxMax: number;
+  dirichletSet: Set<number>;
+  loads: Float64Array;
 }
 
 /** Min/max bbox extent along each axis for a face key. */
