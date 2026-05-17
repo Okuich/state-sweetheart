@@ -936,6 +936,9 @@ export function PotentialFlowPanel() {
               onAddSeed={(s) => setCustomSeeds((prev) => [...prev, s])}
               pressureNorm={pressureNorm}
               refPressure={refPressure}
+              showContours={showContours}
+              contourCount={contourCount}
+              contourOpacity={contourOpacity}
             />
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
               <Stat label="φ min" value={out.phiMin.toFixed(3)} />
