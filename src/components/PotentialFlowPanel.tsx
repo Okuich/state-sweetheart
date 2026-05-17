@@ -125,7 +125,15 @@ interface SolveOutput {
   faceSummary: FaceSummary[];
   netFlux: number;
   volumetricFlow: number;
+  /** Net pressure force F = ∫ p · n_out dA on each boundary face (N). */
+  pressureForce: Record<FaceKey, [number, number, number]>;
 }
+
+const FACE_NORMAL: Record<FaceKey, [number, number, number]> = {
+  "-x": [-1, 0, 0], "+x": [1, 0, 0],
+  "-y": [0, -1, 0], "+y": [0, 1, 0],
+  "-z": [0, 0, -1], "+z": [0, 0, 1],
+};
 
 function extractSurfaceTriangles(tets: Uint32Array): Array<[number, number, number]> {
   const map = new Map<string, { tri: [number, number, number]; count: number }>();
@@ -302,13 +310,36 @@ function runSolve(params: Params): SolveOutput {
   });
   const netFlux = faceSummary.reduce((s, x) => s + (x.flow ?? 0), 0);
 
+  // Pressure force per boundary face: F = ∫ p · n_out dA, integrated over
+  // surface triangles whose 3 vertices all lie on the face (mean-pressure
+  // approximation per triangle, exact for P1 fields on flat axis-aligned faces).
+  const pressureForce: Record<FaceKey, [number, number, number]> = {
+    "-x": [0, 0, 0], "+x": [0, 0, 0], "-y": [0, 0, 0],
+    "+y": [0, 0, 0], "-z": [0, 0, 0], "+z": [0, 0, 0],
+  };
+  for (const f of FACE_KEYS) {
+    if (params.faces[f].mode === "wall" && faceArea[f] === 0) continue;
+    const test = faceTest(f, bb, tol);
+    const [nx, ny, nz] = FACE_NORMAL[f];
+    let Fmag = 0;
+    for (const [a, b, c] of surface) {
+      const pass = (i: number) =>
+        test(verts[i * 3], verts[i * 3 + 1], verts[i * 3 + 2]);
+      if (!(pass(a) && pass(b) && pass(c))) continue;
+      const A = triArea(verts as Float32Array, a, b, c);
+      const pAvg = (pressure[a] + pressure[b] + pressure[c]) / 3;
+      Fmag += pAvg * A;
+    }
+    pressureForce[f] = [Fmag * nx, Fmag * ny, Fmag * nz];
+  }
+
   return {
     mesh, result,
     elapsedMs: performance.now() - t0,
     phiMin, phiMax, speedMin, speedMax, cpMin, cpMax,
     pressure, pMin, pMax, density: params.density, p0: params.p0,
     dirichletCount: dirichlet.length,
-    faceSummary, netFlux, volumetricFlow,
+    faceSummary, netFlux, volumetricFlow, pressureForce,
   };
 }
 
@@ -1004,6 +1035,7 @@ export function PotentialFlowPanel() {
               <Stat label="Δp = ½ρ|v|²max" value={`${(0.5 * out.density * out.speedMax * out.speedMax).toExponential(2)} Pa`} />
               <Stat label="Σ Neumann flux" value={`${out.netFlux.toExponential(2)} m³/s`} />
             </div>
+            <PressureForceGrid forces={out.pressureForce} />
             <FaceSummaryGrid summary={out.faceSummary} />
           </>
         )}
@@ -1037,6 +1069,60 @@ function Stat({ label, value }: { label: string; value: string }) {
     <div className="rounded-md border border-border bg-muted/30 px-3 py-2">
       <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className="font-mono text-sm text-foreground">{value}</div>
+    </div>
+  );
+}
+
+function PressureForceGrid({
+  forces,
+}: { forces: Record<FaceKey, [number, number, number]> }) {
+  // Inlet/outlet drive the headline force; the four side faces are reported
+  // compactly so net axial force is easy to read off.
+  const fmt = (v: number) => (Math.abs(v) < 1e-3 && v !== 0
+    ? v.toExponential(2)
+    : v.toFixed(3));
+  const mag = (v: [number, number, number]) =>
+    Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+  const net: [number, number, number] = [0, 0, 0];
+  for (const f of FACE_KEYS) {
+    net[0] += forces[f][0]; net[1] += forces[f][1]; net[2] += forces[f][2];
+  }
+  const Row = ({ face, label }: { face: FaceKey; label: string }) => {
+    const F = forces[face];
+    return (
+      <div className="rounded-md border border-border bg-muted/30 px-3 py-2">
+        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+          {label} <span className="opacity-60">({face})</span>
+        </div>
+        <div className="font-mono text-sm text-foreground">
+          F = ({fmt(F[0])}, {fmt(F[1])}, {fmt(F[2])}) N
+        </div>
+        <div className="font-mono text-[11px] text-muted-foreground">
+          |F| = {mag(F).toExponential(3)} N
+        </div>
+      </div>
+    );
+  };
+  return (
+    <div className="space-y-1">
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+        Pressure force  F = ∫ p · n_out dA
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+        <Row face="-x" label="Inlet" />
+        <Row face="+x" label="Outlet" />
+        <div className="rounded-md border border-border bg-muted/30 px-3 py-2">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            Net (all faces)
+          </div>
+          <div className="font-mono text-sm text-foreground">
+            F = ({fmt(net[0])}, {fmt(net[1])}, {fmt(net[2])}) N
+          </div>
+          <div className="font-mono text-[11px] text-muted-foreground">
+            |F| = {mag(net).toExponential(3)} N
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
