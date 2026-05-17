@@ -671,7 +671,7 @@ export function PotentialFlowPanel() {
               <Stat label="|v| max" value={`${out.speedMax.toFixed(3)} m/s`} />
               <Stat label="Cp range" value={`${out.cpMin.toFixed(2)} … ${out.cpMax.toFixed(2)}`} />
               <Stat label="V_ref" value={`${out.result.referenceSpeed.toFixed(3)} m/s`} />
-              <Stat label="inlet / outlet" value={`${out.inletCount} · ${out.outletCount}`} />
+              <Stat label="Dirichlet nodes" value={`${out.dirichletCount}`} />
               <Stat label="vertices" value={out.result.phi.length.toLocaleString()} />
               <Stat label="residual" value={out.result.solve.result.residual.toExponential(2)} />
               <Stat label="Q ≈ ūx·A" value={`${out.volumetricFlow.toExponential(2)} m³/s`} />
