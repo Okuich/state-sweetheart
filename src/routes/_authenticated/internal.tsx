@@ -45,6 +45,7 @@ import { AnomalyAlertsPanel } from "@/components/AnomalyAlertsPanel";
 import { PredictiveMaintenancePanel } from "@/components/PredictiveMaintenancePanel";
 import { PdmGatingPanel } from "@/components/PdmGatingPanel";
 import { SimOptPanel } from "@/components/SimOptPanel";
+import { SimOptGatingPanel } from "@/components/SimOptGatingPanel";
 import { TelemetryUploadPanel } from "@/components/TelemetryUploadPanel";
 import { FederatedPanel } from "@/components/FederatedPanel";
 import { saveSnapshot } from "@/lib/worldMemory";
