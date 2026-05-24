@@ -958,6 +958,7 @@ function Index() {
         <AnomalyAlertsPanel />
         <PredictiveMaintenancePanel />
         <PdmGatingPanel />
+        <SimOptPanel />
         <TelemetryUploadPanel />
       </section>
 
