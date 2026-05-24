@@ -220,19 +220,18 @@ export function substitute(
   const sims = similar(index, queryId, index.records.length - 1);
   const ranked = recommend(index, constraints, weights);
   const byId = new Map(ranked.map((s) => [s.material.id, s]));
-  return sims
-    .map(({ material, similarity }) => {
-      const s = byId.get(material.id);
-      if (!s) return null;
-      return { ...s, similarity };
-    })
-    .filter((s): s is MaterialScore => s !== null)
-    .sort((a, b) => {
-      // Feasible substitutes first; then 70% similarity / 30% composite score.
-      if (a.feasible !== b.feasible) return Number(b.feasible) - Number(a.feasible);
-      const ka = 0.7 * (a.similarity ?? 0) + 0.3 * a.score;
-      const kb = 0.7 * (b.similarity ?? 0) + 0.3 * b.score;
-      return kb - ka;
-    })
-    .slice(0, k);
+  const out: MaterialScore[] = [];
+  for (const { material, similarity } of sims) {
+    const s = byId.get(material.id);
+    if (!s) continue;
+    out.push({ ...s, similarity });
+  }
+  out.sort((a, b) => {
+    // Feasible substitutes first; then 70% similarity / 30% composite score.
+    if (a.feasible !== b.feasible) return Number(b.feasible) - Number(a.feasible);
+    const ka = 0.7 * (a.similarity ?? 0) + 0.3 * a.score;
+    const kb = 0.7 * (b.similarity ?? 0) + 0.3 * b.score;
+    return kb - ka;
+  });
+  return out.slice(0, k);
 }
