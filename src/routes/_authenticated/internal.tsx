@@ -43,6 +43,7 @@ import { MaterialCheckpointPanel } from "@/components/MaterialCheckpointPanel";
 import { PrecisionPolicyPanel } from "@/components/PrecisionPolicyPanel";
 import { AnomalyAlertsPanel } from "@/components/AnomalyAlertsPanel";
 import { PredictiveMaintenancePanel } from "@/components/PredictiveMaintenancePanel";
+import { PdmGatingPanel } from "@/components/PdmGatingPanel";
 import { TelemetryUploadPanel } from "@/components/TelemetryUploadPanel";
 import { FederatedPanel } from "@/components/FederatedPanel";
 import { saveSnapshot } from "@/lib/worldMemory";
@@ -955,6 +956,7 @@ function Index() {
         <PrecisionPolicyPanel />
         <AnomalyAlertsPanel />
         <PredictiveMaintenancePanel />
+        <PdmGatingPanel />
         <TelemetryUploadPanel />
       </section>
 
