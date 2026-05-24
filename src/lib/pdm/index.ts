@@ -23,3 +23,7 @@ export {
   type SensorChannel, type SensorReading, type StateVector,
   type LabeledState, type MaintenanceScore,
 } from "./types";
+export {
+  GateEvaluator, DEFAULT_GATES,
+  type GateThresholds, type GateStatus, type GateReport, type GroundTruth,
+} from "./gating";
