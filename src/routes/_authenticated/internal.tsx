@@ -44,6 +44,7 @@ import { PrecisionPolicyPanel } from "@/components/PrecisionPolicyPanel";
 import { AnomalyAlertsPanel } from "@/components/AnomalyAlertsPanel";
 import { PredictiveMaintenancePanel } from "@/components/PredictiveMaintenancePanel";
 import { PdmGatingPanel } from "@/components/PdmGatingPanel";
+import { SimOptPanel } from "@/components/SimOptPanel";
 import { TelemetryUploadPanel } from "@/components/TelemetryUploadPanel";
 import { FederatedPanel } from "@/components/FederatedPanel";
 import { saveSnapshot } from "@/lib/worldMemory";
