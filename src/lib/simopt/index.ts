@@ -11,3 +11,7 @@ export {
   type SimDescriptor, type SimResult, type CachedSim, type RouteDecision,
   type SimOptStats, type SolverKind, type SimDomain, type MeshStats,
 } from "./types";
+export {
+  SimGateEvaluator, DEFAULT_SIM_GATES, finalize as finalizeSimGateReport,
+  type SimGateThresholds, type SimGateStatus, type SimGateReport,
+} from "./gating";
