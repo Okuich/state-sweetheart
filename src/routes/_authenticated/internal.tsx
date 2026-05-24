@@ -49,6 +49,7 @@ import { SimOptGatingPanel } from "@/components/SimOptGatingPanel";
 import { MaterialRecommendationPanel } from "@/components/MaterialRecommendationPanel";
 import { MaterialGatingPanel } from "@/components/MaterialGatingPanel";
 import { DigitalTwinPanel } from "@/components/DigitalTwinPanel";
+import { GeometryPhysicsPanel } from "@/components/GeometryPhysicsPanel";
 import { TelemetryUploadPanel } from "@/components/TelemetryUploadPanel";
 import { FederatedPanel } from "@/components/FederatedPanel";
 import { saveSnapshot } from "@/lib/worldMemory";
