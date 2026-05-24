@@ -964,6 +964,7 @@ function Index() {
         <SimOptPanel />
         <SimOptGatingPanel />
         <MaterialRecommendationPanel />
+        <MaterialGatingPanel />
         <TelemetryUploadPanel />
       </section>
 
