@@ -46,6 +46,7 @@ import { PredictiveMaintenancePanel } from "@/components/PredictiveMaintenancePa
 import { PdmGatingPanel } from "@/components/PdmGatingPanel";
 import { SimOptPanel } from "@/components/SimOptPanel";
 import { SimOptGatingPanel } from "@/components/SimOptGatingPanel";
+import { MaterialRecommendationPanel } from "@/components/MaterialRecommendationPanel";
 import { TelemetryUploadPanel } from "@/components/TelemetryUploadPanel";
 import { FederatedPanel } from "@/components/FederatedPanel";
 import { saveSnapshot } from "@/lib/worldMemory";
@@ -961,6 +962,7 @@ function Index() {
         <PdmGatingPanel />
         <SimOptPanel />
         <SimOptGatingPanel />
+        <MaterialRecommendationPanel />
         <TelemetryUploadPanel />
       </section>
 
