@@ -50,6 +50,7 @@ import { MaterialRecommendationPanel } from "@/components/MaterialRecommendation
 import { MaterialGatingPanel } from "@/components/MaterialGatingPanel";
 import { DigitalTwinPanel } from "@/components/DigitalTwinPanel";
 import { GeometryPhysicsPanel } from "@/components/GeometryPhysicsPanel";
+import { PhysicsInformedAIPanel } from "@/components/PhysicsInformedAIPanel";
 import { TelemetryUploadPanel } from "@/components/TelemetryUploadPanel";
 import { FederatedPanel } from "@/components/FederatedPanel";
 import { saveSnapshot } from "@/lib/worldMemory";
@@ -969,6 +970,7 @@ function Index() {
         <MaterialGatingPanel />
         <DigitalTwinPanel />
         <GeometryPhysicsPanel />
+        <PhysicsInformedAIPanel />
         <TelemetryUploadPanel />
       </section>
 
