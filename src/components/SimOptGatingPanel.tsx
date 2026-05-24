@@ -23,7 +23,7 @@ import {
 import {
   SimGateEvaluator, DEFAULT_SIM_GATES, finalizeSimGateReport,
   type SimGateReport,
-} from "@/lib/simopt/gating";
+} from "@/lib/simopt";
 
 const SCENARIOS: Array<{
   id: string;
