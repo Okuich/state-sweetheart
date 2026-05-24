@@ -16,3 +16,7 @@ export {
   type Environment, type DesignConstraints, type ObjectiveWeights,
   type MaterialScore,
 } from "./types";
+export {
+  MatGateEvaluator, DEFAULT_MAT_GATES,
+  type MatGateReport, type MatGateStatus, type MatGateThresholds,
+} from "./gating";
