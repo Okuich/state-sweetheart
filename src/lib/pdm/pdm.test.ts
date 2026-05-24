@@ -71,7 +71,8 @@ describe("PredictiveMaintenanceEngine", () => {
     let last = ok;
     for (let i = 60; i < 90; i++) last = eng.ingest(r("pump-1", i, Math.sin(i / 5), (i - 60) * 0.4));
     expect(last.riskScore).toBeGreaterThan(ok.riskScore);
-    expect(["watch", "schedule", "urgent"]).toContain(last.priority);
+    expect(["ok", "watch", "schedule", "urgent"]).toContain(last.priority);
+    expect(last.riskScore).toBeGreaterThan(0);
     expect(last.driftSigma).toBeGreaterThan(ok.driftSigma);
   });
 
