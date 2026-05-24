@@ -968,6 +968,7 @@ function Index() {
         <MaterialRecommendationPanel />
         <MaterialGatingPanel />
         <DigitalTwinPanel />
+        <GeometryPhysicsPanel />
         <TelemetryUploadPanel />
       </section>
 
