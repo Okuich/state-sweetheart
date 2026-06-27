@@ -15,7 +15,7 @@ import {
 import {
   recommendSimulationParameters,
   type Recommendation,
-} from "@/server/physicsReasoner.functions";
+} from "@/lib/physicsReasoner.functions";
 
 const PRESETS = [
   "thin-wall bracket high stress aluminum",
