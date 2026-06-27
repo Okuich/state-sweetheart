@@ -9,9 +9,9 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
-import { RecommendationSchema } from "@/lib/physicsReasoner.schema";
+import { RecommendationSchema, type Recommendation } from "@/lib/physicsReasoner.schema";
 export { RecommendationSchema };
-export type { Recommendation } from "@/lib/physicsReasoner.schema";
+export type { Recommendation };
 
 const InputSchema = z.object({
   contextPrompt: z.string().min(10).max(8000),
