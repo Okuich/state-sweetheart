@@ -9,25 +9,14 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
+import { RecommendationSchema } from "@/lib/physicsReasoner.schema";
+export { RecommendationSchema };
+export type { Recommendation } from "@/lib/physicsReasoner.schema";
 
 const InputSchema = z.object({
   contextPrompt: z.string().min(10).max(8000),
   query: z.string().min(1).max(400),
 });
-
-export const RecommendationSchema = z.object({
-  rationale: z.string(),
-  confidence: z.number().min(0).max(1),
-  parameters: z.array(z.object({
-    name: z.string(),
-    value: z.union([z.number(), z.string()]),
-    unit: z.string().optional(),
-    rationale: z.string(),
-  })).min(1).max(12),
-  warnings: z.array(z.string()).default([]),
-  nextActions: z.array(z.string()).default([]),
-});
-export type Recommendation = z.infer<typeof RecommendationSchema>;
 
 const SYSTEM = `You are a physics simulation reasoner advising on FEM/CFD/multiphysics setups.
 Given retrieved context (similar geometries, topology matches, past failures, optimization precedents),
