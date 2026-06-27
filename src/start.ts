@@ -7,6 +7,7 @@
  */
 import { createStart, createMiddleware } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
+import { attachSupabaseAuth } from "@/integrations/supabase/auth-attacher";
 
 const attachAuth = createMiddleware({ type: "function" }).client(async ({ next }) => {
   let token: string | null = null;
@@ -18,5 +19,5 @@ const attachAuth = createMiddleware({ type: "function" }).client(async ({ next }
 });
 
 export const startInstance = createStart(() => ({
-  functionMiddleware: [attachAuth],
+  functionMiddleware: [attachSupabaseAuth, attachAuth],
 }));
