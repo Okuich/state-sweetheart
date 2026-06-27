@@ -52,6 +52,7 @@ import { DigitalTwinPanel } from "@/components/DigitalTwinPanel";
 import { GeometryPhysicsPanel } from "@/components/GeometryPhysicsPanel";
 import { PhysicsInformedAIPanel } from "@/components/PhysicsInformedAIPanel";
 import { AutoEngineeringPanel } from "@/components/AutoEngineeringPanel";
+import { PhysicsOSPanel } from "@/components/PhysicsOSPanel";
 import { TelemetryUploadPanel } from "@/components/TelemetryUploadPanel";
 import { FederatedPanel } from "@/components/FederatedPanel";
 import { saveSnapshot } from "@/lib/worldMemory";
@@ -973,6 +974,7 @@ function Index() {
         <GeometryPhysicsPanel />
         <PhysicsInformedAIPanel />
         <AutoEngineeringPanel />
+        <PhysicsOSPanel />
         <TelemetryUploadPanel />
       </section>
 
