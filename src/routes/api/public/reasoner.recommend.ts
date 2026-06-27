@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { corsHeaders } from "@/lib/cors";
 import { verifyServiceAuth, logRequest } from "@/lib/service-auth";
-import { RecommendationSchema } from "@/server/physicsReasoner.functions";
+import { RecommendationSchema } from "@/lib/physicsReasoner.schema";
 
 const InputSchema = z.object({
   contextPrompt: z.string().min(10).max(8000),
